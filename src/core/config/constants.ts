@@ -1,0 +1,40 @@
+export const API_BASE_URL = 'https://mytizim.uz/';
+export const WS_BASE_URL = 'wss://mytizim.uz/ws/partner/';
+
+export const STORAGE_KEYS = {
+  ACCESS_TOKEN: 'milliygo_access_token',
+  REFRESH_TOKEN: 'milliygo_refresh_token',
+  PARTNER_DATA: 'milliygo_partner_data',
+};
+
+export const ENDPOINTS = {
+  AUTH: {
+    LOGIN: 'partner/auth/login/',
+    ME: 'partner/me/',
+  },
+  DASHBOARD: {
+    STATS: 'partner/statistics/',
+  },
+  ORDERS: {
+    LIST: 'orders/',
+    UPDATE_STATUS: (orderUuid: string, statusSlug: string) =>
+      `orders/partner-management/${orderUuid}/${statusSlug}/`,
+  },
+  CATALOG: {
+    BASE_CATEGORIES: 'base-categories/',
+    PARTNER_CATEGORIES: (restaurantUuid: string) =>
+      `partner/category/?partner=${restaurantUuid}`,
+    TOGGLE_CATEGORY: 'partner/category/',
+    PRODUCTS: (restaurantUuid: string, categoryUuid: string) =>
+      `products/?partner=${restaurantUuid}&category=${categoryUuid}`,
+    ADD_PRODUCT: 'products/',
+    UPDATE_PRODUCT: (productUuid: string) => `products/${productUuid}/`,
+    DELETE_PRODUCT: (productUuid: string) => `products/${productUuid}/`,
+  },
+  PROFILE: {
+    ME: 'partner/me/',
+    OPENING_HOURS: (restaurantUuid: string) =>
+      `partner/opening-hours/?restaurant_uuid=${restaurantUuid}`,
+    SAVE_OPENING_HOURS: 'partner/opening-hours/',
+  },
+};

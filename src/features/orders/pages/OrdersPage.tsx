@@ -166,8 +166,12 @@ const OrdersPage: React.FC = () => {
     }
   };
 
-  const formatUzS = (amount: number) => {
-    return amount.toLocaleString('uz-UZ') + " UZS";
+  const formatUzS = (amount: number | string | null | undefined) => {
+    const num = Number(amount);
+    if (isNaN(num)) {
+      return "0 UZS";
+    }
+    return num.toLocaleString('uz-UZ') + " UZS";
   };
 
   const filteredOrders = getFilteredOrders();

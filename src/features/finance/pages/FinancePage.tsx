@@ -15,8 +15,12 @@ const FinancePage: React.FC = () => {
   const [filter, setFilter] = useState<'all' | 'paid' | 'refunded'>('all');
   const summary = mockFinanceData;
 
-  const formatUzS = (amount: number) => {
-    return amount.toLocaleString('uz-UZ') + " UZS";
+  const formatUzS = (amount: number | string | null | undefined) => {
+    const num = Number(amount);
+    if (isNaN(num)) {
+      return "0 UZS";
+    }
+    return num.toLocaleString('uz-UZ') + " UZS";
   };
 
   const getFilteredTransactions = () => {

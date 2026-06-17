@@ -162,7 +162,7 @@ const CatalogPage: React.FC = () => {
       }
     }
 
-    const uuidToSend = linkedCat ? linkedCat.uuid : categoryUuidOrBaseUuid;
+    const uuidToSend = linkedCat ? (linkedCat.baseCategoryUuid || linkedCat.uuid) : categoryUuidOrBaseUuid;
 
     try {
       await apiClient.post('partner/category/', {

@@ -10,6 +10,7 @@ import OrdersPage from './features/orders/pages/OrdersPage';
 import CatalogPage from './features/catalog/pages/CatalogPage';
 import FinancePage from './features/finance/pages/FinancePage';
 import ProfilePage from './features/profile/pages/ProfilePage';
+import AllOrdersPage from './features/orders/pages/AllOrdersPage';
 
 const App: React.FC = () => {
   return (
@@ -33,6 +34,7 @@ const App: React.FC = () => {
           <Route path="catalog" element={<CatalogPage />} />
           <Route path="finance" element={<FinancePage />} />
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="all-orders" element={<AllOrdersPage />} />
         </Route>
 
         {/* Fallback redirect */}

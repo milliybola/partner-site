@@ -13,17 +13,68 @@ import {
 import apiClient from '../../../core/api/client';
 import { ENDPOINTS } from '../../../core/config/constants';
 
+interface TopProduct {
+  name: string;
+  qty: number;
+  revenue: number;
+}
+
 interface DashboardStats {
-  restaurant: { name: string; phone: string; is_open: boolean };
-  overall: { total_orders: number; completed: number; canceled: number; total_revenue: number };
+  partner: {
+    name: string;
+    phone: string;
+    is_open: boolean;
+    min_order_amount: number;
+    delivery_fee: number;
+    free_delivery_threshold: number;
+  };
+  overall: {
+    total_orders: number;
+    delivered: number;
+    cancelled: number;
+    total_revenue: number;
+    total_delivery_fees: number;
+    net_revenue: number;
+  };
   today: {
     orders_count: number;
+    delivered: number;
+    cancelled: number;
     revenue: number;
-    canceled_revenue: number;
-    items_sold_count: number;
+    delivery_fees: number;
+    cancelled_revenue: number;
+    net_revenue: number;
     average_check: number;
-    top_products: Array<{ name: string; qty: number; amount: number }>;
+    top_products?: TopProduct[];
   };
+  this_week: {
+    orders_count: number;
+    delivered: number;
+    revenue: number;
+    delivery_fees: number;
+    net_revenue: number;
+    average_check: number;
+  };
+  this_month: {
+    orders_count: number;
+    delivered: number;
+    revenue: number;
+    delivery_fees: number;
+    net_revenue: number;
+    average_check: number;
+    top_products?: TopProduct[];
+  };
+  commission: {
+    type: string;
+    rate: number;
+    total_commission: number;
+    month_commission: number;
+  };
+  daily_chart: Array<{
+    date: string;
+    orders: number;
+    revenue: number;
+  }>;
 }
 
 const DashboardPage: React.FC = () => {
@@ -94,6 +145,7 @@ const DashboardPage: React.FC = () => {
 
   const today = stats?.today;
   const overall = stats?.overall;
+  const itemsSoldToday = today?.top_products?.reduce((acc: number, p) => acc + (p.qty || 0), 0) || 0;
 
   return (
     <div className="space-y-8 font-Outfit">
@@ -146,10 +198,10 @@ const DashboardPage: React.FC = () => {
           <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-bl-full pointer-events-none group-hover:bg-emerald-500/10 transition-colors" />
           <div className="flex items-center justify-between mb-4">
             <span className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400"><CheckCircle className="w-6 h-6" /></span>
-            <span className="text-xs text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded">Jami: {overall?.completed}</span>
+            <span className="text-xs text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded">Jami: {overall?.delivered}</span>
           </div>
           <p className="text-sm font-medium text-slate-400">Yakunlanganlar</p>
-          <h3 className="text-2xl font-bold text-white mt-1.5">{overall?.completed || 0} ta</h3>
+          <h3 className="text-2xl font-bold text-white mt-1.5">{overall?.delivered || 0} ta</h3>
         </div>
 
         {/* Card 4: Cancelled Orders */}
@@ -160,7 +212,7 @@ const DashboardPage: React.FC = () => {
             <span className="text-xs text-rose-400 font-bold bg-rose-500/10 px-2 py-0.5 rounded">Canceled</span>
           </div>
           <p className="text-sm font-medium text-slate-400">Bekor qilinganlar</p>
-          <h3 className="text-2xl font-bold text-white mt-1.5">{overall?.canceled || 0} ta</h3>
+          <h3 className="text-2xl font-bold text-white mt-1.5">{overall?.cancelled || 0} ta</h3>
         </div>
       </div>
 
@@ -180,11 +232,11 @@ const DashboardPage: React.FC = () => {
             </div>
             <div className="flex justify-between items-center py-3 border-b border-white/5">
               <span className="text-slate-400 text-sm">Bugun sotilgan tovarlar</span>
-              <span className="font-bold text-white">{today?.items_sold_count || 0} ta</span>
+              <span className="font-bold text-white">{itemsSoldToday} ta</span>
             </div>
             <div className="flex justify-between items-center py-3">
               <span className="text-slate-400 text-sm">Bekor qilingan tushum</span>
-              <span className="font-bold text-rose-400">{formatUzS(today?.canceled_revenue || 0)}</span>
+              <span className="font-bold text-rose-400">{formatUzS(today?.cancelled_revenue || 0)}</span>
             </div>
           </div>
         </div>
@@ -213,7 +265,7 @@ const DashboardPage: React.FC = () => {
                     <tr key={idx} className="hover:bg-white/[0.01] transition-colors">
                       <td className="py-3.5 font-medium text-white">{item.name}</td>
                       <td className="py-3.5 text-center font-bold text-slate-400">{item.qty} ta</td>
-                      <td className="py-3.5 text-right font-semibold text-emerald-400">{formatUzS(item.amount)}</td>
+                      <td className="py-3.5 text-right font-semibold text-emerald-400">{formatUzS(item.revenue)}</td>
                     </tr>
                   ))}
                 </tbody>

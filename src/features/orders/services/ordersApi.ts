@@ -12,7 +12,7 @@ export interface OrderItem {
 export interface Order {
   id: number;
   uuid: string;
-  status: 'PENDING' | 'SEARCHING_COURIER' | 'ACCEPTED' | 'REJECTED' | 'PREPARING' | 'READY_FOR_PICKUP' | 'DELIVERING' | 'COMPLETED' | 'CANCELLED';
+  status: 'PENDING' | 'SEARCHING_COURIER' | 'ACCEPTED' | 'REJECTED' | 'PREPARING' | 'READY_FOR_PICKUP' | 'DELIVERING' | 'COMPLETED' | 'DELIVERED' | 'CANCELLED';
   contact_phone: string;
   address: string;
   created_at: string;

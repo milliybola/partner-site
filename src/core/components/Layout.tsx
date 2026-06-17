@@ -58,9 +58,10 @@ const Layout: React.FC = () => {
 
   const navItems = [
     { to: '/', label: 'Dafshbord', icon: LayoutDashboard },
-    { to: '/orders', label: 'Buyurtmalar', icon: ShoppingBag },
+    { to: '/orders', label: 'Karban', icon: ShoppingBag },
     { to: '/catalog', label: 'Katalog', icon: Grid },
     { to: '/finance', label: 'Moliya', icon: DollarSign },
+    { to: '/all-orders', label: 'Barcha buyurtmalar', icon: ShoppingBag },
     { to: '/profile', label: 'Profil', icon: User },
   ];
 

@@ -130,7 +130,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
       } ${
         isSelected
           ? 'bg-brand/10 border-brand shadow-md shadow-brand/5'
-          : 'bg-slate-900/80 border-white/5 hover:border-white/10'
+          : 'bg-darkCard border-white/5 hover:border-white/10'
       }`}
     >
       <div className="flex items-center justify-between mb-2">
@@ -156,7 +156,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
       </div>
 
       <div className="mt-3 pt-2 border-t border-white/5 flex items-center justify-between">
-        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-950 text-slate-300">
+        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
           {order.items.length} ta xil
         </span>
         <span className="text-[10px] font-bold text-brand group-hover:translate-x-0.5 transition-transform">

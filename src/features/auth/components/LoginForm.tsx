@@ -94,8 +94,9 @@ const LoginForm: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-md p-8 rounded-2xl bg-darkCard/80 backdrop-blur-xl border border-white/10 shadow-2xl transition-all duration-300">
+    <div className="w-full max-w-md p-8 rounded-2xl bg-darkCard backdrop-blur-xl border border-white/10 shadow-2xl transition-all duration-300">
       <div className="text-center mb-8">
+        <img src="/logo.png" alt="Logo" className="w-24 h-24 mx-auto mb-4" />
         <h2 className="text-3xl font-bold tracking-tight text-white mb-2">MilliyGo</h2>
         <p className="text-slate-400">Hamkorlar boshqaruv paneliga xush kelibsiz</p>
       </div>

@@ -6,10 +6,10 @@ const LoginPage: React.FC = () => {
     <div className="relative min-h-screen flex items-center justify-center bg-darkBg overflow-hidden font-Outfit px-4">
       {/* Premium glowing blobs */}
       <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-brand/10 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-blue-600/10 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-brand/10 blur-[120px] pointer-events-none" />
 
       {/* Grid background pattern */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff03_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
+      <div className="absolute inset-0 login-grid-bg bg-[size:40px_40px] pointer-events-none" />
 
       <div className="relative z-10 w-full flex justify-center items-center">
         <LoginForm />

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   ShoppingBag, 
   Search, 
-  Filter, 
   MapPin, 
   Phone, 
   CreditCard, 
@@ -10,13 +9,10 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  ChevronRight,
   RefreshCw,
   AlertCircle,
   DollarSign,
-  TrendingUp,
   SlidersHorizontal,
-  Info
 } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
 import type { Order } from '../services/ordersApi';

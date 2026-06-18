@@ -4,7 +4,6 @@ import {
   DollarSign, 
   Download,
   AlertCircle,
-  HelpCircle,
   CheckCircle,
   Clock,
   ArrowDownLeft,
@@ -15,7 +14,6 @@ import {
   Phone,
   Calendar,
   Layers,
-  ChevronRight,
   Sparkles,
   XCircle,
   Info

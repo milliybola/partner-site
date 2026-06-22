@@ -9,7 +9,8 @@ import {
   LogOut,
   Menu,
   X,
-  Radio
+  Radio,
+  PlusCircle
 } from 'lucide-react';
 import { STORAGE_KEYS } from '../config/constants';
 
@@ -59,6 +60,7 @@ const Layout: React.FC = () => {
   const navItems = [
     { to: '/', label: 'Dafshbord', icon: LayoutDashboard },
     { to: '/orders', label: 'Karban', icon: ShoppingBag },
+    { to: '/new-order', label: 'Yangi buyurtma', icon: PlusCircle },
     { to: '/catalog', label: 'Katalog', icon: Grid },
     { to: '/finance', label: 'Moliya', icon: DollarSign },
     { to: '/all-orders', label: 'Barcha buyurtmalar', icon: ShoppingBag },

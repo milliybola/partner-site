@@ -56,4 +56,16 @@ export const ordersApi = {
     const response = await apiClient.post(url);
     return response.data;
   },
+
+  createOrder: async (payload: {
+    description: string;
+    address: string;
+    contact_phone: string;
+    latitude: string;
+    longitude: string;
+    items: { product_uuid: string; quantity: number }[];
+  }): Promise<any> => {
+    const response = await apiClient.post(ENDPOINTS.ORDERS.LIST, payload);
+    return response.data;
+  },
 };

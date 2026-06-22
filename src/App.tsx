@@ -11,6 +11,7 @@ import CatalogPage from './features/catalog/pages/CatalogPage';
 import FinancePage from './features/finance/pages/FinancePage';
 import ProfilePage from './features/profile/pages/ProfilePage';
 import AllOrdersPage from './features/orders/pages/AllOrdersPage';
+import CreateOrderPage from './features/orders/pages/CreateOrderPage';
 
 const App: React.FC = () => {
   return (
@@ -31,6 +32,7 @@ const App: React.FC = () => {
           {/* Main sections */}
           <Route index element={<DashboardPage />} />
           <Route path="orders" element={<OrdersPage />} />
+          <Route path="new-order" element={<CreateOrderPage />} />
           <Route path="catalog" element={<CatalogPage />} />
           <Route path="finance" element={<FinancePage />} />
           <Route path="profile" element={<ProfilePage />} />

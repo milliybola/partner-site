@@ -10,6 +10,7 @@ import OrdersPage from './features/orders/pages/OrdersPage';
 import CatalogPage from './features/catalog/pages/CatalogPage';
 import FinancePage from './features/finance/pages/FinancePage';
 import ProfilePage from './features/profile/pages/ProfilePage';
+import SettingsPage from './features/profile/pages/SettingsPage';
 import AllOrdersPage from './features/orders/pages/AllOrdersPage';
 import CreateOrderPage from './features/orders/pages/CreateOrderPage';
 
@@ -36,6 +37,7 @@ const App: React.FC = () => {
           <Route path="catalog" element={<CatalogPage />} />
           <Route path="finance" element={<FinancePage />} />
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="settings" element={<SettingsPage />} />
           <Route path="all-orders" element={<AllOrdersPage />} />
         </Route>
 

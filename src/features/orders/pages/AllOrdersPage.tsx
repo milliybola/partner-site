@@ -55,35 +55,23 @@ const AllOrdersPage: React.FC = () => {
     fetchOrders();
   }, [fetchOrders]);
 
-  const handlePrintReceipt = async (orderUuid: string) => {
+  const handlePrintReceipt = useCallback(async (orderUuid: string) => {
     setPrintingUuid(orderUuid);
     try {
       const responseData = await ordersApi.getOrderReceipt(orderUuid);
       const receiptData = responseData.data || responseData;
-
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = '0';
-      document.body.appendChild(iframe);
-
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!doc) throw new Error("Iframe document not available");
 
       const itemsHtml = (receiptData.items || []).map((item: any) => {
         const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
         const unitPrice = Number(item.unit_price || 0).toLocaleString('uz-UZ');
         const lineTotal = Number(item.line_total || 0).toLocaleString('uz-UZ');
         return `
-          <div style="margin-bottom: 8px; font-size: 13px;">
-            <div style="display: flex; justify-content: space-between; font-weight: 600;">
+          <div style="margin-bottom: 8px; font-size: 13px; font-weight: 800; color: #000;">
+            <div style="display: flex; justify-content: space-between; font-weight: 900; color: #000;">
               <span>${productName}</span>
               <span>${lineTotal} UZS</span>
             </div>
-            <div style="font-size: 11px; color: #555; margin-top: 1px;">
+            <div style="font-size: 11px; color: #000; font-weight: 800; margin-top: 1px;">
               ${unitPrice} UZS x ${item.quantity}
             </div>
           </div>
@@ -106,15 +94,16 @@ const AllOrdersPage: React.FC = () => {
                 width: 74mm;
                 margin: 0 auto;
                 padding: 15px 10px;
-                color: #111;
+                color: #000;
                 background: #fff;
                 line-height: 1.4;
+                font-weight: 800;
               }
               .text-center { text-align: center; }
-              .bold { font-weight: 700; }
+              .bold { font-weight: 900; }
               .header { margin-bottom: 12px; }
-              .header h2 { margin: 0 0 4px 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
-              .header p { margin: 1px 0; font-size: 12px; color: #555; }
+              .header h2 { margin: 0 0 4px 0; font-size: 22px; font-weight: 900; letter-spacing: -0.5px; color: #000; }
+              .header p { margin: 1px 0; font-size: 12px; color: #000; font-weight: 800; }
               .logo-box {
                 border: 2px solid #000;
                 display: inline-block;
@@ -123,6 +112,7 @@ const AllOrdersPage: React.FC = () => {
                 font-size: 14px;
                 margin-bottom: 8px;
                 letter-spacing: 1px;
+                color: #000;
               }
               .divider { 
                 border-top: 2px dashed #000; 
@@ -133,18 +123,21 @@ const AllOrdersPage: React.FC = () => {
                 justify-content: space-between;
                 font-size: 12px;
                 margin-bottom: 4px;
+                font-weight: 800;
+                color: #000;
               }
-              .info-label { color: #555; }
-              .info-value { font-weight: 600; text-align: right; }
+              .info-label { color: #000; font-weight: 800; }
+              .info-value { font-weight: 900; text-align: right; color: #000; }
               
               .items-header {
                 display: flex;
                 justify-content: space-between;
-                font-weight: 700;
+                font-weight: 900;
                 font-size: 12px;
-                border-bottom: 1px solid #000;
+                border-bottom: 2px solid #000;
                 padding-bottom: 4px;
                 margin-bottom: 6px;
+                color: #000;
               }
               
               .totals-section {
@@ -155,38 +148,43 @@ const AllOrdersPage: React.FC = () => {
                 justify-content: space-between;
                 font-size: 12px;
                 margin-bottom: 4px;
+                font-weight: 800;
+                color: #000;
               }
               .grand-total-row {
                 display: flex;
                 justify-content: space-between;
                 font-size: 16px;
-                font-weight: 800;
-                border-top: 1px solid #000;
-                border-bottom: 1px solid #000;
+                font-weight: 900;
+                border-top: 2px solid #000;
+                border-bottom: 2px solid #000;
                 padding: 6px 0;
                 margin: 8px 0;
+                color: #000;
               }
               .footer {
                 margin-top: 25px;
                 font-size: 11px;
                 text-align: center;
-                color: #444;
+                color: #000;
+                font-weight: 800;
               }
               .barcode {
                 font-family: 'Courier New', Courier, monospace;
                 font-size: 14px;
                 margin-top: 10px;
                 letter-spacing: 2px;
-                font-weight: bold;
+                font-weight: 900;
+                color: #000;
               }
             </style>
           </head>
           <body>
             <div class="header text-center" style="display: flex; flex-direction: column; align-items: center; margin-bottom: 12px;">
               <img src="${window.location.origin}/logo.png" alt="MilliyGo Logo" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; margin-bottom: 4px;" />
-              <div style="font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: #666; margin-bottom: 6px;">MILLIYGO</div>
-              <h2 style="margin: 0; font-size: 20px; font-weight: 800; color: #111; text-transform: uppercase;">${receiptData.partner_name || ''}</h2>
-              <div style="font-size: 11px; color: #555; margin-top: 4px; line-height: 1.4; text-align: center;">
+              <div style="font-size: 11px; font-weight: 900; letter-spacing: 1.5px; color: #000; margin-bottom: 6px;">MILLIYGO</div>
+              <h2 style="margin: 0; font-size: 20px; font-weight: 900; color: #000; text-transform: uppercase;">${receiptData.partner_name || ''}</h2>
+              <div style="font-size: 11px; color: #000; font-weight: 800; margin-top: 4px; line-height: 1.4; text-align: center;">
                 <p style="margin: 1px 0;">${[receiptData.partner_address, receiptData.partner_phone].filter(Boolean).join(' | ')}</p>
               </div>
             </div>
@@ -224,7 +222,7 @@ const AllOrdersPage: React.FC = () => {
             ${receiptData.table_number ? `
             <div class="info-row">
               <span class="info-label">Stol:</span>
-              <span class="info-value font-bold">${receiptData.table_number}-stol</span>
+              <span class="info-value bold">${receiptData.table_number}-stol</span>
             </div>` : ''}
             ${receiptData.order_source_display ? `
             <div class="info-row">
@@ -272,8 +270,8 @@ const AllOrdersPage: React.FC = () => {
 
             <div class="footer">
               <p class="bold" style="font-size: 12px; margin-bottom: 2px;">XARIDINGIZ UCHUN RAHMAT!</p>
-              <p style="margin: 0;">MilliyGo</p>
-              <p style="margin: 0;">milliyapp.uz</p>
+              <p style="margin: 0; font-weight: 800;">MilliyGo</p>
+              <p style="margin: 0; font-weight: 800;">milliyapp.uz</p>
               
             </div>
 
@@ -289,9 +287,25 @@ const AllOrdersPage: React.FC = () => {
         </html>
       `;
 
-      doc.open();
-      doc.write(receiptHtml);
-      doc.close();
+      const printCopies = parseInt(localStorage.getItem('milliygo_print_copies') || '1', 10) || 1;
+      
+      for (let i = 0; i < printCopies; i++) {
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (doc) {
+          doc.open();
+          doc.write(receiptHtml);
+          doc.close();
+        }
+      }
 
     } catch (err: any) {
       console.error("Chek chop etishda xatolik:", err);
@@ -299,7 +313,7 @@ const AllOrdersPage: React.FC = () => {
     } finally {
       setPrintingUuid(null);
     }
-  };
+  }, []);
 
   const formatUzS = (amount: number | string | null | undefined) => {
     const num = Number(amount);

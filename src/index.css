@@ -336,6 +336,10 @@ body.light-theme .hover\:border-white\/10:hover {
   border-color: #CBD5E1 !important;
 }
 
+body.light-theme .text-emerald-400 {
+  color: #059669 !important;
+}
+
 /* Custom animation for light mode sun spin */
 .animate-spin-slow {
   animation: spin 8s linear infinite;

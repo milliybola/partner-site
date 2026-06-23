@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  ShoppingBag, 
-  Search, 
-  MapPin, 
-  Phone, 
-  CreditCard, 
+import {
+  ShoppingBag,
+  Search,
+  MapPin,
+  Phone,
+  CreditCard,
   Calendar,
   CheckCircle,
   XCircle,
@@ -13,6 +13,9 @@ import {
   AlertCircle,
   DollarSign,
   SlidersHorizontal,
+  Printer,
+  User,
+  Truck,
 } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
 import type { Order } from '../services/ordersApi';
@@ -22,6 +25,7 @@ const AllOrdersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [printingUuid, setPrintingUuid] = useState<string | null>(null);
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,8 +42,8 @@ const AllOrdersPage: React.FC = () => {
     } catch (err: any) {
       console.error("Failed to load orders:", err);
       setError(
-        err.response?.data?.message || 
-        err.message || 
+        err.response?.data?.message ||
+        err.message ||
         "Buyurtmalarni yuklashda xatolik yuz berdi. Internet aloqasini tekshiring."
       );
     } finally {
@@ -50,6 +54,252 @@ const AllOrdersPage: React.FC = () => {
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
+
+  const handlePrintReceipt = async (orderUuid: string) => {
+    setPrintingUuid(orderUuid);
+    try {
+      const responseData = await ordersApi.getOrderReceipt(orderUuid);
+      const receiptData = responseData.data || responseData;
+
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) throw new Error("Iframe document not available");
+
+      const itemsHtml = (receiptData.items || []).map((item: any) => {
+        const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
+        const unitPrice = Number(item.unit_price || 0).toLocaleString('uz-UZ');
+        const lineTotal = Number(item.line_total || 0).toLocaleString('uz-UZ');
+        return `
+          <div style="margin-bottom: 8px; font-size: 13px;">
+            <div style="display: flex; justify-content: space-between; font-weight: 600;">
+              <span>${productName}</span>
+              <span>${lineTotal} UZS</span>
+            </div>
+            <div style="font-size: 11px; color: #555; margin-top: 1px;">
+              ${unitPrice} UZS x ${item.quantity}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const formattedDate = receiptData.created_at || new Date().toLocaleString('uz-UZ');
+
+      const receiptHtml = `
+        <html>
+          <head>
+            <title>Chek #${receiptData.order_number}</title>
+            <style>
+              @page {
+                size: 80mm auto;
+                margin: 0;
+              }
+              body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                width: 74mm;
+                margin: 0 auto;
+                padding: 15px 10px;
+                color: #111;
+                background: #fff;
+                line-height: 1.4;
+              }
+              .text-center { text-align: center; }
+              .bold { font-weight: 700; }
+              .header { margin-bottom: 12px; }
+              .header h2 { margin: 0 0 4px 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+              .header p { margin: 1px 0; font-size: 12px; color: #555; }
+              .logo-box {
+                border: 2px solid #000;
+                display: inline-block;
+                padding: 2px 10px;
+                font-weight: 900;
+                font-size: 14px;
+                margin-bottom: 8px;
+                letter-spacing: 1px;
+              }
+              .divider { 
+                border-top: 2px dashed #000; 
+                margin: 12px 0; 
+              }
+              .info-row {
+                display: flex;
+                justify-content: space-between;
+                font-size: 12px;
+                margin-bottom: 4px;
+              }
+              .info-label { color: #555; }
+              .info-value { font-weight: 600; text-align: right; }
+              
+              .items-header {
+                display: flex;
+                justify-content: space-between;
+                font-weight: 700;
+                font-size: 12px;
+                border-bottom: 1px solid #000;
+                padding-bottom: 4px;
+                margin-bottom: 6px;
+              }
+              
+              .totals-section {
+                margin-top: 8px;
+              }
+              .totals-row {
+                display: flex;
+                justify-content: space-between;
+                font-size: 12px;
+                margin-bottom: 4px;
+              }
+              .grand-total-row {
+                display: flex;
+                justify-content: space-between;
+                font-size: 16px;
+                font-weight: 800;
+                border-top: 1px solid #000;
+                border-bottom: 1px solid #000;
+                padding: 6px 0;
+                margin: 8px 0;
+              }
+              .footer {
+                margin-top: 25px;
+                font-size: 11px;
+                text-align: center;
+                color: #444;
+              }
+              .barcode {
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 14px;
+                margin-top: 10px;
+                letter-spacing: 2px;
+                font-weight: bold;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="header text-center" style="display: flex; flex-direction: column; align-items: center; margin-bottom: 12px;">
+              <img src="${window.location.origin}/logo.png" alt="MilliyGo Logo" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; margin-bottom: 4px;" />
+              <div style="font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: #666; margin-bottom: 6px;">MILLIYGO</div>
+              <h2 style="margin: 0; font-size: 20px; font-weight: 800; color: #111; text-transform: uppercase;">${receiptData.partner_name || ''}</h2>
+              <div style="font-size: 11px; color: #555; margin-top: 4px; line-height: 1.4; text-align: center;">
+                <p style="margin: 1px 0;">${[receiptData.partner_address, receiptData.partner_phone].filter(Boolean).join(' | ')}</p>
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="info-row">
+              <span class="info-label">Buyurtma:</span>
+              <span class="info-value bold">${receiptData.order_number}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Sana:</span>
+              <span class="info-value">${formattedDate}</span>
+            </div>
+            ${receiptData.contact_name ? `
+            <div class="info-row">
+              <span class="info-label">Mijoz:</span>
+              <span class="info-value">${receiptData.contact_name}</span>
+            </div>` : ''}
+            ${receiptData.contact_phone ? `
+            <div class="info-row">
+              <span class="info-label">Tel:</span>
+              <span class="info-value">${receiptData.contact_phone}</span>
+            </div>` : ''}
+            ${receiptData.address ? `
+            <div class="info-row">
+              <span class="info-label">Manzil:</span>
+              <span class="info-value">${receiptData.address}</span>
+            </div>` : ''}
+            ${receiptData.delivery_type_display ? `
+            <div class="info-row">
+              <span class="info-label">Turi:</span>
+              <span class="info-value">${receiptData.delivery_type_display}</span>
+            </div>` : ''}
+            ${receiptData.table_number ? `
+            <div class="info-row">
+              <span class="info-label">Stol:</span>
+              <span class="info-value font-bold">${receiptData.table_number}-stol</span>
+            </div>` : ''}
+            ${receiptData.order_source_display ? `
+            <div class="info-row">
+              <span class="info-label">Manba:</span>
+              <span class="info-value">${receiptData.order_source_display}</span>
+            </div>` : ''}
+
+            <div class="divider"></div>
+
+            <div class="items-header">
+              <span>MAHSULOT</span>
+              <span>SUMMA</span>
+            </div>
+            
+            ${itemsHtml}
+
+            <div class="divider"></div>
+
+            <div class="totals-section">
+              <div class="totals-row">
+                <span class="info-label">Summa:</span>
+                <span class="info-value">${Number(receiptData.subtotal).toLocaleString('uz-UZ')} UZS</span>
+              </div>
+              <div class="totals-row">
+                <span class="info-label">Yetkazib berish:</span>
+                <span class="info-value">${Number(receiptData.delivery_fee || 0).toLocaleString('uz-UZ')} UZS</span>
+              </div>
+              
+              <div class="grand-total-row">
+                <span>JAMI:</span>
+                <span>${Number(receiptData.total_price).toLocaleString('uz-UZ')} UZS</span>
+              </div>
+              
+              <div class="info-row" style="margin-top: 6px;">
+                <span class="info-label">To'lov turi:</span>
+                <span class="info-value bold">${receiptData.payment_method_display || receiptData.payment_method || ''}</span>
+              </div>
+             
+              ${receiptData.description ? `
+              <div class="info-row" style="margin-top: 4px;">
+                <span class="info-label">Izoh:</span>
+                <span class="info-value">${receiptData.description}</span>
+              </div>` : ''}
+            </div>
+
+            <div class="footer">
+              <p class="bold" style="font-size: 12px; margin-bottom: 2px;">XARIDINGIZ UCHUN RAHMAT!</p>
+              <p style="margin: 0;">MilliyGo</p>
+              <p style="margin: 0;">milliyapp.uz</p>
+              
+            </div>
+
+            <script>
+              window.onload = function() {
+                window.print();
+                setTimeout(function() {
+                  window.frameElement.remove();
+                }, 1000);
+              };
+            </script>
+          </body>
+        </html>
+      `;
+
+      doc.open();
+      doc.write(receiptHtml);
+      doc.close();
+
+    } catch (err: any) {
+      console.error("Chek chop etishda xatolik:", err);
+      alert("Chek ma'lumotlarini yuklashda xatolik yuz berdi.");
+    } finally {
+      setPrintingUuid(null);
+    }
+  };
 
   const formatUzS = (amount: number | string | null | undefined) => {
     const num = Number(amount);
@@ -94,7 +344,10 @@ const AllOrdersPage: React.FC = () => {
     }
   };
 
-  const getPaymentBadge = (method: string) => {
+  const getPaymentBadge = (method: string | undefined) => {
+    if (!method) {
+      return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-400 border border-slate-500/10">Noma'lum</span>;
+    }
     switch (method) {
       case 'CLICK':
         return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/10">CLICK</span>;
@@ -112,17 +365,18 @@ const AllOrdersPage: React.FC = () => {
   // Get filtered and sorted orders list
   const filteredAndSortedOrders = orders
     .filter((order) => {
-      // Search matches ID or Phone
-      const matchesSearch = 
+      // Search matches ID, Order Number, Phone or Address
+      const matchesSearch =
         order.id.toString().includes(searchQuery) ||
+        (order.order_number && order.order_number.toLowerCase().includes(searchQuery.toLowerCase())) ||
         order.contact_phone.includes(searchQuery) ||
         order.address.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       // Status matches filter
       const orderStatus = order.status?.toUpperCase();
       const filterStatus = statusFilter?.toUpperCase();
-      const matchesStatus = 
-        statusFilter === 'ALL' || 
+      const matchesStatus =
+        statusFilter === 'ALL' ||
         orderStatus === filterStatus ||
         (statusFilter === 'COMPLETED' && orderStatus === 'DELIVERED') ||
         (statusFilter === 'PENDING_GROUP' && (orderStatus === 'PENDING' || orderStatus === 'SEARCHING_COURIER')) ||
@@ -130,8 +384,8 @@ const AllOrdersPage: React.FC = () => {
         (statusFilter === 'HISTORY_GROUP' && ['COMPLETED', 'DELIVERED', 'REJECTED', 'CANCELLED'].includes(orderStatus));
 
       // Payment matches filter
-      const matchesPayment = 
-        paymentFilter === 'ALL' || 
+      const matchesPayment =
+        paymentFilter === 'ALL' ||
         order.payment === paymentFilter;
 
       return matchesSearch && matchesStatus && matchesPayment;
@@ -144,10 +398,10 @@ const AllOrdersPage: React.FC = () => {
         return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       }
       if (sortBy === 'price-desc') {
-        return b.total_price - a.total_price;
+        return Number(b.total_price) - Number(a.total_price);
       }
       if (sortBy === 'price-asc') {
-        return a.total_price - b.total_price;
+        return Number(a.total_price) - Number(b.total_price);
       }
       return 0;
     });
@@ -171,7 +425,7 @@ const AllOrdersPage: React.FC = () => {
       const s = o.status?.toUpperCase();
       return s === 'COMPLETED' || s === 'DELIVERED';
     })
-    .reduce((sum, o) => sum + o.total_price, 0);
+    .reduce((sum, o) => sum + Number(o.total_price), 0);
 
   return (
     <div className="space-y-8 font-Outfit">
@@ -345,22 +599,59 @@ const AllOrdersPage: React.FC = () => {
                   <th className="pb-3.5 text-center">To'lov</th>
                   <th className="pb-3.5 text-center">Holat</th>
                   <th className="pb-3.5 text-right pr-2">Jami</th>
+                  <th className="pb-3.5 text-center pr-2">Chek</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 text-slate-300">
                 {filteredAndSortedOrders.map((order) => (
-                  <tr 
-                    key={order.uuid} 
+                  <tr
+                    key={order.uuid}
                     onClick={() => setSelectedOrder(order)}
                     className="hover:bg-white/[0.01] transition-colors cursor-pointer"
                   >
-                    <td className="py-4 pl-2 font-bold text-white text-xs">#{order.id}</td>
+                    <td className="py-4 pl-2">
+                      <span className="font-bold text-white text-xs block">{order.order_number || `#${order.id}`}</span>
+                      {order.delivery_type === 'DELIVERY' && (
+                        <span className="text-[9px] px-1 py-0.5 rounded font-extrabold bg-blue-500/10 text-blue-400 border border-blue-500/20 mt-1 inline-block">
+                          Kuryer
+                        </span>
+                      )}
+                      {order.delivery_type === 'PICKUP' && (
+                        <span className="text-[9px] px-1 py-0.5 rounded font-extrabold bg-amber-500/10 text-amber-400 border border-amber-500/20 mt-1 inline-block">
+                          Olib ketish
+                        </span>
+                      )}
+                      {order.delivery_type === 'DINE_IN' && (
+                        <span className="text-[9px] px-1 py-0.5 rounded font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mt-1 inline-block">
+                          {order.table_number ? `${order.table_number}-stol` : 'Stolda'}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-4 text-xs font-semibold text-slate-400">{order.created_at}</td>
                     <td className="py-4 font-semibold text-slate-300 text-xs">{formatPhone(order.contact_phone)}</td>
                     <td className="py-4 text-xs max-w-[200px] truncate" title={order.address}>{order.address}</td>
                     <td className="py-4 text-center">{getPaymentBadge(order.payment)}</td>
                     <td className="py-4 text-center">{getStatusBadge(order.status)}</td>
                     <td className="py-4 text-right pr-2 font-bold text-white text-xs">{formatUzS(order.total_price)}</td>
+                    <td className="py-4 text-center pr-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePrintReceipt(order.uuid);
+                        }}
+                        disabled={printingUuid === order.uuid}
+                        className="p-2 rounded-lg bg-white/5 hover:bg-brand/10 border border-white/10 hover:border-brand/20 text-slate-400 hover:text-brand transition cursor-pointer flex items-center justify-center mx-auto disabled:opacity-50"
+                        title="Chekni chop etish"
+                      >
+                        {printingUuid === order.uuid ? (
+                          <div className="w-3.5 h-3.5 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-brand">
+                            Chekni chop etish
+                          </div>
+                        )}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -369,13 +660,30 @@ const AllOrdersPage: React.FC = () => {
             {/* Mobile Card-List View (fallback) */}
             <div className="grid grid-cols-1 gap-4 md:hidden">
               {filteredAndSortedOrders.map((order) => (
-                <div 
-                  key={order.uuid} 
+                <div
+                  key={order.uuid}
                   onClick={() => setSelectedOrder(order)}
                   className="p-4 rounded-xl border border-white/5 bg-slate-900/40 flex flex-col gap-3 cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-white text-xs">#{order.id}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-white text-xs">{order.order_number || `#${order.id}`}</span>
+                      {order.delivery_type === 'DELIVERY' && (
+                        <span className="text-[9px] px-1 py-0.2 rounded font-extrabold bg-blue-500/10 text-blue-400 border border-blue-500/10">
+                          Kuryer
+                        </span>
+                      )}
+                      {order.delivery_type === 'PICKUP' && (
+                        <span className="text-[9px] px-1 py-0.2 rounded font-extrabold bg-amber-500/10 text-amber-400 border border-amber-500/10">
+                          Olib ketish
+                        </span>
+                      )}
+                      {order.delivery_type === 'DINE_IN' && (
+                        <span className="text-[9px] px-1 py-0.2 rounded font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/10">
+                          {order.table_number ? `${order.table_number}-stol` : 'Stolda'}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[10px] text-slate-500">{order.created_at.split(',')[1] || order.created_at}</span>
                   </div>
                   <div>
@@ -387,7 +695,24 @@ const AllOrdersPage: React.FC = () => {
                       {getPaymentBadge(order.payment)}
                       {getStatusBadge(order.status)}
                     </div>
-                    <span className="font-bold text-white text-xs">{formatUzS(order.total_price)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white text-xs">{formatUzS(order.total_price)}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePrintReceipt(order.uuid);
+                        }}
+                        disabled={printingUuid === order.uuid}
+                        className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white transition cursor-pointer disabled:opacity-50"
+                        title="Chekni chop etish"
+                      >
+                        {printingUuid === order.uuid ? (
+                          <div className="w-3 h-3 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
+                        ) : (
+                          <Printer className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -404,21 +729,21 @@ const AllOrdersPage: React.FC = () => {
 
       {/* Selected Order Details Modal Dialog */}
       {selectedOrder && (
-        <div 
+        <div
           onClick={() => setSelectedOrder(null)}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]"
         >
-          <div 
+          <div
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-lg bg-darkCard border border-white/10 rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-6 animate-[slideUp_0.3s_ease-out]"
           >
             {/* Modal Header */}
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-lg text-white">Buyurtma #{selectedOrder.id} Tafsilotlari</h3>
+                <h3 className="font-bold text-lg text-white">Buyurtma {selectedOrder.order_number || `#${selectedOrder.id}`} Tafsilotlari</h3>
                 <p className="text-xs text-slate-400 mt-0.5">{selectedOrder.created_at}</p>
               </div>
-              <button 
+              <button
                 onClick={() => setSelectedOrder(null)}
                 className="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-white transition cursor-pointer text-xs font-bold"
               >
@@ -436,17 +761,22 @@ const AllOrdersPage: React.FC = () => {
             <div className="space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Buyurtma qilingan taomlar</h4>
               <div className="divide-y divide-white/5 max-h-60 overflow-y-auto pr-1">
-                {selectedOrder.items.map((item, idx) => (
-                  <div key={idx} className="py-2.5 flex items-center justify-between gap-3 text-sm">
-                    <div>
-                      <p className="font-medium text-white">{item.product.name}</p>
-                      <p className="text-xs text-slate-500">{formatUzS(item.product.price)} x {item.quantity}</p>
+                {(selectedOrder.items || []).map((item, idx) => {
+                  const productName = item?.product?.name || "Noma'lum taom";
+                  const productPrice = Number(item?.price_at_time_of_order || item?.product?.price || 0);
+                  const quantity = item?.quantity || 0;
+                  return (
+                    <div key={idx} className="py-2.5 flex items-center justify-between gap-3 text-sm">
+                      <div>
+                        <p className="font-medium text-white">{productName}</p>
+                        <p className="text-xs text-slate-500">{formatUzS(productPrice)} x {quantity}</p>
+                      </div>
+                      <span className="font-semibold text-slate-300 shrink-0">
+                        {formatUzS(productPrice * quantity)}
+                      </span>
                     </div>
-                    <span className="font-semibold text-slate-300 shrink-0">
-                      {formatUzS(item.product.price * item.quantity)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -464,19 +794,87 @@ const AllOrdersPage: React.FC = () => {
 
             {/* Client address details */}
             <div className="p-4 rounded-xl bg-slate-900 border border-white/5 space-y-3 text-xs">
+              {selectedOrder.contact_name && (
+                <p className="flex items-center gap-2 text-slate-300">
+                  <User className="w-4 h-4 text-brand shrink-0" />
+                  <span><strong>Mijoz:</strong> {selectedOrder.contact_name}</span>
+                </p>
+              )}
               <p className="flex items-start gap-2 text-slate-300">
                 <MapPin className="w-4 h-4 text-brand shrink-0 mt-0.5" />
-                <span><strong>Manzil:</strong> {selectedOrder.address}</span>
+                <span>
+                  <strong>Manzil:</strong> {selectedOrder.address}
+                  {selectedOrder.distance ? ` (${selectedOrder.distance} km)` : ''}
+                </span>
               </p>
-              <p className="flex items-center gap-2 text-slate-300">
-                <Phone className="w-4 h-4 text-brand shrink-0" />
-                <span><strong>Mijoz telefoni:</strong> {formatPhone(selectedOrder.contact_phone)}</span>
-              </p>
-              <p className="flex items-center gap-2 text-slate-300">
-                <CreditCard className="w-4 h-4 text-brand shrink-0" />
-                <span><strong>To'lov turi:</strong> {selectedOrder.payment}</span>
-              </p>
+              {selectedOrder.contact_phone && (
+                <p className="flex items-center gap-2 text-slate-300">
+                  <Phone className="w-4 h-4 text-brand shrink-0" />
+                  <span><strong>Telefon:</strong> {formatPhone(selectedOrder.contact_phone)}</span>
+                </p>
+              )}
+              {selectedOrder.courier_phone && (
+                <p className="flex items-center gap-2 text-slate-300">
+                  <Truck className="w-4 h-4 text-brand shrink-0" />
+                  <span><strong>Kuryer telefoni:</strong> {formatPhone(selectedOrder.courier_phone)}</span>
+                </p>
+              )}
+              {selectedOrder.table_number && (
+                <p className="flex items-center gap-2 text-slate-300">
+                  <span className="w-4 h-4 text-brand shrink-0 flex items-center justify-center font-bold text-[10px]">T</span>
+                  <span><strong>Stol raqami:</strong> {selectedOrder.table_number}-stol</span>
+                </p>
+              )}
+              {selectedOrder.order_source && (
+                <p className="flex items-center gap-2 text-slate-300">
+                  <span className="w-4 h-4 text-brand shrink-0 flex items-center justify-center font-bold text-[10px]">S</span>
+                  <span>
+                    <strong>Manba:</strong>{' '}
+                    {selectedOrder.order_source === 'WAITER' ? 'Ofitsiant' :
+                     selectedOrder.order_source === 'CUSTOMER' ? 'Mijoz (App)' :
+                     selectedOrder.order_source === 'PARTNER' ? 'Hamkor (Kassa)' : selectedOrder.order_source}
+                  </span>
+                </p>
+              )}
+              <div className="flex items-center justify-between text-slate-300 border-t border-white/5 pt-2">
+                <p className="flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-brand shrink-0" />
+                  <span>
+                    <strong>To'lov turi:</strong> {selectedOrder.payment_method_display || selectedOrder.payment_method || selectedOrder.payment}
+                  </span>
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    selectedOrder.is_paid 
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/10' 
+                      : 'bg-amber-500/10 text-amber-400 border border-amber-500/10'
+                  }`}>
+                    {selectedOrder.is_paid ? "To'langan" : "To'lanmagan"}
+                  </span>
+                </div>
+              </div>
+              {selectedOrder.description && selectedOrder.description !== "Izoh yo'q" && (
+                <div className="border-t border-white/5 pt-2 text-slate-400 italic">
+                  <strong>Izoh:</strong> {selectedOrder.description}
+                </div>
+              )}
             </div>
+            {selectedOrder.status === 'READY_FOR_PICKUP' && (
+              <div className="pt-2">
+                <button
+                  onClick={() => handlePrintReceipt(selectedOrder.uuid)}
+                  disabled={printingUuid === selectedOrder.uuid}
+                  className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 shadow-lg shadow-amber-500/10"
+                >
+                  {printingUuid === selectedOrder.uuid ? (
+                    <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
+                  ) : (
+                    <Printer className="w-4 h-4" />
+                  )}
+                  <span>Chekni chop etish</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

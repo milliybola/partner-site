@@ -176,7 +176,7 @@ const FinancePage: React.FC = () => {
       id: `TXN-${order.id}`,
       orderId: order.id,
       date: order.created_at,
-      amount: order.total_price,
+      amount: Number(order.total_price),
       paymentMethod: order.payment || 'CASH',
       status
     };

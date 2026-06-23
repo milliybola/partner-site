@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -19,7 +19,26 @@ const Layout: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('milliygo_theme') as 'light' | 'dark') || 'dark');
+  const [time, setTime] = useState<string>('');
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setTime(
+        now.toLocaleTimeString('uz-UZ', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        })
+      );
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (theme === 'light') {
@@ -58,7 +77,7 @@ const Layout: React.FC = () => {
   };
 
   const navItems = [
-    { to: '/', label: 'Dafshbord', icon: LayoutDashboard },
+    { to: '/', label: 'Dashbord', icon: LayoutDashboard },
     { to: '/orders', label: 'Karban', icon: ShoppingBag },
     { to: '/new-order', label: 'Yangi buyurtma', icon: PlusCircle },
     { to: '/catalog', label: 'Katalog', icon: Grid },
@@ -67,17 +86,24 @@ const Layout: React.FC = () => {
     { to: '/profile', label: 'Profil', icon: User },
   ];
 
+  const desktopNavItems = navItems.filter(item => item.to !== '/new-order');
+
   return (
     <div className="h-screen overflow-hidden bg-darkBg text-slate-100 flex flex-col md:flex-row font-Outfit">
       {/* Mobile Top Header */}
       <header className="md:hidden flex items-center justify-between px-4 py-3 bg-darkCard border-b border-white/5 sticky top-0 z-40">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-hidden">
           {partner?.logo ? (
             <img src={partner.logo} alt="Logo" className="w-8 h-8 rounded-lg object-cover" />
           ) : (
             <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center font-bold text-white">M</div>
           )}
-          <span className="font-semibold text-white truncate max-w-[150px]">{partner?.name || 'MilliyGo'}</span>
+          <span className="font-semibold text-white truncate max-w-[100px]">{partner?.name || 'MilliyGo'}</span>
+          {time && (
+            <span className="text-[10px] font-bold text-brand bg-brand/10 border border-brand/20 px-2 py-0.5 rounded-lg font-mono">
+              {time}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {/* Active status indicator */}
@@ -132,7 +158,7 @@ const Layout: React.FC = () => {
 
         {/* Sidebar Nav Items */}
         <nav className="flex-1 px-4 py-6 space-y-1">
-          {navItems.map((item) => {
+          {desktopNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <NavLink
@@ -273,6 +299,46 @@ const Layout: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto h-full">
+        {/* Desktop Top Header */}
+        <header className="hidden md:flex items-center justify-between px-8 py-4 bg-darkCard/30 border-b border-white/5 backdrop-blur-md sticky top-0 z-40 shadow-sm shadow-black/5">
+          <div className="flex items-center gap-4">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              Hamkor paneli
+            </span>
+            {time && (
+              <span className="text-xs font-bold text-brand bg-brand/10 border border-brand/20 px-3 py-1 rounded-xl font-mono">
+                {time}
+              </span>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-4">
+            {/* Store Status Toggle */}
+            <button
+              onClick={handleToggleOpenStatus}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                isOpen
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
+                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+              <span>Muassasa: {isOpen ? 'OCHIQ' : 'YOPIQ'}</span>
+            </button>
+
+            {/* "+ Yangi buyurtma" Button (hidden on /new-order page) */}
+            {location.pathname !== '/new-order' && (
+              <NavLink
+                to="/new-order"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand to-sky-500 text-white font-bold text-sm shadow-lg shadow-brand/10 hover:shadow-brand/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Yangi buyurtma</span>
+              </NavLink>
+            )}
+          </div>
+        </header>
+
         <div className="flex-1 p-6 md:p-8">
           <Outlet />
         </div>

@@ -2,23 +2,42 @@ import apiClient from '../../../core/api/client';
 import { ENDPOINTS } from '../../../core/config/constants';
 
 export interface OrderItem {
-  product: {
+  uuid?: string;
+  product?: {
+    id?: number;
+    uuid?: string;
     name: string;
-    price: number;
-  };
+    price: number | string;
+    description?: string;
+  } | null;
   quantity: number;
+  price_at_time_of_order?: string | number;
 }
 
 export interface Order {
   id: number;
   uuid: string;
+  order_number?: string;
   status: 'PENDING' | 'SEARCHING_COURIER' | 'ACCEPTED' | 'REJECTED' | 'PREPARING' | 'READY_FOR_PICKUP' | 'DELIVERING' | 'COMPLETED' | 'DELIVERED' | 'CANCELLED';
   contact_phone: string;
+  contact_name?: string;
   address: string;
   created_at: string;
-  delivery_fee: number;
-  total_price: number;
-  payment: string;
+  updated_at?: string;
+  delivery_fee: number | string;
+  total_price: number | string;
+  payment?: string;
+  payment_method?: string;
+  payment_method_display?: string;
+  order_source?: string;
+  order_source_display?: string;
+  courier_phone?: string;
+  distance?: number;
+  description?: string;
+  reject_reason?: string | null;
+  is_paid?: boolean;
+  table_number?: string | null;
+  delivery_type?: string;
   items: OrderItem[];
 }
 
@@ -57,6 +76,11 @@ export const ordersApi = {
     return response.data;
   },
 
+  getOrderReceipt: async (orderUuid: string): Promise<any> => {
+    const response = await apiClient.get(`orders/partner-pos/${orderUuid}/receipt/`);
+    return response.data;
+  },
+
   createOrder: async (payload: {
     description: string;
     address: string;
@@ -66,6 +90,43 @@ export const ordersApi = {
     items: { product_uuid: string; quantity: number }[];
   }): Promise<any> => {
     const response = await apiClient.post(ENDPOINTS.ORDERS.LIST, payload);
+    return response.data;
+  },
+
+  createDeliveryOrder: async (payload: {
+    contact_phone: string;
+    contact_name: string;
+    address: string;
+    latitude: number;
+    longitude: number;
+    payment_method: string;
+    description: string;
+    items: { product_uuid: string; quantity: number }[];
+  }): Promise<any> => {
+    const response = await apiClient.post('orders/partner-pos/create-delivery/', payload);
+    return response.data;
+  },
+
+  createPickupOrder: async (payload: {
+    contact_phone: string;
+    contact_name: string;
+    payment_method: string;
+    description?: string;
+    items: { product_uuid: string; quantity: number }[];
+  }): Promise<any> => {
+    const response = await apiClient.post('orders/partner-pos/create-pickup/', payload);
+    return response.data;
+  },
+
+  createDineInOrder: async (payload: {
+    table_number: string;
+    payment_method: string;
+    contact_phone?: string;
+    contact_name?: string;
+    description?: string;
+    items: { product_uuid: string; quantity: number }[];
+  }): Promise<any> => {
+    const response = await apiClient.post('orders/partner-pos/create-dine-in/', payload);
     return response.data;
   },
 };

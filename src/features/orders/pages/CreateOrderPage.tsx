@@ -14,7 +14,8 @@ import {
   AlertCircle,
   FolderOpen,
   ArrowLeft,
-  FileText
+  FileText,
+  User
 } from 'lucide-react';
 import { STORAGE_KEYS } from '../../../core/config/constants';
 import apiClient from '../../../core/api/client';
@@ -58,6 +59,7 @@ const CreateOrderPage: React.FC = () => {
 
   // Checkout Form State
   const [serviceType, setServiceType] = useState<'DELIVERY' | 'PICKUP' | 'DINE_IN'>('DELIVERY');
+  const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [address, setAddress] = useState('');
   const [tableNumber, setTableNumber] = useState('');
@@ -223,14 +225,14 @@ const CreateOrderPage: React.FC = () => {
     if (cart.length === 0) return false;
     
     if (serviceType === 'DELIVERY') {
-      return contactPhone.trim().length >= 7 && address.trim().length >= 3;
+      return contactName.trim().length >= 2 && contactPhone.trim().length >= 7 && address.trim().length >= 3;
     } else if (serviceType === 'PICKUP') {
-      return contactPhone.trim().length >= 7;
+      return contactName.trim().length >= 2 && contactPhone.trim().length >= 7;
     } else if (serviceType === 'DINE_IN') {
       return tableNumber.trim().length > 0;
     }
     return false;
-  }, [cart, serviceType, contactPhone, address, tableNumber]);
+  }, [cart, serviceType, contactName, contactPhone, address, tableNumber]);
 
   // Handle Order Submit
   const handleSubmitOrder = async (e: React.FormEvent) => {
@@ -240,43 +242,55 @@ const CreateOrderPage: React.FC = () => {
     setSubmitting(true);
     setSubmitError(null);
 
-    // Prepare payload
-    let orderAddress = '';
-    let descriptionText = comment.trim() || "Izoh yo'q";
-
-    if (serviceType === 'DELIVERY') {
-      orderAddress = address.trim();
-    } else if (serviceType === 'PICKUP') {
-      orderAddress = "Olib ketish (Self-pickup)";
-    } else if (serviceType === 'DINE_IN') {
-      orderAddress = `Stol #${tableNumber.trim()}`;
-      descriptionText = `[Shu yerda / Stol #${tableNumber.trim()}] ` + descriptionText;
+    // Clean phone number: remove non-digits, and convert 998901234567 to 901234567 (9 digits) if code included
+    let cleanedPhone = contactPhone.trim().replace(/\D/g, '');
+    if (cleanedPhone.startsWith('998') && cleanedPhone.length === 12) {
+      cleanedPhone = cleanedPhone.slice(3);
     }
 
     // Default coordinates to restaurant coordinates or Tashkent coordinates
-    const lat = partnerDetails?.location_lat ? String(partnerDetails.location_lat) : '41.311081';
-    const lng = partnerDetails?.location_long ? String(partnerDetails.location_long) : '69.240562';
+    const latVal = partnerDetails?.location_lat ? parseFloat(partnerDetails.location_lat) : 41.311081;
+    const lngVal = partnerDetails?.location_long ? parseFloat(partnerDetails.location_long) : 69.240562;
 
-    // Format phone to string. If Dine-in, we can default contact_phone to restaurant phone or placeholder
-    const clientPhone = serviceType === 'DINE_IN' 
-      ? (contactPhone.trim() || partnerDetails?.phone || '+998000000000') 
-      : contactPhone.trim();
-
-    const payload = {
-      description: descriptionText,
-      address: orderAddress,
-      contact_phone: clientPhone,
-      latitude: lat,
-      longitude: lng,
-      items: cart.map((item) => ({
-        product_uuid: item.product.uuid,
-        quantity: item.quantity,
-      })),
-      payment: paymentMethod
-    };
+    const commonItems = cart.map((item) => ({
+      product_uuid: item.product.uuid,
+      quantity: item.quantity,
+    }));
 
     try {
-      await ordersApi.createOrder(payload as any);
+      if (serviceType === 'DELIVERY') {
+        const payload = {
+          contact_phone: cleanedPhone,
+          contact_name: contactName.trim(),
+          address: address.trim(),
+          latitude: latVal,
+          longitude: lngVal,
+          payment_method: paymentMethod,
+          description: comment.trim() || "Izoh yo'q",
+          items: commonItems,
+        };
+        await ordersApi.createDeliveryOrder(payload);
+      } else if (serviceType === 'PICKUP') {
+        const payload = {
+          contact_phone: cleanedPhone,
+          contact_name: contactName.trim(),
+          payment_method: paymentMethod,
+          description: comment.trim() || undefined,
+          items: commonItems,
+        };
+        await ordersApi.createPickupOrder(payload);
+      } else if (serviceType === 'DINE_IN') {
+        const payload = {
+          table_number: tableNumber.trim(),
+          payment_method: paymentMethod,
+          contact_phone: cleanedPhone || undefined,
+          contact_name: contactName.trim() || undefined,
+          description: comment.trim() || undefined,
+          items: commonItems,
+        };
+        await ordersApi.createDineInOrder(payload);
+      }
+
       setSubmitSuccess(true);
       confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
       clearCart();
@@ -598,37 +612,40 @@ const CreateOrderPage: React.FC = () => {
 
             {/* Conditional Form Fields */}
             <div className="space-y-4">
-              {/* Phone number - Required for Delivery and Pickup, optional placeholder for Dine-in */}
-              {serviceType !== 'DINE_IN' ? (
+              {/* Customer Name and Phone grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Customer Name input */}
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                    <PhoneIcon className="w-3.5 h-3.5 text-brand" />
-                    <span>Mijoz telefoni</span>
+                    <User className={`w-3.5 h-3.5 ${serviceType !== 'DINE_IN' ? 'text-brand' : 'text-slate-500'}`} />
+                    <span>Mijoz ismi {serviceType === 'DINE_IN' && '(Ixtiyoriy)'}</span>
                   </label>
                   <input
                     type="text"
-                    required
-                    placeholder="+998901234567"
-                    value={contactPhone}
-                    onChange={(e) => setContactPhone(e.target.value)}
+                    required={serviceType !== 'DINE_IN'}
+                    placeholder="Masalan: Anvar"
+                    value={contactName}
+                    onChange={(e) => setContactName(e.target.value)}
                     className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
                   />
                 </div>
-              ) : (
-                <div className="space-y-1.5 animate-fade-in">
+
+                {/* Customer Phone input */}
+                <div className="space-y-1.5">
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                    <PhoneIcon className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Mijoz telefoni (Ixtiyoriy)</span>
+                    <PhoneIcon className={`w-3.5 h-3.5 ${serviceType !== 'DINE_IN' ? 'text-brand' : 'text-slate-500'}`} />
+                    <span>Mijoz telefoni {serviceType === 'DINE_IN' && '(Ixtiyoriy)'}</span>
                   </label>
                   <input
                     type="text"
+                    required={serviceType !== 'DINE_IN'}
                     placeholder="+998901234567"
                     value={contactPhone}
                     onChange={(e) => setContactPhone(e.target.value)}
                     className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
                   />
                 </div>
-              )}
+              </div>
 
               {/* Address field for Delivery */}
               {serviceType === 'DELIVERY' && (

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Phone, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import apiClient from '../../../core/api/client';
-import { ENDPOINTS, STORAGE_KEYS } from '../../../core/config/constants';
+import { ENDPOINTS } from '../../../core/config/constants';
 
 const LoginForm: React.FC = () => {
   const [loginType, setLoginType] = useState<'partner' | 'staff'>('partner');

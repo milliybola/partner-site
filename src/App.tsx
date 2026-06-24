@@ -13,6 +13,7 @@ import ProfilePage from './features/profile/pages/ProfilePage';
 import SettingsPage from './features/profile/pages/SettingsPage';
 import AllOrdersPage from './features/orders/pages/AllOrdersPage';
 import CreateOrderPage from './features/orders/pages/CreateOrderPage';
+import StaffPage from './features/staff/pages/StaffPage';
 
 const App: React.FC = () => {
   return (
@@ -39,6 +40,7 @@ const App: React.FC = () => {
           <Route path="profile" element={<ProfilePage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="all-orders" element={<AllOrdersPage />} />
+          <Route path="staff" element={<StaffPage />} />
         </Route>
 
         {/* Fallback redirect */}

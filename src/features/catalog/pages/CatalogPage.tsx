@@ -46,6 +46,15 @@ interface BaseCategory {
 }
 
 const CatalogPage: React.FC = () => {
+  const isManager = (() => {
+    try {
+      const partnerData = JSON.parse(localStorage.getItem(STORAGE_KEYS.PARTNER_DATA) || '{}');
+      return partnerData.role === 'manager';
+    } catch {
+      return false;
+    }
+  })();
+
   const [categories, setCategories] = useState<Category[]>([]);
   const [baseCategories, setBaseCategories] = useState<BaseCategory[]>([]);
   const [activeCategoryUuid, setActiveCategoryUuid] = useState<string>('');
@@ -137,8 +146,16 @@ const CatalogPage: React.FC = () => {
 
   useEffect(() => {
     fetchCatalogData();
-    fetchBaseCategories();
-  }, [fetchCatalogData, fetchBaseCategories]);
+    if (!isManager) {
+      fetchBaseCategories();
+    }
+  }, [fetchCatalogData, fetchBaseCategories, isManager]);
+
+  useEffect(() => {
+    if (isManager && activeTab === 'categories') {
+      setActiveTab('menu');
+    }
+  }, [isManager, activeTab]);
 
   // Derived state
   const activeCategory = categories.find((c) => c.uuid === activeCategoryUuid) || categories[0] || null;
@@ -290,17 +307,19 @@ const CatalogPage: React.FC = () => {
           <span>Mening menyu taomlarim</span>
         </button>
         
-        <button
-          onClick={() => setActiveTab('categories')}
-          className={`pb-3 text-sm font-bold border-b-2 transition duration-200 cursor-pointer flex items-center gap-2 ${
-            activeTab === 'categories'
-              ? 'text-brand border-brand font-extrabold'
-              : 'text-slate-400 border-transparent hover:text-slate-300'
-          }`}
-        >
-          <Settings className="w-4 h-4" />
-          <span>Turkumlarni sozlash</span>
-        </button>
+        {!isManager && (
+          <button
+            onClick={() => setActiveTab('categories')}
+            className={`pb-3 text-sm font-bold border-b-2 transition duration-200 cursor-pointer flex items-center gap-2 ${
+              activeTab === 'categories'
+                ? 'text-brand border-brand font-extrabold'
+                : 'text-slate-400 border-transparent hover:text-slate-300'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            <span>Turkumlarni sozlash</span>
+          </button>
+        )}
       </div>
 
       {error ? (
@@ -326,15 +345,19 @@ const CatalogPage: React.FC = () => {
             <Settings className="w-16 h-16 stroke-[1.2] mb-4 text-slate-600 animate-pulse" />
             <h3 className="font-bold text-white mb-2 text-lg">Faol turkumlar topilmadi</h3>
             <p className="text-sm px-6 text-center text-slate-400 max-w-md">
-              Sizda hali menyu turkumlari faol emas. Taomlar qo'shishdan oldin menyuingizga mos turkumlarni sozlang.
+              {isManager
+                ? "Sizda hali menyu turkumlari faol emas. Iltimos, tizim superadmini (restoran egasi) orqali menyu turkumlarini faollashtiring."
+                : "Sizda hali menyu turkumlari faol emas. Taomlar qo'shishdan oldin menyuingizga mos turkumlarni sozlang."}
             </p>
-            <button
-              onClick={() => setActiveTab('categories')}
-              className="mt-6 flex items-center gap-2 px-5 py-3 rounded-xl bg-brand/10 hover:bg-brand/20 text-brand text-xs font-bold transition cursor-pointer border border-brand/10"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Turkumlarni sozlash bo'limiga o'tish</span>
-            </button>
+            {!isManager && (
+              <button
+                onClick={() => setActiveTab('categories')}
+                className="mt-6 flex items-center gap-2 px-5 py-3 rounded-xl bg-brand/10 hover:bg-brand/20 text-brand text-xs font-bold transition cursor-pointer border border-brand/10"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Turkumlarni sozlash bo'limiga o'tish</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
@@ -361,9 +384,10 @@ const CatalogPage: React.FC = () => {
 
                     {/* Quick switch to toggle Category active state */}
                     <button
-                      onClick={() => handleToggleCategoryOnBackend(cat.uuid, !cat.is_active)}
-                      className="text-slate-400 hover:text-white transition cursor-pointer p-0.5 ml-2"
-                      title={cat.is_active ? "O'chirish" : "Yoqish"}
+                      onClick={() => !isManager && handleToggleCategoryOnBackend(cat.uuid, !cat.is_active)}
+                      disabled={isManager}
+                      className={`text-slate-400 transition p-0.5 ml-2 ${isManager ? 'cursor-default opacity-90' : 'hover:text-white cursor-pointer'}`}
+                      title={isManager ? "Faqat ko'rish uchun" : (cat.is_active ? "O'chirish" : "Yoqish")}
                     >
                       {cat.is_active ? (
                         <span className="text-[10px] font-bold text-brand bg-brand/10 px-2 py-0.5 rounded-md">Faol</span>

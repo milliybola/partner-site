@@ -29,6 +29,10 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     if (error.response && error.response.status === 401) {
+      console.warn("Axios interceptor: 401 Unauthorized detected! Clearing tokens and redirecting to /login.", {
+        url: error.config?.url,
+        message: error.response?.data?.detail || error.message
+      });
       // Clear storage
       localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
       localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);

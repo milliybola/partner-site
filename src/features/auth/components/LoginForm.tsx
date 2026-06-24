@@ -5,6 +5,7 @@ import apiClient from '../../../core/api/client';
 import { ENDPOINTS, STORAGE_KEYS } from '../../../core/config/constants';
 
 const LoginForm: React.FC = () => {
+  const [loginType, setLoginType] = useState<'partner' | 'staff'>('partner');
   const [phone, setPhone] = useState('+998');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -63,25 +64,79 @@ const LoginForm: React.FC = () => {
       return;
     }
 
-
-
     try {
-      // 1. Authenticate API call
-      const loginResponse = await apiClient.post(ENDPOINTS.AUTH.LOGIN, {
-        phone: rawPhone,
-        password: password,
-      });
+      if (loginType === 'partner') {
+        // 1. Authenticate API call
+        const loginResponse = await apiClient.post(ENDPOINTS.AUTH.LOGIN, {
+          phone: rawPhone,
+          password: password,
+        });
 
-      const { tokens } = loginResponse.data;
-      localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, tokens.access);
-      localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refresh);
+        console.log("Partner Login Response Raw:", loginResponse.data);
 
-      // 2. Fetch profile data
-      const meResponse = await apiClient.get(ENDPOINTS.AUTH.ME);
-      localStorage.setItem(STORAGE_KEYS.PARTNER_DATA, JSON.stringify(meResponse.data.data));
+        const tokens = loginResponse.data?.tokens || loginResponse.data?.data?.tokens;
+
+        if (!tokens || !tokens.access) {
+          throw new Error("Tokenlar topilmadi. Login javobini tekshiring.");
+        }
+
+        console.log("Setting localStorage milliygo_access_token to:", tokens.access);
+        console.log("Setting localStorage milliygo_refresh_token to:", tokens.refresh);
+        
+        localStorage.setItem('milliygo_access_token', tokens.access);
+        localStorage.setItem('milliygo_refresh_token', tokens.refresh);
+
+        // 2. Fetch profile data
+        const meResponse = await apiClient.get(ENDPOINTS.AUTH.ME);
+        const profileData = meResponse.data?.data || meResponse.data;
+        console.log("Partner Profile Data:", profileData);
+        localStorage.setItem('milliygo_partner_data', JSON.stringify(profileData));
+      } else {
+        // 1. Authenticate Staff API call
+        const loginResponse = await apiClient.post(ENDPOINTS.STAFF.LOGIN, {
+          phone: rawPhone,
+          password: password,
+        });
+
+        console.log("Staff Login Response Raw:", loginResponse.data);
+
+        const tokens = loginResponse.data?.tokens || loginResponse.data?.data?.tokens;
+        const staff = loginResponse.data?.staff || loginResponse.data?.data?.staff;
+
+        if (!tokens || !tokens.access) {
+          throw new Error("Xodim tokenlari topilmadi. Login javobini tekshiring.");
+        }
+
+        // Check if role is waiter - waiters are restricted
+        if (staff && staff.role === 'waiter') {
+          setError("Ofitsiantlar ushbu tizimga kira olmaydi. Iltimos, ofitsant ilovasidan foydalaning.");
+          setLoading(false);
+          return;
+        }
+
+        console.log("Setting localStorage milliygo_access_token (Staff) to:", tokens.access);
+        console.log("Setting localStorage milliygo_refresh_token (Staff) to:", tokens.refresh);
+
+        localStorage.setItem('milliygo_access_token', tokens.access);
+        localStorage.setItem('milliygo_refresh_token', tokens.refresh);
+
+        // Map staff data directly from login response to expected partner data fields
+        const partnerData = {
+          ...staff,
+          uuid: staff?.partner_uuid, // Ensure partner uuid is set correctly
+          is_open: true, // Default to true
+        };
+        
+        console.log("Setting localStorage milliygo_partner_data (Staff) to:", partnerData);
+        localStorage.setItem('milliygo_partner_data', JSON.stringify(partnerData));
+      }
 
       setLoading(false);
-      navigate('/');
+      if (loginType === 'staff') {
+        navigate('/orders');
+      } else {
+        navigate('/');
+      }
     } catch (err: any) {
       console.error(err);
       setError(
@@ -95,10 +150,42 @@ const LoginForm: React.FC = () => {
 
   return (
     <div className="w-full max-w-md p-8 rounded-2xl bg-darkCard backdrop-blur-xl border border-white/10 shadow-2xl transition-all duration-300">
-      <div className="text-center mb-8">
+      <div className="text-center mb-6">
         <img src="/logo.png" alt="Logo" className="w-24 h-24 mx-auto mb-4" />
         <h2 className="text-3xl font-bold tracking-tight text-white mb-2">MilliyGo</h2>
         <p className="text-slate-400">Hamkorlar boshqaruv paneliga xush kelibsiz</p>
+      </div>
+
+      {/* Login Type Switch */}
+      <div className="flex bg-slate-950/60 p-1.5 rounded-xl border border-white/5 mb-6">
+        <button
+          type="button"
+          onClick={() => {
+            setLoginType('partner');
+            setError(null);
+          }}
+          className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+            loginType === 'partner'
+              ? 'bg-brand text-white shadow-md shadow-brand/10'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Restoran (Superadmin)
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setLoginType('staff');
+            setError(null);
+          }}
+          className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+            loginType === 'staff'
+              ? 'bg-brand text-white shadow-md shadow-brand/10'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Xodim (Menejer)
+        </button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">

@@ -10,8 +10,9 @@ import {
   RefreshCw,
   AlertCircle
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import apiClient from '../../../core/api/client';
-import { ENDPOINTS } from '../../../core/config/constants';
+import { ENDPOINTS, STORAGE_KEYS } from '../../../core/config/constants';
 
 interface TopProduct {
   name: string;
@@ -78,9 +79,22 @@ interface DashboardStats {
 }
 
 const DashboardPage: React.FC = () => {
+  const navigate = useNavigate();
+
+  // Check if role is manager synchronously to prevent UI flash or unauthorized API requests
+  const isManager = (() => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
+      return data ? JSON.parse(data).role === 'manager' : false;
+    } catch {
+      return false;
+    }
+  })();
+
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isManager);
   const [error, setError] = useState<string | null>(null);
+
 
   const fetchStats = async () => {
     setLoading(true);
@@ -106,8 +120,16 @@ const DashboardPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    if (isManager) {
+      navigate('/orders', { replace: true });
+    } else {
+      fetchStats();
+    }
+  }, [isManager, navigate]);
+
+  if (isManager) {
+    return null;
+  }
 
   if (loading) {
     return (

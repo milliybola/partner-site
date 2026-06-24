@@ -40,6 +40,7 @@ interface OpeningHours {
 
 const ProfilePage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
+  const [isManager, setIsManager] = useState(false);
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
@@ -211,6 +212,30 @@ const ProfilePage: React.FC = () => {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
+        const localData = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
+        let parsedLocal = localData ? JSON.parse(localData) : null;
+        const managerFlag = parsedLocal?.role === 'manager';
+        setIsManager(managerFlag);
+
+        if (managerFlag) {
+          const response = await apiClient.get('partner/staff/me/');
+          const profileData = response.data.data;
+          
+          const mergedData = {
+            ...profileData,
+            uuid: profileData.partner_uuid,
+            is_open: true
+          };
+          localStorage.setItem(STORAGE_KEYS.PARTNER_DATA, JSON.stringify(mergedData));
+          
+          setName(profileData.name || '');
+          setPhone(profileData.phone || '');
+          setPartnerType('MANAGER');
+          setProfileUuid(profileData.uuid || '');
+          setDescription('MilliyGo xizmat ko\'rsatuvchi xodimi (Menejer).');
+          return;
+        }
+
         const response = await apiClient.get('partner/me/');
         const profileData = response.data.data;
         // Save to local storage for other pages to access
@@ -269,6 +294,18 @@ const ProfilePage: React.FC = () => {
         const data = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
         if (data) {
           const parsed = JSON.parse(data);
+          const managerFlag = parsed.role === 'manager';
+          setIsManager(managerFlag);
+
+          if (managerFlag) {
+            setName(parsed.name || '');
+            setPhone(parsed.phone || '');
+            setPartnerType('MANAGER');
+            setProfileUuid(parsed.uuid || '');
+            setDescription('MilliyGo xizmat ko\'rsatuvchi xodimi (Menejer).');
+            return;
+          }
+
           setProfileId(parsed.id || '');
           setProfileUuid(parsed.uuid || '');
           setName(parsed.name || '');
@@ -524,6 +561,99 @@ const ProfilePage: React.FC = () => {
     { key: 'sat', label: 'Shan' },
     { key: 'sun', label: 'Yak' }
   ];
+
+  if (isManager) {
+    return (
+      <div className="space-y-8 font-Outfit text-left animate-fade-in">
+        {/* Header */}
+        <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/5 pb-4">
+          <div>
+            <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+              Mening Profilim <span className="bg-brand/10 text-brand p-1.5 rounded-xl"><User className="w-6 h-6" /></span>
+            </h1>
+            <p className="text-slate-400 text-sm mt-1">Tizimdagi shaxsiy profilingiz va xizmat ma'lumotlaringiz</p>
+          </div>
+        </div>
+
+        {/* Profile Cover & Avatar Card */}
+        <div className="relative rounded-3xl overflow-hidden border border-white/5 bg-slate-900/50 shadow-xl">
+          {/* Banner container */}
+          <div className="h-48 bg-gradient-to-r from-brand/20 via-slate-800 to-slate-900 relative group overflow-hidden">
+            <div className="w-full h-full flex items-center justify-center text-slate-500 bg-slate-800/20 backdrop-blur-md">
+              <User className="w-8 h-8 text-slate-600 animate-pulse" />
+            </div>
+          </div>
+          
+          {/* Profile details overlap row */}
+          <div className="p-6 pt-0 relative flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-gradient-to-t from-darkCard to-darkCard/95 border-t border-white/5">
+            {/* Logo / Avatar container */}
+            <div className="flex flex-col md:flex-row items-start md:items-end gap-4 -mt-12 md:-mt-10">
+              <div className="relative w-24 h-24 rounded-2xl border-4 border-darkCard overflow-hidden bg-slate-900 shadow-lg shrink-0 flex items-center justify-center">
+                <div className="w-full h-full flex items-center justify-center text-slate-400 bg-slate-900 border border-white/10 font-bold text-2xl">
+                  {name.charAt(0).toUpperCase()}
+                </div>
+              </div>
+              
+              {/* Title / Description info */}
+              <div className="space-y-1 mb-1">
+                <h2 className="text-2xl font-bold text-white tracking-tight">{name}</h2>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="text-xs font-bold text-brand bg-brand/10 px-2.5 py-0.5 rounded-lg flex items-center gap-1 shadow-sm border border-brand/10">
+                    Menejer
+                  </span>
+                  <span className="text-xs font-semibold text-slate-400">
+                    Hamkor: {JSON.parse(localStorage.getItem(STORAGE_KEYS.PARTNER_DATA) || '{}').partner_name || 'Restoran'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Active status indicator badge */}
+            <div className="flex items-center gap-2 bg-slate-900/60 py-1.5 px-3.5 rounded-xl border border-white/5 shadow-md">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping bg-emerald-400"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-xs font-bold text-slate-300 select-none">
+                Tizimda faol
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card info */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start pb-24 text-left">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-white/5 space-y-5 shadow-lg relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1 h-full bg-brand/30"></div>
+              <h3 className="font-bold text-white text-lg flex items-center gap-2 border-b border-white/5 pb-3">
+                <User className="w-5 h-5 text-brand" /> Shaxsiy ma'lumotlar
+              </h3>
+              
+              <div className="space-y-4">
+                <div className="flex justify-between items-center py-2.5 border-b border-white/5">
+                  <span className="text-slate-400 text-sm font-medium">To'liq ismingiz</span>
+                  <span className="font-bold text-white text-sm">{name}</span>
+                </div>
+                <div className="flex justify-between items-center py-2.5 border-b border-white/5">
+                  <span className="text-slate-400 text-sm font-medium">Telefon raqamingiz</span>
+                  <span className="font-bold text-white text-sm">{phone}</span>
+                </div>
+                <div className="flex justify-between items-center py-2.5 border-b border-white/5">
+                  <span className="text-slate-400 text-sm font-medium">Lavozimingiz</span>
+                  <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20">Menejer</span>
+                </div>
+                <div className="flex justify-between items-center py-2.5">
+                  <span className="text-slate-400 text-sm font-medium">Hisob holati</span>
+                  <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Faol</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 font-Outfit text-left animate-fade-in">

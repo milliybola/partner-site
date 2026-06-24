@@ -12,6 +12,11 @@ export const ENDPOINTS = {
     LOGIN: 'partner/auth/login/',
     ME: 'partner/me/',
   },
+  STAFF: {
+    LOGIN: 'partner/staff/auth/login/',
+    ME: 'partner/staff/me/',
+    BASE: 'partner/staff/',
+  },
   DASHBOARD: {
     STATS: 'partner/statistics/',
   },

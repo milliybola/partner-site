@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   TrendingUp, 
   DollarSign, 
@@ -19,7 +20,7 @@ import {
   Info
 } from 'lucide-react';
 import apiClient from '../../../core/api/client';
-import { ENDPOINTS } from '../../../core/config/constants';
+import { ENDPOINTS, STORAGE_KEYS } from '../../../core/config/constants';
 import { ordersApi } from '../../orders/services/ordersApi';
 import type { Order } from '../../orders/services/ordersApi';
 
@@ -97,11 +98,23 @@ interface Transaction {
 }
 
 const FinancePage: React.FC = () => {
+  const navigate = useNavigate();
+  
+  // Check if role is manager synchronously to prevent UI flash or unauthorized API requests
+  const isManager = (() => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
+      return data ? JSON.parse(data).role === 'manager' : false;
+    } catch {
+      return false;
+    }
+  })();
+
   const [filter, setFilter] = useState<'all' | 'paid' | 'refunded'>('all');
   const [activeTab, setActiveTab] = useState<'today' | 'this_week' | 'this_month' | 'overall'>('today');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isManager);
   const [error, setError] = useState<string | null>(null);
 
   const fetchFinanceData = async () => {
@@ -133,8 +146,16 @@ const FinancePage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchFinanceData();
-  }, []);
+    if (isManager) {
+      navigate('/orders', { replace: true });
+    } else {
+      fetchFinanceData();
+    }
+  }, [isManager, navigate]);
+
+  if (isManager) {
+    return null;
+  }
 
   const formatUzS = (amount: number | string | null | undefined) => {
     const num = Number(amount);

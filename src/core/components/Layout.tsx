@@ -11,13 +11,21 @@ import {
   X,
   Radio,
   PlusCircle,
-  Settings
+  Settings,
+  Users
 } from 'lucide-react';
 import { STORAGE_KEYS } from '../config/constants';
 
 const Layout: React.FC = () => {
-  const [partner, setPartner] = useState<any>(null);
-  const [isOpen, setIsOpen] = useState(false);
+  const [partner, setPartner] = useState<any>(() => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isOpen, setIsOpen] = useState(() => partner?.is_open ?? false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('milliygo_theme') as 'light' | 'dark') || 'dark');
   const [time, setTime] = useState<string>('');
@@ -63,6 +71,7 @@ const Layout: React.FC = () => {
   }, []);
 
   const handleToggleOpenStatus = () => {
+    if (partner?.role === 'manager') return; // Managers cannot toggle status
     const updated = { ...partner, is_open: !isOpen };
     setPartner(updated);
     setIsOpen(!isOpen);
@@ -82,8 +91,9 @@ const Layout: React.FC = () => {
     { to: '/orders', label: 'Karban', icon: ShoppingBag },
     { to: '/new-order', label: 'Yangi buyurtma', icon: PlusCircle },
     { to: '/catalog', label: 'Katalog', icon: Grid },
-    { to: '/finance', label: 'Moliya', icon: DollarSign },
+    ...(partner?.role === 'manager' ? [] : [{ to: '/finance', label: 'Moliya', icon: DollarSign }]),
     { to: '/all-orders', label: 'Barcha buyurtmalar', icon: ShoppingBag },
+    { to: '/staff', label: 'Xodimlar', icon: Users },
     { to: '/profile', label: 'Profil', icon: User },
     { to: '/settings', label: 'Sozlamalar', icon: Settings },
   ];
@@ -100,7 +110,9 @@ const Layout: React.FC = () => {
           ) : (
             <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center font-bold text-white">M</div>
           )}
-          <span className="font-semibold text-white truncate max-w-[100px]">{partner?.name || 'MilliyGo'}</span>
+          <span className="font-semibold text-white truncate max-w-[100px]">
+            {partner?.role === 'manager' ? partner.partner_name : partner?.name || 'MilliyGo'}
+          </span>
           {time && (
             <span className="text-[10px] font-bold text-brand bg-brand/10 border border-brand/20 px-2 py-0.5 rounded-lg font-mono">
               {time}
@@ -111,7 +123,10 @@ const Layout: React.FC = () => {
           {/* Active status indicator */}
           <button
             onClick={handleToggleOpenStatus}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
+            disabled={partner?.role === 'manager'}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition ${
+              partner?.role === 'manager' ? 'cursor-default opacity-80' : 'cursor-pointer'
+            } ${
               isOpen
                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                 : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
@@ -138,8 +153,12 @@ const Layout: React.FC = () => {
               <div className="w-12 h-12 rounded-xl bg-brand flex items-center justify-center font-bold text-white text-xl">M</div>
             )}
             <div className="truncate">
-              <h3 className="font-semibold text-white truncate">{partner?.name || 'Restaurant'}</h3>
-              <p className="text-xs text-slate-400 truncate">{partner?.address || 'Manzil yo\'q'}</p>
+              <h3 className="font-semibold text-white truncate">
+                {partner?.role === 'manager' ? partner.partner_name : partner?.name || 'Restaurant'}
+              </h3>
+              <p className="text-xs text-slate-400 truncate">
+                {partner?.role === 'manager' ? `Menejer: ${partner.name}` : partner?.address || 'Manzil yo\'q'}
+              </p>
             </div>
           </div>
 
@@ -148,7 +167,10 @@ const Layout: React.FC = () => {
             <span className="text-xs font-medium text-slate-400">Muassasa holati:</span>
             <button
               onClick={handleToggleOpenStatus}
-              className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+              disabled={partner?.role === 'manager'}
+              className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition ${
+                partner?.role === 'manager' ? 'cursor-default opacity-80' : 'cursor-pointer hover:bg-white/5'
+              } ${
                 isOpen ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
               }`}
             >
@@ -318,10 +340,13 @@ const Layout: React.FC = () => {
             {/* Store Status Toggle */}
             <button
               onClick={handleToggleOpenStatus}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+              disabled={partner?.role === 'manager'}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition ${
+                partner?.role === 'manager' ? 'cursor-default opacity-85' : 'cursor-pointer'
+              } ${
                 isOpen
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
-                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20'
+                  ? `bg-emerald-500/10 text-emerald-400 border-emerald-500/20${partner?.role === 'manager' ? '' : ' hover:bg-emerald-500/20'}`
+                  : `bg-rose-500/10 text-rose-400 border-rose-500/20${partner?.role === 'manager' ? '' : ' hover:bg-rose-500/20'}`
               }`}
             >
               <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />

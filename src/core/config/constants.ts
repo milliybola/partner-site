@@ -17,6 +17,13 @@ export const ENDPOINTS = {
     ME: 'partner/staff/me/',
     BASE: 'partner/staff/',
   },
+  SHIFTS: {
+    CURRENT: 'partner/shifts/current/',
+    OPEN: 'partner/shifts/open/',
+    CLOSE: 'partner/shifts/close/',
+    LIST: 'partner/shifts/',
+    EXPORT: 'partner/shifts/export/excel/',
+  },
   DASHBOARD: {
     STATS: 'partner/statistics/',
   },

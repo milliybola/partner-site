@@ -127,8 +127,8 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
       onDragEnd={isDraggable ? onDragEnd : undefined}
       onClick={onClick}
       className={`p-4 rounded-xl border text-left transition-all duration-200 group hover:shadow-lg hover:-translate-y-0.5 ${isDraggable
-          ? 'cursor-grab active:cursor-grabbing'
-          : 'cursor-pointer'
+        ? 'cursor-grab active:cursor-grabbing'
+        : 'cursor-pointer'
         } ${isSelected
           ? 'bg-brand/10 border-brand shadow-md shadow-brand/5'
           : 'bg-darkCard border-white/5 hover:border-white/10'
@@ -314,8 +314,8 @@ const OrdersPage: React.FC = () => {
                 font-weight: 800;
                 color: #000;
               }
-              .info-label { color: #000; font-weight: 800; }
-              .info-value { font-weight: 900; text-align: right; color: #000; }
+              .info-label { color: #000; font-weight: 700; }
+              .info-value { font-weight: 800; text-align: right; color: #000; }
               
               .items-header {
                 display: flex;
@@ -369,10 +369,12 @@ const OrdersPage: React.FC = () => {
           </head>
           <body>
             <div class="header text-center" style="display: flex; flex-direction: column; align-items: center; margin-bottom: 12px;">
-              <img src="${window.location.origin}/logo.png" alt="MilliyGo Logo" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; margin-bottom: 4px;" />
-              <div style="font-size: 11px; font-weight: 900; letter-spacing: 1.5px; color: #000; margin-bottom: 6px;">MILLIYGO</div>
-              <h2 style="margin: 0; font-size: 20px; font-weight: 900; color: #000; text-transform: uppercase;">${receiptData.partner_name || ''}</h2>
-              <div style="font-size: 11px; color: #000; font-weight: 800; margin-top: 4px; line-height: 1.4; text-align: center;">
+            <div style="display: flex; flex-direction: row; align-items: center; gap: 8px">  
+            <img src="${window.location.origin}/logo.png" alt="MilliyGo Logo" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; margin-bottom: 4px;" />
+              <div style="font-size: 18px; font-weight: 700; letter-spacing: 1.5px; color: #000; margin-bottom: 6px;">MILLIYGO</div>
+            </div>
+              <h2 style="margin: 0; font-size: 20px; font-weight: 700; color: #000; text-transform: uppercase;">${receiptData.partner_name || ''}</h2>
+              <div style="font-size: 11px; color: #000; font-weight: 600; margin-top: 4px; line-height: 1.4; text-align: center;">
                 <p style="margin: 1px 0;">${[receiptData.partner_address, receiptData.partner_phone].filter(Boolean).join(' | ')}</p>
               </div>
             </div>
@@ -458,7 +460,6 @@ const OrdersPage: React.FC = () => {
 
             <div class="footer">
               <p class="bold" style="font-size: 12px; margin-bottom: 2px;">XARIDINGIZ UCHUN RAHMAT!</p>
-              <p style="margin: 0; font-weight: 800;">MilliyGo</p>
               <p style="margin: 0; font-weight: 800;">milliyapp.uz</p>
               
             </div>
@@ -476,7 +477,7 @@ const OrdersPage: React.FC = () => {
       `;
 
       const printCopies = parseInt(localStorage.getItem('milliygo_print_copies') || '1', 10) || 1;
-      
+
       for (let i = 0; i < printCopies; i++) {
         const iframe = document.createElement('iframe');
         iframe.style.position = 'fixed';
@@ -674,8 +675,8 @@ const OrdersPage: React.FC = () => {
             <button
               onClick={() => setViewMode('kanban')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${viewMode === 'kanban'
-                  ? 'bg-brand text-white shadow-lg shadow-brand/10'
-                  : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-brand text-white shadow-lg shadow-brand/10'
+                : 'text-slate-400 hover:text-slate-200'
                 }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
@@ -684,22 +685,14 @@ const OrdersPage: React.FC = () => {
             <button
               onClick={() => setViewMode('list')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${viewMode === 'list'
-                  ? 'bg-brand text-white shadow-lg shadow-brand/10'
-                  : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-brand text-white shadow-lg shadow-brand/10'
+                : 'text-slate-400 hover:text-slate-200'
                 }`}
             >
               <List className="w-3.5 h-3.5" />
               <span>Ro'yxat</span>
             </button>
           </div>
-
-          <button
-            onClick={triggerMockNotification}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand/10 border border-brand/20 hover:bg-brand/20 text-brand text-xs font-bold transition cursor-pointer"
-          >
-            <Radio className="w-4 h-4" />
-            <span>Mock WS order</span>
-          </button>
         </div>
       </div>
 
@@ -781,8 +774,8 @@ const OrdersPage: React.FC = () => {
                     key={order.uuid}
                     onClick={() => setSelectedOrder(order)}
                     className={`p-5 rounded-2xl border text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5 ${selectedOrder?.uuid === order.uuid
-                        ? 'bg-brand/5 border-brand'
-                        : 'bg-darkCard border-white/5 hover:border-white/10'
+                      ? 'bg-brand/5 border-brand'
+                      : 'bg-darkCard border-white/5 hover:border-white/10'
                       }`}
                   >
                     <div className="flex items-center justify-between mb-3.5">
@@ -892,12 +885,12 @@ const OrdersPage: React.FC = () => {
                       setDragOverCol(null);
                     }}
                     className={`flex-1 min-w-[270px] max-w-[320px] flex flex-col h-[70vh] rounded-2xl border transition-all duration-300 ${isValidDropTarget
-                        ? isHovered
-                          ? `${col.hoverStyle} scale-[1.01] shadow-lg`
-                          : `bg-slate-900/40 ${col.validBorder} animate-pulse`
-                        : draggedOrder
-                          ? 'opacity-30 border-white/5 bg-slate-900/10'
-                          : 'border-white/5 bg-darkCard/50'
+                      ? isHovered
+                        ? `${col.hoverStyle} scale-[1.01] shadow-lg`
+                        : `bg-slate-900/40 ${col.validBorder} animate-pulse`
+                      : draggedOrder
+                        ? 'opacity-30 border-white/5 bg-slate-900/10'
+                        : 'border-white/5 bg-darkCard/50'
                       }`}
                   >
                     {/* Column Header */}
@@ -1045,8 +1038,8 @@ const OrdersPage: React.FC = () => {
                   <span>
                     <strong>Manba:</strong>{' '}
                     {selectedOrder.order_source === 'WAITER' ? 'Ofitsiant' :
-                     selectedOrder.order_source === 'CUSTOMER' ? 'Mijoz (App)' :
-                     selectedOrder.order_source === 'PARTNER' ? 'Hamkor (Kassa)' : selectedOrder.order_source}
+                      selectedOrder.order_source === 'CUSTOMER' ? 'Mijoz (App)' :
+                        selectedOrder.order_source === 'PARTNER' ? 'Hamkor (Kassa)' : selectedOrder.order_source}
                   </span>
                 </p>
               )}
@@ -1058,11 +1051,10 @@ const OrdersPage: React.FC = () => {
                   </span>
                 </p>
                 <div className="flex items-center gap-1.5">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    selectedOrder.is_paid 
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/10' 
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${selectedOrder.is_paid
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/10'
                       : 'bg-amber-500/10 text-amber-400 border border-amber-500/10'
-                  }`}>
+                    }`}>
                     {selectedOrder.is_paid ? "To'langan" : "To'lanmagan"}
                   </span>
                 </div>
@@ -1073,6 +1065,20 @@ const OrdersPage: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Print Receipt Button (Available in all statuses) */}
+            <button
+              onClick={() => handlePrintReceipt(selectedOrder.uuid)}
+              disabled={printingUuid === selectedOrder.uuid}
+              className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 shadow-lg shadow-amber-500/10"
+            >
+              {printingUuid === selectedOrder.uuid ? (
+                <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
+              ) : (
+                <Printer className="w-4 h-4" />
+              )}
+              <span>Chekni chop etish</span>
+            </button>
 
             {/* Context Actions based on status */}
             <div className="space-y-2.5">
@@ -1135,18 +1141,6 @@ const OrdersPage: React.FC = () => {
               {selectedOrder.status === 'READY_FOR_PICKUP' && (
                 <div className="space-y-2">
                   <button
-                    onClick={() => handlePrintReceipt(selectedOrder.uuid)}
-                    disabled={printingUuid === selectedOrder.uuid}
-                    className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 shadow-lg shadow-amber-500/10"
-                  >
-                    {printingUuid === selectedOrder.uuid ? (
-                      <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
-                    ) : (
-                      <Printer className="w-4 h-4" />
-                    )}
-                    <span>Chekni chop etish</span>
-                  </button>
-                  <button
                     onClick={() => {
                       handleUpdateStatus(selectedOrder.uuid, 'PREPARING');
                       setSelectedOrder(null);
@@ -1200,8 +1194,8 @@ const OrdersPage: React.FC = () => {
               setIsDragOverBottomZone(null);
             }}
             className={`flex-1 py-5 rounded-2xl border-2 flex flex-col items-center justify-center gap-1.5 transition-all duration-200 ${isDragOverBottomZone === 'reject'
-                ? 'bg-rose-500/20 border-rose-500 shadow-lg shadow-rose-500/10 scale-105'
-                : 'bg-slate-950/95 border-rose-500/40 text-rose-400 border-dashed'
+              ? 'bg-rose-500/20 border-rose-500 shadow-lg shadow-rose-500/10 scale-105'
+              : 'bg-slate-950/95 border-rose-500/40 text-rose-400 border-dashed'
               }`}
           >
             <XCircle className="w-6 h-6 text-rose-400 animate-pulse" />

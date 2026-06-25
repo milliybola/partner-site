@@ -27,6 +27,8 @@ interface Product {
   name: string;
   description: string;
   price: number;
+  original_price: number;
+  discount: number;
   is_available: boolean;
   image_url?: string | null;
 }
@@ -99,14 +101,21 @@ const CreateOrderPage: React.FC = () => {
         uuid: c.uuid,
         name: c.category_details?.name || c.name || "Nomi yo'q",
         is_active: !!c.is_active,
-        products: Array.isArray(c.products) ? c.products.map((p: any) => ({
-          uuid: p.uuid,
-          name: p.name,
-          description: p.description || '',
-          price: parseFloat(p.price || '0'),
-          is_available: !!p.is_available && !!p.is_active,
-          image_url: p.images?.find((img: any) => img.is_main)?.image || p.images?.[0]?.image || p.image_url || null
-        })) : []
+        products: Array.isArray(c.products) ? c.products.map((p: any) => {
+          const rawPrice = parseFloat(p.price || '0');
+          const discountPercent = p.discount ? parseFloat(p.discount) : 0;
+          const finalPrice = discountPercent > 0 ? rawPrice * (1 - discountPercent / 100) : rawPrice;
+          return {
+            uuid: p.uuid,
+            name: p.name,
+            description: p.description || '',
+            price: finalPrice,
+            original_price: rawPrice,
+            discount: discountPercent,
+            is_available: !!p.is_available && !!p.is_active,
+            image_url: p.images?.find((img: any) => img.is_main)?.image || p.images?.[0]?.image || p.image_url || null
+          };
+        }) : []
       })) : [];
 
       // Filter categories to only keep active ones
@@ -448,7 +457,19 @@ const CreateOrderPage: React.FC = () => {
                         <p className="text-[11px] text-slate-400 line-clamp-2 h-7">
                           {prod.description || "Taom tavsifi kiritilmagan."}
                         </p>
-                        <h5 className="font-bold text-brand text-sm pt-1">{formatUzS(prod.price)}</h5>
+                        <div className="flex items-center gap-2 pt-1 flex-wrap">
+                          <h5 className="font-bold text-brand text-sm">{formatUzS(prod.price)}</h5>
+                          {prod.discount > 0 && (
+                            <>
+                              <span className="text-[10px] text-slate-500 line-through">
+                                {formatUzS(prod.original_price)}
+                              </span>
+                              <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                                -{prod.discount}%
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -526,8 +547,13 @@ const CreateOrderPage: React.FC = () => {
                       <p className="font-bold text-white truncate" title={item.product.name}>
                         {item.product.name}
                       </p>
-                      <p className="text-slate-400 font-medium mt-0.5">
-                        {formatUzS(item.product.price)} x {item.quantity}
+                      <p className="text-slate-400 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <span>{formatUzS(item.product.price)} x {item.quantity}</span>
+                        {item.product.discount > 0 && (
+                          <span className="text-[10px] text-slate-500 line-through">
+                            ({formatUzS(item.product.original_price)})
+                          </span>
+                        )}
                       </p>
                     </div>
 

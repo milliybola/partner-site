@@ -16,6 +16,7 @@ export const ENDPOINTS = {
     LOGIN: 'partner/staff/auth/login/',
     ME: 'partner/staff/me/',
     BASE: 'partner/staff/',
+    STATISTICS: 'partner/staff/statistics/',
   },
   SHIFTS: {
     CURRENT: 'partner/shifts/current/',

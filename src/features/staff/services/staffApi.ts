@@ -10,6 +10,47 @@ export interface StaffMember {
   created_at?: string;
   partner_uuid?: string;
   partner_name?: string;
+  today_stats?: {
+    total_orders: number;
+    completed_orders: number;
+    revenue: number;
+  };
+}
+
+export interface StaffPeriodStats {
+  total_orders: number;
+  completed_orders: number;
+  cancelled_orders: number;
+  pending_orders: number;
+  total_revenue: number;
+  cash_revenue: number;
+  card_revenue: number;
+}
+
+export interface StaffDetailsResponse {
+  success: boolean;
+  data: StaffMember;
+  statistics: {
+    today: StaffPeriodStats;
+    week: StaffPeriodStats;
+    month: StaffPeriodStats;
+    all: StaffPeriodStats;
+  };
+}
+
+export interface StaffRatingMember {
+  uuid: string;
+  name: string;
+  role: 'manager' | 'waiter';
+  total_orders: number;
+  completed_orders: number;
+  total_revenue: number;
+}
+
+export interface StaffRatingResponse {
+  success: boolean;
+  period: string;
+  data: StaffRatingMember[];
 }
 
 export interface CreateStaffPayload {
@@ -52,5 +93,15 @@ export const staffApi = {
 
   deleteStaff: async (uuid: string): Promise<void> => {
     await apiClient.delete(`${ENDPOINTS.STAFF.BASE}${uuid}/`);
+  },
+
+  getStaffDetails: async (uuid: string): Promise<StaffDetailsResponse> => {
+    const response = await apiClient.get<StaffDetailsResponse>(`${ENDPOINTS.STAFF.BASE}${uuid}/`);
+    return response.data;
+  },
+
+  getStaffRating: async (period: 'today' | 'week' | 'month' | 'all' = 'month'): Promise<StaffRatingMember[]> => {
+    const response = await apiClient.get<StaffRatingResponse>(`${ENDPOINTS.STAFF.STATISTICS}?period=${period}`);
+    return response.data?.data || [];
   }
 };

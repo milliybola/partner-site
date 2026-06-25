@@ -5,22 +5,16 @@ import {
   TrendingUp,
   ShoppingBag,
   Coins,
-  CreditCard,
   Truck,
   Building,
   User,
   AlertCircle,
   RefreshCw,
   CheckCircle,
-  DollarSign,
-  ChevronRight,
   Sparkles,
-  ArrowUpRight,
-  ArrowDownRight,
   LogOut,
   Calendar,
   Layers,
-  HelpCircle,
   Download
 } from 'lucide-react';
 import { STORAGE_KEYS } from '../../../core/config/constants';

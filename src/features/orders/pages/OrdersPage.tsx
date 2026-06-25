@@ -9,7 +9,6 @@ import {
   XCircle,
   Play,
   AlertCircle,
-  Radio,
   Bell,
   RefreshCw,
   GripVertical,
@@ -544,7 +543,7 @@ const OrdersPage: React.FC = () => {
   }, [handlePrintReceipt]);
 
   // Set up WebSocket Hook
-  const { isConnected, triggerMockNotification } = useWebSocket(
+  const { isConnected } = useWebSocket(
     partnerUuid,
     token,
     handleNewOrderAlert

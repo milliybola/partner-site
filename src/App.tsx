@@ -15,6 +15,7 @@ import AllOrdersPage from './features/orders/pages/AllOrdersPage';
 import CreateOrderPage from './features/orders/pages/CreateOrderPage';
 import StaffPage from './features/staff/pages/StaffPage';
 import ShiftPage from './features/shifts/pages/ShiftPage';
+import TablesPage from './features/tables/pages/TablesPage';
 
 const App: React.FC = () => {
   return (
@@ -43,6 +44,7 @@ const App: React.FC = () => {
           <Route path="all-orders" element={<AllOrdersPage />} />
           <Route path="staff" element={<StaffPage />} />
           <Route path="shift" element={<ShiftPage />} />
+          <Route path="tables" element={<TablesPage />} />
         </Route>
 
         {/* Fallback redirect */}

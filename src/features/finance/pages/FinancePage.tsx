@@ -23,6 +23,7 @@ import apiClient from '../../../core/api/client';
 import { ENDPOINTS, STORAGE_KEYS } from '../../../core/config/constants';
 import { ordersApi } from '../../orders/services/ordersApi';
 import type { Order } from '../../orders/services/ordersApi';
+import { financeApi } from '../services/financeApi';
 
 interface TopProduct {
   name: string;
@@ -116,6 +117,7 @@ const FinancePage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(!isManager);
   const [error, setError] = useState<string | null>(null);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   const fetchFinanceData = async () => {
     setLoading(true);
@@ -142,6 +144,30 @@ const FinancePage: React.FC = () => {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportExcel = async (period: 'today' | 'this_week' | 'this_month' | 'overall') => {
+    setExportingExcel(true);
+    try {
+      const blob = await financeApi.exportFinanceExcel(period);
+      const isCsv = blob.type === 'text/csv';
+      const fileName = `Moliya_Hisoboti_${period}_${new Date().toISOString().slice(0, 10)}.${isCsv ? 'csv' : 'xlsx'}`;
+      
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error("Failed to export Excel:", err);
+      alert("Excel hisobotini yuklab olishda xatolik yuz berdi.");
+    } finally {
+      setExportingExcel(false);
     }
   };
 
@@ -392,11 +418,21 @@ const FinancePage: React.FC = () => {
           </div>
 
           <button
-            onClick={() => alert(`Excel hisoboti yuklab olindi (Davr: ${activeStats.title})`)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white transition text-slate-300 text-sm font-semibold cursor-pointer"
+            onClick={() => handleExportExcel(activeTab)}
+            disabled={exportingExcel}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white transition text-slate-300 text-sm font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Download className="w-4 h-4" />
-            <span>Hisobotni yuklash</span>
+            {exportingExcel ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                <span>Yuklanmoqda...</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" />
+                <span>Hisobotni yuklash</span>
+              </>
+            )}
           </button>
         </div>
       </div>

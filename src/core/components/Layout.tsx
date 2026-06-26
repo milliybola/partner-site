@@ -13,7 +13,8 @@ import {
   PlusCircle,
   Settings,
   Users,
-  Clock
+  Clock,
+  Table
 } from 'lucide-react';
 import { STORAGE_KEYS } from '../config/constants';
 
@@ -92,6 +93,7 @@ const Layout: React.FC = () => {
     { to: '/orders', label: 'Karban', icon: ShoppingBag },
     { to: '/new-order', label: 'Yangi buyurtma', icon: PlusCircle },
     { to: '/shift', label: 'Smena', icon: Clock },
+    { to: '/tables', label: 'Stollar', icon: Table },
     { to: '/catalog', label: 'Katalog', icon: Grid },
     ...(partner?.role === 'manager' ? [] : [{ to: '/finance', label: 'Moliya', icon: DollarSign }]),
     { to: '/all-orders', label: 'Barcha buyurtmalar', icon: ShoppingBag },

@@ -28,6 +28,9 @@ export const ENDPOINTS = {
   DASHBOARD: {
     STATS: 'partner/statistics/',
   },
+  FINANCE: {
+    EXPORT: 'partner/finance/export/excel/',
+  },
   ORDERS: {
     LIST: 'orders/',
     UPDATE_STATUS: (orderUuid: string, statusSlug: string) =>
@@ -49,5 +52,12 @@ export const ENDPOINTS = {
     OPENING_HOURS: (restaurantUuid: string) =>
       `partner/opening-hours/?restaurant_uuid=${restaurantUuid}`,
     SAVE_OPENING_HOURS: 'partner/opening-hours/',
+  },
+  TABLES: {
+    BASE: 'partner/tables/',
+    AVAILABLE: 'partner/tables/available/',
+    BULK_IMPORT: 'partner/tables/bulk-import/',
+    UPDATE_STATUS: (uuid: string) => `partner/tables/${uuid}/status/`,
+    DETAIL: (uuid: string) => `partner/tables/${uuid}/`,
   },
 };

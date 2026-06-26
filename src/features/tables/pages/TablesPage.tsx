@@ -9,7 +9,6 @@ import {
   List, 
   Users, 
   Search, 
-  SlidersHorizontal,
   Info,
   CheckCircle,
   HelpCircle,

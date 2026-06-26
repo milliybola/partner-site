@@ -22,14 +22,23 @@ export const useWebSocket = (
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<any>(null);
+  const isClosedIntentionallyRef = useRef(false);
+
+  // Keep latest onNewOrder callback in a ref to avoid reconnecting when callback reference changes
+  const onNewOrderRef = useRef(onNewOrder);
+  useEffect(() => {
+    onNewOrderRef.current = onNewOrder;
+  }, [onNewOrder]);
+
+  // Keep connect callback in a ref to solve circular dependency with _scheduleReconnect
+  const connectRef = useRef<() => void>(() => {});
 
   // Play standard notification sound
   const playAlertSound = useCallback(() => {
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       
-      // Let's create a beautiful chime sound programmatically
-      // oscillator 1 (high pitch) + oscillator 2 (harmonious chord)
+      // Create a chime sound programmatically
       const playTone = (freq: number, startTime: number, duration: number, volume: number) => {
         const osc = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
@@ -48,7 +57,6 @@ export const useWebSocket = (
       };
 
       const now = audioCtx.currentTime;
-      // Beautiful double chime
       playTone(523.25, now, 0.4, 0.15); // C5
       playTone(659.25, now + 0.15, 0.6, 0.15); // E5
       playTone(783.99, now + 0.15, 0.6, 0.1); // G5
@@ -57,14 +65,36 @@ export const useWebSocket = (
     }
   }, []);
 
+  // Helper to schedule a reconnection attempt
+  const _scheduleReconnect = useCallback((delayMs: number = 3000) => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+    console.log(`[WS] Reconnect scheduled in ${delayMs / 1000}s`);
+    reconnectTimeoutRef.current = setTimeout(() => {
+      console.log('[WS] Attempting to reconnect...');
+      connectRef.current();
+    }, delayMs);
+  }, []);
+
   const connect = useCallback(() => {
     if (!restaurantUuid || !token) return;
 
+    // Clear any active reconnect timer
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
+    isClosedIntentionallyRef.current = false;
+
     // Close existing socket if any
     if (socketRef.current) {
+      isClosedIntentionallyRef.current = true;
       socketRef.current.close();
     }
 
+    isClosedIntentionallyRef.current = false;
     const wsUrl = `${WS_BASE_URL}${restaurantUuid}/orders/?token=${token}`;
     const socket = new WebSocket(wsUrl);
     socketRef.current = socket;
@@ -80,7 +110,7 @@ export const useWebSocket = (
         console.log('WebSocket received message:', data);
         if (data.type === 'new_order_alert') {
           playAlertSound();
-          onNewOrder(data as NewOrderEvent);
+          onNewOrderRef.current(data as NewOrderEvent);
         }
       } catch (e) {
         console.error('Failed to parse WebSocket message:', e);
@@ -91,22 +121,27 @@ export const useWebSocket = (
       console.log('WebSocket Connection Closed:', event.reason);
       setIsConnected(false);
       
-      // Try to reconnect after 5 seconds if connection was not closed cleanly or intentionally
-      reconnectTimeoutRef.current = setTimeout(() => {
-        console.log('Attempting to reconnect WebSocket...');
-        connect();
-      }, 5000);
+      // Try to reconnect after 3 seconds if connection was not closed intentionally
+      if (!isClosedIntentionallyRef.current) {
+        _scheduleReconnect(3000);
+      }
     };
 
     socket.onerror = (error) => {
       console.error('WebSocket Error:', error);
     };
-  }, [restaurantUuid, token, onNewOrder, playAlertSound]);
+  }, [restaurantUuid, token, playAlertSound, _scheduleReconnect]);
+
+  // Keep connectRef pointing to the latest connect function
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   useEffect(() => {
     connect();
 
     return () => {
+      isClosedIntentionallyRef.current = true;
       if (socketRef.current) {
         socketRef.current.close();
       }
@@ -130,8 +165,8 @@ export const useWebSocket = (
         address: 'Toshkent shahar, Yunusobod tumani, 4-daha, 12-uy'
       }
     };
-    onNewOrder(mockEvent);
-  }, [onNewOrder, playAlertSound]);
+    onNewOrderRef.current(mockEvent);
+  }, [playAlertSound]);
 
   return { isConnected, triggerMockNotification };
 };

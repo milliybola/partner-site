@@ -81,6 +81,11 @@ export const ordersApi = {
     return response.data;
   },
 
+  completeOrder: async (orderUuid: string): Promise<any> => {
+    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/complete/`);
+    return response.data;
+  },
+
   createOrder: async (payload: {
     description: string;
     address: string;

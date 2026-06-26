@@ -105,6 +105,7 @@ interface KanbanCardProps {
   onDragStart: () => void;
   onDragEnd: () => void;
   onClick: () => void;
+  onComplete?: (orderUuid: string) => void;
   isSelected: boolean;
   formatUzS: (amount: number | string | null | undefined) => string;
 }
@@ -114,6 +115,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
   onDragStart,
   onDragEnd,
   onClick,
+  onComplete,
   isSelected,
   formatUzS
 }) => {
@@ -176,9 +178,21 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
           {(order.items || []).length} ta xil
         </span>
-        <span className="text-[10px] font-bold text-brand group-hover:translate-x-0.5 transition-transform">
-          Batafsil →
-        </span>
+        {order.status === 'READY_FOR_PICKUP' && (order.delivery_type === 'PICKUP' || order.delivery_type === 'DINE_IN') && onComplete ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onComplete(order.uuid);
+            }}
+            className="text-[10px] font-bold px-2.5 py-1 rounded bg-emerald-500 hover:bg-emerald-600 text-slate-950 transition cursor-pointer"
+          >
+            Berish
+          </button>
+        ) : (
+          <span className="text-[10px] font-bold text-brand group-hover:translate-x-0.5 transition-transform">
+            Batafsil →
+          </span>
+        )}
       </div>
     </div>
   );
@@ -220,8 +234,10 @@ const OrdersPage: React.FC = () => {
     setToken(localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN));
   }, []);
 
-  const fetchOrders = useCallback(async () => {
-    setLoading(true);
+  const fetchOrders = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const data = await ordersApi.getOrders();
@@ -234,7 +250,9 @@ const OrdersPage: React.FC = () => {
         "Buyurtmalarni yuklashda xatolik yuz berdi. Internet aloqasini tekshiring."
       );
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -507,40 +525,22 @@ const OrdersPage: React.FC = () => {
   const handleNewOrderAlert = useCallback((event: any) => {
     const orderData = event.order_data;
 
-    // Add to orders list
-    const newOrder: Order = {
-      id: Math.floor(10000 + Math.random() * 90000),
-      uuid: orderData.uuid,
-      status: orderData.status || 'PENDING',
-      contact_phone: orderData.contact_phone || '+998 (--) --- -- --',
-      address: orderData.address || 'Manzil ko\'rsatilmagan',
-      created_at: new Date().toLocaleString('uz-UZ'),
-      delivery_fee: 15000,
-      total_price: parseFloat(orderData.total_price || 0),
-      payment: 'CASH',
-      items: orderData.items || [{ product: { name: "Noma'lum taom", price: parseFloat(orderData.total_price) }, quantity: 1 }]
-    };
-
-    setOrders((prev) => [newOrder, ...prev]);
-
     // Visual Slide-in toast
     setNewOrderToast({
       show: true,
       message: event.message || 'Yangi buyurtma keldi!',
-      orderUuid: newOrder.uuid,
-      price: newOrder.total_price
+      orderUuid: orderData.uuid,
+      price: orderData.total_price
     });
 
     // Auto-clear toast after 8 seconds
     setTimeout(() => {
-      setNewOrderToast((current) => current?.orderUuid === newOrder.uuid ? null : current);
+      setNewOrderToast((current) => current?.orderUuid === orderData.uuid ? null : current);
     }, 8000);
 
-    // Auto-print receipt if enabled in localStorage
-    if (localStorage.getItem('milliygo_auto_print') === 'true') {
-      handlePrintReceipt(newOrder.uuid);
-    }
-  }, [handlePrintReceipt]);
+    // Refresh orders list silently
+    fetchOrders(false);
+  }, [fetchOrders]);
 
   // Set up WebSocket Hook
   const { isConnected } = useWebSocket(
@@ -561,11 +561,39 @@ const OrdersPage: React.FC = () => {
           setSelectedOrder({ ...updatedOrd, status: nextStatus as any });
         }
       }
+      if (nextStatus === 'READY_FOR_PICKUP') {
+        const targetOrder = orders.find((o) => o.uuid === orderUuid);
+        if (targetOrder && targetOrder.delivery_type === 'DELIVERY') {
+          if (localStorage.getItem('milliygo_auto_print') === 'true') {
+            handlePrintReceipt(orderUuid);
+          }
+        }
+      }
       if (nextStatus === 'COMPLETED') {
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
       }
     } catch (err) {
       alert("Buyurtma holatini yangilashda xatolik yuz berdi.");
+    }
+  };
+
+  const handleCompleteOrder = async (orderUuid: string) => {
+    try {
+      await ordersApi.completeOrder(orderUuid);
+      // Refresh list
+      fetchOrders(false);
+      // Update drawer if open
+      if (selectedOrder && selectedOrder.uuid === orderUuid) {
+        setSelectedOrder(null);
+      }
+      
+      // Auto-print receipt on completion
+      handlePrintReceipt(orderUuid);
+      
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+    } catch (err: any) {
+      console.error("Failed to complete order:", err);
+      alert(err.response?.data?.message || err.message || "Buyurtmani yakunlashda xatolik yuz berdi.");
     }
   };
 
@@ -759,7 +787,7 @@ const OrdersPage: React.FC = () => {
                 <h4 className="font-bold text-white text-base mb-1">Xatolik yuz berdi</h4>
                 <p className="text-sm max-w-sm mb-4 text-slate-400">{error}</p>
                 <button
-                  onClick={fetchOrders}
+                  onClick={() => fetchOrders()}
                   className="px-4 py-2 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs transition cursor-pointer flex items-center gap-1 justify-center mx-auto"
                 >
                   <RefreshCw className="w-4 h-4 animate-[spin_4s_linear_infinite]" />
@@ -816,7 +844,19 @@ const OrdersPage: React.FC = () => {
                       <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-slate-900 text-slate-300">
                         {(order.items || []).length} ta xil taom
                       </span>
-                      <span className="text-xs font-semibold text-brand">Batafsil →</span>
+                      {order.status === 'READY_FOR_PICKUP' && (order.delivery_type === 'PICKUP' || order.delivery_type === 'DINE_IN') ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCompleteOrder(order.uuid);
+                          }}
+                          className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 transition cursor-pointer"
+                        >
+                          Mijozga berish
+                        </button>
+                      ) : (
+                        <span className="text-xs font-semibold text-brand">Batafsil →</span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -842,7 +882,7 @@ const OrdersPage: React.FC = () => {
                 <h4 className="font-bold text-white text-base mb-1">Xatolik yuz berdi</h4>
                 <p className="text-sm max-w-sm mb-4 text-slate-400">{error}</p>
                 <button
-                  onClick={fetchOrders}
+                  onClick={() => fetchOrders()}
                   className="px-4 py-2 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs transition cursor-pointer flex items-center gap-1 justify-center"
                 >
                   <RefreshCw className="w-4 h-4 animate-[spin_4s_linear_infinite]" />
@@ -917,6 +957,7 @@ const OrdersPage: React.FC = () => {
                               setIsDragging(false);
                             }}
                             onClick={() => setSelectedOrder(order)}
+                            onComplete={handleCompleteOrder}
                             isSelected={selectedOrder?.uuid === order.uuid}
                           />
                         ))
@@ -1139,6 +1180,15 @@ const OrdersPage: React.FC = () => {
 
               {selectedOrder.status === 'READY_FOR_PICKUP' && (
                 <div className="space-y-2">
+                  {(selectedOrder.delivery_type === 'PICKUP' || selectedOrder.delivery_type === 'DINE_IN') && (
+                    <button
+                      onClick={() => handleCompleteOrder(selectedOrder.uuid)}
+                      className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 shadow-lg shadow-emerald-600/10"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      Mijozga berish
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       handleUpdateStatus(selectedOrder.uuid, 'PREPARING');

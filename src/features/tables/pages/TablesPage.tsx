@@ -314,17 +314,18 @@ const TablesPage: React.FC = () => {
   };
 
   // Filtered and Searched Tables List
-  const filteredTables = tables.filter(t => {
-    const matchesSearch = t.table_number.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      (t.notes && t.notes.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredTables = (Array.isArray(tables) ? tables : []).filter(t => {
+    const tableNumStr = String(t?.table_number || '');
+    const matchesSearch = tableNumStr.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      (t?.notes && String(t.notes).toLowerCase().includes(searchQuery.toLowerCase()));
 
-    const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
+    const matchesStatus = statusFilter === 'ALL' || t?.status === statusFilter;
     
     let matchesActive = true;
     if (activeFilter === 'ACTIVE') {
-      matchesActive = t.is_active !== false;
+      matchesActive = t?.is_active !== false;
     } else if (activeFilter === 'INACTIVE') {
-      matchesActive = t.is_active === false;
+      matchesActive = t?.is_active === false;
     }
 
     return matchesSearch && matchesStatus && matchesActive;
@@ -526,11 +527,11 @@ const TablesPage: React.FC = () => {
           /* Visual GRID View Layout */
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
             {filteredTables.map((table) => {
-              const borderGlow = {
+              const borderGlow = ({
                 AVAILABLE: 'hover:border-emerald-500/40 hover:shadow-emerald-500/5',
                 OCCUPIED: 'hover:border-rose-500/40 hover:shadow-rose-500/5',
                 RESERVED: 'hover:border-amber-500/40 hover:shadow-amber-500/5'
-              }[table.status];
+              } as Record<string, string>)[table.status || 'AVAILABLE'] || '';
 
               return (
                 <div 

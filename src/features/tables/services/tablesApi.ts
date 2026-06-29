@@ -18,15 +18,20 @@ export interface TableModel {
 }
 
 export interface TablesListResponse {
-  success: boolean;
-  count: number;
-  data: TableModel[];
+  success?: boolean;
+  count?: number;
+  data?: TableModel[];
+  results?: TableModel[];
 }
 
 export interface TableDetailResponse {
-  success: boolean;
+  success?: boolean;
   message?: string;
-  data: TableModel;
+  data?: TableModel;
+  uuid?: string;
+  table_number?: string;
+  capacity?: number;
+  status?: TableStatus;
 }
 
 export interface BulkImportPayload {
@@ -50,27 +55,39 @@ export interface BulkImportResponse {
 export const tablesApi = {
   getTables: async (): Promise<TableModel[]> => {
     const response = await apiClient.get<TablesListResponse>(ENDPOINTS.TABLES.BASE);
+    if (response.data?.results) {
+      return response.data.results;
+    }
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
     return response.data?.data || [];
   },
 
   getAvailableTables: async (): Promise<TableModel[]> => {
     const response = await apiClient.get<TablesListResponse>(ENDPOINTS.TABLES.AVAILABLE);
+    if (response.data?.results) {
+      return response.data.results;
+    }
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
     return response.data?.data || [];
   },
 
   createTable: async (payload: Partial<TableModel>): Promise<TableModel> => {
-    const response = await apiClient.post<TableDetailResponse>(ENDPOINTS.TABLES.BASE, payload);
-    return response.data?.data;
+    const response = await apiClient.post<any>(ENDPOINTS.TABLES.BASE, payload);
+    return response.data?.data || response.data;
   },
 
   updateTable: async (uuid: string, payload: Partial<TableModel>): Promise<TableModel> => {
-    const response = await apiClient.put<TableDetailResponse>(ENDPOINTS.TABLES.DETAIL(uuid), payload);
-    return response.data?.data;
+    const response = await apiClient.put<any>(ENDPOINTS.TABLES.DETAIL(uuid), payload);
+    return response.data?.data || response.data;
   },
 
   updateTableStatus: async (uuid: string, status: TableStatus): Promise<TableModel> => {
-    const response = await apiClient.patch<TableDetailResponse>(ENDPOINTS.TABLES.UPDATE_STATUS(uuid), { status });
-    return response.data?.data;
+    const response = await apiClient.patch<any>(ENDPOINTS.TABLES.UPDATE_STATUS(uuid), { status });
+    return response.data?.data || response.data;
   },
 
   deleteTable: async (uuid: string): Promise<boolean> => {

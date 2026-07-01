@@ -20,6 +20,8 @@ import {
 import { STORAGE_KEYS } from '../../../core/config/constants';
 import apiClient from '../../../core/api/client';
 import { ordersApi } from '../services/ordersApi';
+import { tablesApi } from '../../tables/services/tablesApi';
+import type { TableModel } from '../../tables/services/tablesApi';
 import confetti from 'canvas-confetti';
 
 interface Product {
@@ -65,6 +67,8 @@ const CreateOrderPage: React.FC = () => {
   const [contactPhone, setContactPhone] = useState('');
   const [address, setAddress] = useState('');
   const [tableNumber, setTableNumber] = useState('');
+  const [tables, setTables] = useState<TableModel[]>([]);
+  const [selectedTableUuid, setSelectedTableUuid] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CLICK' | 'PAYME' | 'UZCARD'>('CASH');
   const [comment, setComment] = useState('');
 
@@ -81,6 +85,16 @@ const CreateOrderPage: React.FC = () => {
     if (data) {
       setPartnerDetails(JSON.parse(data));
     }
+    
+    const fetchTables = async () => {
+      try {
+        const response = await tablesApi.getTables();
+        setTables(response.filter(t => t.is_active !== false));
+      } catch (err) {
+        console.error("Failed to fetch tables:", err);
+      }
+    };
+    fetchTables();
   }, []);
 
   // Fetch Catalog items
@@ -238,10 +252,10 @@ const CreateOrderPage: React.FC = () => {
     } else if (serviceType === 'PICKUP') {
       return contactName.trim().length >= 2 && contactPhone.trim().length >= 7;
     } else if (serviceType === 'DINE_IN') {
-      return tableNumber.trim().length > 0;
+      return selectedTableUuid.trim().length > 0;
     }
     return false;
-  }, [cart, serviceType, contactName, contactPhone, address, tableNumber]);
+  }, [cart, serviceType, contactName, contactPhone, address, selectedTableUuid]);
 
   // Handle Order Submit
   const handleSubmitOrder = async (e: React.FormEvent) => {
@@ -290,7 +304,7 @@ const CreateOrderPage: React.FC = () => {
         await ordersApi.createPickupOrder(payload);
       } else if (serviceType === 'DINE_IN') {
         const payload = {
-          table_number: tableNumber.trim(),
+          table: selectedTableUuid,
           payment_method: paymentMethod,
           contact_phone: cleanedPhone || undefined,
           contact_name: contactName.trim() || undefined,
@@ -696,16 +710,21 @@ const CreateOrderPage: React.FC = () => {
                 <div className="space-y-1.5 animate-fade-in">
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
                     <Utensils className="w-3.5 h-3.5 text-brand" />
-                    <span>Stol raqami</span>
+                    <span>Stolni tanlang</span>
                   </label>
-                  <input
-                    type="text"
+                  <select
                     required
-                    placeholder="Masalan: 5"
-                    value={tableNumber}
-                    onChange={(e) => setTableNumber(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
-                  />
+                    value={selectedTableUuid}
+                    onChange={(e) => setSelectedTableUuid(e.target.value)}
+                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none transition cursor-pointer"
+                  >
+                    <option value="" className="bg-slate-900 text-slate-500">Stolni tanlang...</option>
+                    {tables.map((t) => (
+                      <option key={t.uuid} value={t.uuid} className="bg-slate-900 text-white">
+                        {t.table_number}-stol ({t.capacity} kishilik) - {t.status_display || t.status}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
 

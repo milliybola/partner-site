@@ -124,7 +124,7 @@ export const ordersApi = {
   },
 
   createDineInOrder: async (payload: {
-    table_number: string;
+    table: string;
     payment_method: string;
     contact_phone?: string;
     contact_name?: string;

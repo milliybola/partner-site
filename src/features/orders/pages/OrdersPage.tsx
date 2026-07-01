@@ -16,7 +16,8 @@ import {
   List,
   Printer,
   User,
-  Truck
+  Truck,
+  Utensils
 } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
 import type { Order } from '../services/ordersApi';
@@ -206,6 +207,7 @@ const OrdersPage: React.FC = () => {
   // Tabs & Views States
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'active' | 'history'>('pending');
+  const [orderTypeFilter, setOrderTypeFilter] = useState<'ALL' | 'DELIVERY' | 'PICKUP' | 'DINE_IN'>('ALL');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [printingUuid, setPrintingUuid] = useState<string | null>(null);
 
@@ -597,17 +599,23 @@ const OrdersPage: React.FC = () => {
     }
   };
 
+  const getFilteredOrdersByDeliveryType = useCallback((orderList: Order[]) => {
+    if (orderTypeFilter === 'ALL') return orderList;
+    return orderList.filter((o) => o.delivery_type === orderTypeFilter);
+  }, [orderTypeFilter]);
+
   const getFilteredOrders = () => {
+    const typeFiltered = getFilteredOrdersByDeliveryType(orders);
     switch (activeTab) {
       case 'pending':
-        return orders.filter((o) => o.status === 'PENDING' || o.status === 'SEARCHING_COURIER');
+        return typeFiltered.filter((o) => o.status === 'PENDING' || o.status === 'SEARCHING_COURIER');
       case 'active':
-        return orders.filter((o) => ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'DELIVERING'].includes(o.status));
+        return typeFiltered.filter((o) => ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'DELIVERING'].includes(o.status));
       case 'history':
-        return orders.filter((o) => ['COMPLETED', 'REJECTED', 'CANCELLED'].includes(o.status));
+        return typeFiltered.filter((o) => ['COMPLETED', 'REJECTED', 'CANCELLED'].includes(o.status));
       case 'all':
       default:
-        return orders;
+        return typeFiltered;
     }
   };
 
@@ -644,9 +652,10 @@ const OrdersPage: React.FC = () => {
     return num.toLocaleString('uz-UZ') + " UZS";
   };
 
+  const typeFilteredOrders = getFilteredOrdersByDeliveryType(orders);
   const filteredOrders = getFilteredOrders();
-  const pendingCount = orders.filter((o) => o.status === 'PENDING' || o.status === 'SEARCHING_COURIER').length;
-  const activeCount = orders.filter((o) => ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'DELIVERING'].includes(o.status)).length;
+  const pendingCount = typeFilteredOrders.filter((o) => o.status === 'PENDING' || o.status === 'SEARCHING_COURIER').length;
+  const activeCount = typeFilteredOrders.filter((o) => ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'DELIVERING'].includes(o.status)).length;
 
   return (
     <div className="space-y-8 font-Outfit relative min-h-[80vh]">
@@ -721,6 +730,54 @@ const OrdersPage: React.FC = () => {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Order Type Filter Tabs */}
+      <div className="flex flex-wrap items-center gap-2 p-1 bg-white/5 rounded-2xl border border-white/10 w-fit">
+        <button
+          onClick={() => setOrderTypeFilter('ALL')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${
+            orderTypeFilter === 'ALL'
+              ? 'bg-brand text-white border-brand shadow-lg shadow-brand/15'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
+          }`}
+        >
+          <ShoppingBag className="w-4 h-4" />
+          <span>Barchasi ({orders.length})</span>
+        </button>
+        <button
+          onClick={() => setOrderTypeFilter('DELIVERY')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${
+            orderTypeFilter === 'DELIVERY'
+              ? 'bg-blue-500/20 text-blue-400 border-blue-500/30 shadow-lg shadow-blue-500/5'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
+          }`}
+        >
+          <Truck className="w-4 h-4" />
+          <span>Yetkazib berish ({orders.filter(o => o.delivery_type === 'DELIVERY').length})</span>
+        </button>
+        <button
+          onClick={() => setOrderTypeFilter('PICKUP')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${
+            orderTypeFilter === 'PICKUP'
+              ? 'bg-amber-500/20 text-amber-400 border-amber-500/30 shadow-lg shadow-amber-500/5'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          <span>Olib ketish ({orders.filter(o => o.delivery_type === 'PICKUP').length})</span>
+        </button>
+        <button
+          onClick={() => setOrderTypeFilter('DINE_IN')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${
+            orderTypeFilter === 'DINE_IN'
+              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 shadow-lg shadow-emerald-500/5'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
+          }`}
+        >
+          <Utensils className="w-4 h-4" />
+          <span>Stollar ({orders.filter(o => o.delivery_type === 'DINE_IN').length})</span>
+        </button>
       </div>
 
       {/* Main content container (full width) */}
@@ -891,7 +948,7 @@ const OrdersPage: React.FC = () => {
               </div>
             ) : (
               KANBAN_COLUMNS.map((col) => {
-                const colOrders = orders.filter(o =>
+                const colOrders = getFilteredOrdersByDeliveryType(orders).filter(o =>
                   col.status === 'PENDING'
                     ? (o.status === 'PENDING' || o.status === 'SEARCHING_COURIER')
                     : o.status === col.status

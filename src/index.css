@@ -29,11 +29,11 @@ body {
 /* Premium micro-animations */
 @keyframes slideUp {
   from {
-    transform: translate(-50%, 24px);
+    transform: translateY(24px);
     opacity: 0;
   }
   to {
-    transform: translate(-50%, 0);
+    transform: translateY(0);
     opacity: 1;
   }
 }

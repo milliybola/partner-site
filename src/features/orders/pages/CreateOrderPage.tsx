@@ -66,7 +66,6 @@ const CreateOrderPage: React.FC = () => {
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [tableNumber, setTableNumber] = useState('');
   const [tables, setTables] = useState<TableModel[]>([]);
   const [selectedTableUuid, setSelectedTableUuid] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CLICK' | 'PAYME' | 'UZCARD'>('CASH');
@@ -89,7 +88,7 @@ const CreateOrderPage: React.FC = () => {
     const fetchTables = async () => {
       try {
         const response = await tablesApi.getTables();
-        setTables(response.filter(t => t.is_active !== false));
+        setTables(response.filter(t => t.is_active !== false && t.status === 'AVAILABLE'));
       } catch (err) {
         console.error("Failed to fetch tables:", err);
       }

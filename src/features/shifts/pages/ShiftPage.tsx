@@ -605,6 +605,7 @@ const ShiftPage: React.FC = () => {
             </button>
           </div>
 
+
           {loadingHistory ? (
             <div className="flex flex-col items-center justify-center py-24 gap-4">
               <div className="w-10 h-10 border-4 border-brand/30 border-t-brand rounded-full animate-spin" />

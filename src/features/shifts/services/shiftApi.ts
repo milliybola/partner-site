@@ -67,7 +67,14 @@ export const shiftApi = {
   },
 
   exportShiftsExcel: async (period: 'day' | 'week' | 'month' | 'all' = 'day'): Promise<Blob> => {
-    const response = await apiClient.get<Blob>(`${ENDPOINTS.SHIFTS.EXPORT}?period=${period}`, {
+    const periodMap: Record<string, string> = {
+      day: 'today',
+      week: 'this_week',
+      month: 'this_month',
+      all: 'overall'
+    };
+    const backendPeriod = periodMap[period] || period;
+    const response = await apiClient.get<Blob>(`${ENDPOINTS.SHIFTS.EXPORT}?period=${backendPeriod}`, {
       responseType: 'blob',
     });
     return response.data;

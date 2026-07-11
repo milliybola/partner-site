@@ -12,6 +12,11 @@ export interface OrderItem {
   } | null;
   quantity: number;
   price_at_time_of_order?: string | number;
+  product_uuid?: string;
+  product_name?: string;
+  product_image?: string;
+  line_total?: number;
+  name?: string;
 }
 
 export interface Order {
@@ -132,6 +137,68 @@ export const ordersApi = {
     items: { product_uuid: string; quantity: number }[];
   }): Promise<any> => {
     const response = await apiClient.post('orders/partner-pos/create-dine-in/', payload);
+    return response.data;
+  },
+
+  managerLogin: async (payload: { phone: string; password: string }): Promise<{ access: string }> => {
+    const response = await apiClient.post('partner/staff/login/', payload);
+    return response.data;
+  },
+
+  getOrderItems: async (orderUuid: string, managerToken?: string): Promise<any> => {
+    const config: any = {};
+    if (managerToken) {
+      config.headers = {
+        Authorization: `Bearer ${managerToken}`,
+      };
+    }
+    const response = await apiClient.get(`orders/partner-pos/${orderUuid}/items/`, config);
+    return response.data;
+  },
+
+  addOrderItems: async (
+    orderUuid: string,
+    payload: { items: { product_uuid: string; quantity: number }[] },
+    managerToken?: string
+  ): Promise<any> => {
+    const config: any = {};
+    if (managerToken) {
+      config.headers = {
+        Authorization: `Bearer ${managerToken}`,
+      };
+    }
+    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/add-items/`, payload, config);
+    return response.data;
+  },
+
+  removeOrderItems: async (
+    orderUuid: string,
+    payload: { items: { item_uuid: string; quantity: number }[] },
+    managerToken?: string
+  ): Promise<any> => {
+    const config: any = {};
+    if (managerToken) {
+      config.headers = {
+        Authorization: `Bearer ${managerToken}`,
+      };
+    }
+    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/remove-items/`, payload, config);
+    return response.data;
+  },
+
+  updateOrderItemQuantity: async (
+    orderUuid: string,
+    itemUuid: string,
+    payload: { quantity: number },
+    managerToken?: string
+  ): Promise<any> => {
+    const config: any = {};
+    if (managerToken) {
+      config.headers = {
+        Authorization: `Bearer ${managerToken}`,
+      };
+    }
+    const response = await apiClient.patch(`orders/partner-pos/${orderUuid}/items/${itemUuid}/`, payload, config);
     return response.data;
   },
 };

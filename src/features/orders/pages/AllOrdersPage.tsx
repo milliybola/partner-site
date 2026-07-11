@@ -16,9 +16,11 @@ import {
   Printer,
   User,
   Truck,
+  Pencil
 } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
 import type { Order } from '../services/ordersApi';
+import { EditOrderModal } from '../components/EditOrderModal';
 
 const AllOrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -26,6 +28,7 @@ const AllOrdersPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [printingUuid, setPrintingUuid] = useState<string | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState('');
@@ -758,12 +761,21 @@ const AllOrdersPage: React.FC = () => {
                 <h3 className="font-bold text-lg text-white">Buyurtma {selectedOrder.order_number || `#${selectedOrder.id}`} Tafsilotlari</h3>
                 <p className="text-xs text-slate-400 mt-0.5">{selectedOrder.created_at}</p>
               </div>
-              <button
-                onClick={() => setSelectedOrder(null)}
-                className="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-white transition cursor-pointer text-xs font-bold"
-              >
-                Yopish
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditingOrder(selectedOrder)}
+                  className="px-3 py-1.5 rounded-lg bg-brand/10 hover:bg-brand/20 text-brand border border-brand/20 transition cursor-pointer text-xs font-bold flex items-center gap-1.5"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  Tahrirlash
+                </button>
+                <button
+                  onClick={() => setSelectedOrder(null)}
+                  className="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-white transition cursor-pointer text-xs font-bold"
+                >
+                  Yopish
+                </button>
+              </div>
             </div>
 
             {/* Status indicators */}
@@ -777,7 +789,7 @@ const AllOrdersPage: React.FC = () => {
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Buyurtma qilingan taomlar</h4>
               <div className="divide-y divide-white/5 max-h-60 overflow-y-auto pr-1">
                 {(selectedOrder.items || []).map((item, idx) => {
-                  const productName = item?.product?.name || "Noma'lum taom";
+                  const productName = item?.product_name || item?.name || item?.product?.name || "Noma'lum taom";
                   const productPrice = Number(item?.price_at_time_of_order || item?.product?.price || 0);
                   const quantity = item?.quantity || 0;
                   return (
@@ -892,6 +904,29 @@ const AllOrdersPage: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+
+      {/* Edit Order Modal Dialog */}
+      {editingOrder && (
+        <EditOrderModal
+          orderUuid={editingOrder.uuid}
+          orderNumber={editingOrder.order_number || `#${editingOrder.id}`}
+          onClose={async (refresh) => {
+            setEditingOrder(null);
+            if (refresh) {
+              try {
+                const data = await ordersApi.getOrders();
+                setOrders(data);
+                const fresh = data.find((o: Order) => o.uuid === editingOrder.uuid);
+                if (fresh) {
+                  setSelectedOrder(fresh);
+                }
+              } catch (err) {
+                console.error("Failed to refresh orders after edit:", err);
+              }
+            }
+          }}
+        />
       )}
     </div>
   );

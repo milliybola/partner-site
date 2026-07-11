@@ -14,6 +14,34 @@ interface NewOrderEvent {
   order_data: OrderAlertData;
 }
 
+let sharedAudioCtx: AudioContext | null = null;
+
+const initSharedAudioCtx = () => {
+  if (typeof window === 'undefined') return null;
+  if (!sharedAudioCtx) {
+    sharedAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+  if (sharedAudioCtx.state === 'suspended') {
+    sharedAudioCtx.resume().catch((err) => console.warn("[Audio] Failed to resume context:", err));
+  }
+  return sharedAudioCtx;
+};
+
+// Autoplay bypass: unlock audio context on first user click/keypress/touchstart
+if (typeof window !== 'undefined') {
+  const unlockAudio = () => {
+    const ctx = initSharedAudioCtx();
+    if (ctx && ctx.state === 'running') {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    }
+  };
+  window.addEventListener('click', unlockAudio);
+  window.addEventListener('keydown', unlockAudio);
+  window.addEventListener('touchstart', unlockAudio);
+}
+
 export const useWebSocket = (
   restaurantUuid: string | undefined,
   token: string | null,
@@ -36,7 +64,13 @@ export const useWebSocket = (
   // Play standard notification sound
   const playAlertSound = useCallback(() => {
     try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioCtx = initSharedAudioCtx();
+      if (!audioCtx) return;
+
+      // Force resume in case it was suspended somehow
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
       
       // Create a chime sound programmatically
       const playTone = (freq: number, startTime: number, duration: number, volume: number) => {

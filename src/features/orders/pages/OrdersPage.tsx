@@ -273,12 +273,12 @@ const OrdersPage: React.FC = () => {
         const unitPrice = Number(item.unit_price || 0).toLocaleString('uz-UZ');
         const lineTotal = Number(item.line_total || 0).toLocaleString('uz-UZ');
         return `
-          <div style="margin-bottom: 8px; font-size: 13px; font-weight: 800; color: #000;">
-            <div style="display: flex; justify-content: space-between; font-weight: 900; color: #000;">
+          <div style="margin-bottom: 6px; font-size: 11px; font-weight: 500; color: #000;">
+            <div style="display: flex; justify-content: space-between; font-weight: 700; color: #000;">
               <span>${productName}</span>
               <span>${lineTotal} UZS</span>
             </div>
-            <div style="font-size: 11px; color: #000; font-weight: 800; margin-top: 1px;">
+            <div style="font-size: 10px; color: #000; font-weight: 500; margin-top: 1px;">
               ${unitPrice} UZS x ${item.quantity}
             </div>
           </div>
@@ -300,100 +300,100 @@ const OrdersPage: React.FC = () => {
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                 width: 74mm;
                 margin: 0 auto;
-                padding: 15px 10px;
+                padding: 8px 4px;
                 color: #000;
                 background: #fff;
-                line-height: 1.4;
-                font-weight: 800;
+                line-height: 1.35;
+                font-weight: 500;
               }
               .text-center { text-align: center; }
-              .bold { font-weight: 900; }
-              .header { margin-bottom: 12px; }
-              .header h2 { margin: 0 0 4px 0; font-size: 22px; font-weight: 900; letter-spacing: -0.5px; color: #000; }
-              .header p { margin: 1px 0; font-size: 12px; color: #000; font-weight: 800; }
+              .bold { font-weight: 700; }
+              .header { margin-bottom: 8px; }
+              .header h2 { margin: 0 0 2px 0; font-size: 16px; font-weight: 700; letter-spacing: -0.3px; color: #000; }
+              .header p { margin: 1px 0; font-size: 11px; color: #000; font-weight: 500; }
               .logo-box {
-                border: 2px solid #000;
+                border: 1px solid #000;
                 display: inline-block;
-                padding: 2px 10px;
-                font-weight: 900;
-                font-size: 14px;
-                margin-bottom: 8px;
+                padding: 1px 6px;
+                font-weight: 700;
+                font-size: 12px;
+                margin-bottom: 4px;
                 letter-spacing: 1px;
                 color: #000;
               }
               .divider { 
-                border-top: 2px dashed #000; 
-                margin: 12px 0; 
+                border-top: 1px dashed #000; 
+                margin: 8px 0; 
               }
               .info-row {
                 display: flex;
                 justify-content: space-between;
-                font-size: 12px;
+                font-size: 11px;
                 margin-bottom: 4px;
-                font-weight: 800;
+                font-weight: 500;
                 color: #000;
               }
-              .info-label { color: #000; font-weight: 700; }
-              .info-value { font-weight: 800; text-align: right; color: #000; }
+              .info-label { color: #000; font-weight: 500; }
+              .info-value { font-weight: 700; text-align: right; color: #000; }
               
               .items-header {
                 display: flex;
                 justify-content: space-between;
-                font-weight: 900;
-                font-size: 12px;
-                border-bottom: 2px solid #000;
-                padding-bottom: 4px;
-                margin-bottom: 6px;
+                font-weight: 700;
+                font-size: 11px;
+                border-bottom: 1px solid #000;
+                padding-bottom: 3px;
+                margin-bottom: 5px;
                 color: #000;
               }
               
               .totals-section {
-                margin-top: 8px;
+                margin-top: 6px;
               }
               .totals-row {
                 display: flex;
                 justify-content: space-between;
-                font-size: 12px;
+                font-size: 11px;
                 margin-bottom: 4px;
-                font-weight: 800;
+                font-weight: 500;
                 color: #000;
               }
               .grand-total-row {
                 display: flex;
                 justify-content: space-between;
-                font-size: 16px;
-                font-weight: 900;
-                border-top: 2px solid #000;
-                border-bottom: 2px solid #000;
-                padding: 6px 0;
+                font-size: 14px;
+                font-weight: 700;
+                border-top: 1px solid #000;
+                border-bottom: 1px solid #000;
+                padding: 5px 0;
                 margin: 8px 0;
                 color: #000;
               }
               .footer {
-                margin-top: 25px;
-                font-size: 11px;
+                margin-top: 15px;
+                font-size: 10px;
                 text-align: center;
                 color: #000;
-                font-weight: 800;
+                font-weight: 500;
               }
               .barcode {
                 font-family: 'Courier New', Courier, monospace;
-                font-size: 14px;
-                margin-top: 10px;
+                font-size: 12px;
+                margin-top: 6px;
                 letter-spacing: 2px;
-                font-weight: 900;
+                font-weight: 700;
                 color: #000;
               }
             </style>
           </head>
           <body>
-            <div class="header text-center" style="display: flex; flex-direction: column; align-items: center; margin-bottom: 12px;">
-            <div style="display: flex; flex-direction: row; align-items: center; gap: 8px">  
-            <img src="${window.location.origin}/logo.png" alt="MilliyGo Logo" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; margin-bottom: 4px;" />
-              <div style="font-size: 18px; font-weight: 700; letter-spacing: 1.5px; color: #000; margin-bottom: 6px;">MILLIYGO</div>
-            </div>
-              <h2 style="margin: 0; font-size: 20px; font-weight: 700; color: #000; text-transform: uppercase;">${receiptData.partner_name || ''}</h2>
-              <div style="font-size: 11px; color: #000; font-weight: 600; margin-top: 4px; line-height: 1.4; text-align: center;">
+            <div class="header text-center" style="display: flex; flex-direction: column; align-items: center; margin-bottom: 6px;">
+              <div style="display: flex; flex-direction: row; align-items: center; gap: 6px; margin-bottom: 2px;">  
+                <img src="${window.location.origin}/logo_bw.png" alt="MilliyGo Logo" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover;" />
+                <div style="font-size: 14px; font-weight: 700; letter-spacing: 1px; color: #000;">MILLIYGO</div>
+              </div>
+              <h2 style="margin: 0; font-size: 16px; font-weight: 700; color: #000; text-transform: uppercase;">${receiptData.partner_name || ''}</h2>
+              <div style="font-size: 10px; color: #000; font-weight: 500; margin-top: 2px; line-height: 1.2; text-align: center;">
                 <p style="margin: 1px 0;">${[receiptData.partner_address, receiptData.partner_phone].filter(Boolean).join(' | ')}</p>
               </div>
             </div>
@@ -465,21 +465,21 @@ const OrdersPage: React.FC = () => {
                 <span>${Number(receiptData.total_price).toLocaleString('uz-UZ')} UZS</span>
               </div>
               
-              <div class="info-row" style="margin-top: 6px;">
+              <div class="info-row" style="margin-top: 4px;">
                 <span class="info-label">To'lov turi:</span>
                 <span class="info-value bold">${receiptData.payment_method_display || receiptData.payment_method || ''}</span>
               </div>
              
               ${receiptData.description ? `
-              <div class="info-row" style="margin-top: 4px;">
+              <div class="info-row" style="margin-top: 3px;">
                 <span class="info-label">Izoh:</span>
                 <span class="info-value">${receiptData.description}</span>
               </div>` : ''}
             </div>
 
             <div class="footer">
-              <p class="bold" style="font-size: 12px; margin-bottom: 2px;">XARIDINGIZ UCHUN RAHMAT!</p>
-              <p style="margin: 0; font-weight: 800;">milliyapp.uz</p>
+              <p class="bold" style="font-size: 11px; margin-bottom: 2px;">XARIDINGIZ UCHUN RAHMAT!</p>
+              <p style="margin: 0; font-weight: 700;">milliyapp.uz</p>
               
             </div>
 

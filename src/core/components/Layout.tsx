@@ -147,7 +147,7 @@ const Layout: React.FC = () => {
       </header>
 
       {/* Sidebar - Desktop */}
-      <aside className={`hidden md:flex flex-col w-64 bg-darkCard border-r border-white/5 shrink-0 transition-all duration-300`}>
+      <aside className={`hidden md:flex flex-col w-64 h-full bg-darkCard border-r border-white/5 shrink-0 transition-all duration-300 overflow-y-auto`}>
         {/* Profile info in Sidebar */}
         <div className="p-6 border-b border-white/5 flex flex-col gap-3">
           <div className="flex items-center gap-3">
@@ -256,7 +256,7 @@ const Layout: React.FC = () => {
 
       {/* Mobile Drawer Navigation Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-30 bg-darkBg/95 backdrop-blur-md flex flex-col pt-16 animate-fade-in">
+        <div className="md:hidden fixed inset-0 z-30 bg-darkBg/95 backdrop-blur-md flex flex-col pt-16 animate-fade-in overflow-y-auto">
           <nav className="flex-1 px-6 py-8 space-y-2">
             {navItems.map((item) => {
               const Icon = item.icon;

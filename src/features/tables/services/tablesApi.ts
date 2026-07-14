@@ -13,6 +13,7 @@ export interface TableModel {
   is_active?: boolean;
   display_order?: number;
   partner_name?: string;
+  filial_uuid?: string;
   created_at?: string;
   updated_at?: string;
 }

@@ -20,6 +20,8 @@ import {
 import { STORAGE_KEYS } from '../../../core/config/constants';
 import { tablesApi } from '../services/tablesApi';
 import type { TableModel, TableStatus } from '../services/tablesApi';
+import { filialApi } from '../../orders/services/filialApi';
+import type { PartnerFilial } from '../../orders/services/filialApi';
 
 const TablesPage: React.FC = () => {
   // Authentication & Roles
@@ -61,6 +63,10 @@ const TablesPage: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Filial States for Superadmin
+  const [filialList, setFilialList] = useState<PartnerFilial[]>([]);
+  const [filialUuid, setFilialUuid] = useState('');
+
   // Form states for Bulk Import
   const [bulkMethod, setBulkMethod] = useState<'generator' | 'raw'>('generator');
   // Generator values
@@ -100,6 +106,11 @@ const TablesPage: React.FC = () => {
 
   useEffect(() => {
     fetchTables();
+    if (partnerData?.role !== 'manager') {
+      filialApi.getFilials()
+        .then(res => setFilialList(res))
+        .catch(err => console.error("Failed to load filials in TablesPage:", err));
+    }
   }, [fetchTables]);
 
   // Open Form modal for editing or creating
@@ -114,6 +125,7 @@ const TablesPage: React.FC = () => {
       setNotes(table.notes || '');
       setIsActive(table.is_active ?? true);
       setDisplayOrder(String(table.display_order ?? 0));
+      setFilialUuid(table.filial_uuid || '');
     } else {
       setSelectedTable(null);
       setTableNumber('');
@@ -122,6 +134,7 @@ const TablesPage: React.FC = () => {
       setNotes('');
       setIsActive(true);
       setDisplayOrder(String(tables.length + 1));
+      setFilialUuid('');
     }
     setIsCrudModalOpen(true);
   };
@@ -150,7 +163,8 @@ const TablesPage: React.FC = () => {
         status: tableStatus,
         notes: notes,
         is_active: isActive,
-        display_order: Number(displayOrder) || 0
+        display_order: Number(displayOrder) || 0,
+        filial_uuid: partnerData?.role === 'manager' ? undefined : (filialUuid || undefined)
       };
 
       if (selectedTable) {
@@ -791,6 +805,25 @@ const TablesPage: React.FC = () => {
                   className="w-full px-4 py-2.5 bg-slate-950 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150 resize-none"
                 />
               </div>
+
+              {/* Filial selection (Superadmin only) */}
+              {partnerData?.role !== 'manager' && (
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Bog'liq filial</label>
+                  <select
+                    value={filialUuid}
+                    onChange={(e) => setFilialUuid(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-950 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-300 focus:outline-none transition duration-150 cursor-pointer"
+                  >
+                    <option value="">-- Filialni tanlang --</option>
+                    {filialList.map(f => (
+                      <option key={f.uuid} value={f.uuid}>
+                        {f.filial_name} {f.is_main ? "(Asosiy)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-white/5">
                 <div className="flex flex-col">

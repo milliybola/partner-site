@@ -21,11 +21,14 @@ import {
   ShoppingBag,
   Coins,
   Trophy,
-  Award
+  Award,
+  Building2
 } from 'lucide-react';
 import { STORAGE_KEYS } from '../../../core/config/constants';
 import { staffApi } from '../services/staffApi';
 import type { StaffMember, StaffPeriodStats } from '../services/staffApi';
+import { filialApi } from '../../orders/services/filialApi';
+import type { PartnerFilial } from '../../orders/services/filialApi';
 
 const StaffPage: React.FC = () => {
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
@@ -66,6 +69,11 @@ const StaffPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // Filial States
+  const [filialList, setFilialList] = useState<PartnerFilial[]>([]);
+  const [homeFilialUuid, setHomeFilialUuid] = useState('');
+  const [currentFilialUuid, setCurrentFilialUuid] = useState('');
+
   // Load user role and fetch staff list
   const fetchStaff = useCallback(async () => {
     setLoading(true);
@@ -81,8 +89,12 @@ const StaffPage: React.FC = () => {
         }
       }
       
-      const data = await staffApi.getStaff();
+      const [data, filialsData] = await Promise.all([
+        staffApi.getStaff(),
+        filialApi.getFilials()
+      ]);
       setStaffList(data);
+      setFilialList(filialsData);
     } catch (err: any) {
       console.error("Failed to load staff list:", err);
       setError(
@@ -188,6 +200,8 @@ const StaffPage: React.FC = () => {
     setPassword('');
     setRole('waiter');
     setIsActive(true);
+    setHomeFilialUuid('');
+    setCurrentFilialUuid('');
     setFormError(null);
     setModalOpen(true);
     setShowPassword(false);
@@ -213,6 +227,8 @@ const StaffPage: React.FC = () => {
     setPassword(''); // keep blank unless updating
     setRole(staff.role);
     setIsActive(staff.is_active);
+    setHomeFilialUuid(staff.home_filial?.uuid || '');
+    setCurrentFilialUuid(staff.current_filial?.uuid || '');
     setFormError(null);
     setModalOpen(true);
     setShowPassword(false);
@@ -244,7 +260,9 @@ const StaffPage: React.FC = () => {
           name,
           phone: rawPhone,
           role,
-          is_active: isActive
+          is_active: isActive,
+          home_filial_uuid: homeFilialUuid || undefined,
+          current_filial_uuid: currentFilialUuid || undefined
         };
         if (password.trim().length >= 4) {
           payload.password = password;
@@ -257,7 +275,9 @@ const StaffPage: React.FC = () => {
           phone: rawPhone,
           password,
           role,
-          is_active: isActive
+          is_active: isActive,
+          home_filial_uuid: homeFilialUuid || undefined,
+          current_filial_uuid: currentFilialUuid || undefined
         };
         await staffApi.createStaff(payload);
       }
@@ -427,6 +447,7 @@ const StaffPage: React.FC = () => {
                       <th className="pb-3.5 pl-2">Ism</th>
                       <th className="pb-3.5">Telefon raqami</th>
                       <th className="pb-3.5">Roli</th>
+                      <th className="pb-3.5">Filial (Asosiy / Joriy)</th>
                       <th className="pb-3.5">Bugungi statistika</th>
                       <th className="pb-3.5 text-center">Holat</th>
                       <th className="pb-3.5 text-center pr-2">Amallar</th>
@@ -454,6 +475,16 @@ const StaffPage: React.FC = () => {
                               Ofitsant
                             </span>
                           )}
+                        </td>
+                        <td className="py-4 text-xs">
+                          <div className="flex flex-col gap-0.5 text-left text-slate-300">
+                            <span className="font-semibold text-white">
+                              {staff.home_filial?.filial_name || "-"}
+                            </span>
+                            <span className="text-[10px] text-brand">
+                              Joriy: {staff.current_filial?.filial_name || "-"}
+                            </span>
+                          </div>
                         </td>
                         <td className="py-4">
                           {staff.today_stats ? (
@@ -821,6 +852,46 @@ const StaffPage: React.FC = () => {
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+              </div>
+
+              {/* Home Filial Selection */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                  <Building2 className="w-3.5 h-3.5 text-brand" />
+                  <span>Asosiy Filiali (Home Branch)</span>
+                </label>
+                <select
+                  value={homeFilialUuid}
+                  onChange={(e) => setHomeFilialUuid(e.target.value)}
+                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none transition cursor-pointer"
+                >
+                  <option value="">-- Filial tanlang --</option>
+                  {filialList.map(filial => (
+                    <option key={filial.uuid} value={filial.uuid}>
+                      {filial.filial_name} {filial.is_main ? "(Asosiy)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Current Filial Selection */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                  <Building2 className="w-3.5 h-3.5 text-brand" />
+                  <span>Hozirgi Filiali (Current Branch)</span>
+                </label>
+                <select
+                  value={currentFilialUuid}
+                  onChange={(e) => setCurrentFilialUuid(e.target.value)}
+                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none transition cursor-pointer"
+                >
+                  <option value="">-- Filial tanlang --</option>
+                  {filialList.map(filial => (
+                    <option key={filial.uuid} value={filial.uuid}>
+                      {filial.filial_name} {filial.is_main ? "(Asosiy)" : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Active Switch checkbox */}

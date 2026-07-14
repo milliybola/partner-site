@@ -23,6 +23,8 @@ import {
 import { ordersApi } from '../services/ordersApi';
 import type { Order } from '../services/ordersApi';
 import { useWebSocket } from '../../../core/hooks/useWebSocket';
+import { filialApi } from '../services/filialApi';
+import type { PartnerFilial } from '../services/filialApi';
 import { STORAGE_KEYS } from '../../../core/config/constants';
 import confetti from 'canvas-confetti';
 import { EditOrderModal } from '../components/EditOrderModal';
@@ -231,21 +233,36 @@ const OrdersPage: React.FC = () => {
   const [partnerUuid, setPartnerUuid] = useState<string | undefined>(undefined);
   const [token, setToken] = useState<string | null>(null);
 
+  // Filial / Role States
+  const [userRole, setUserRole] = useState<'superadmin' | 'manager'>('superadmin');
+  const [selectedFilialUuid, setSelectedFilialUuid] = useState<string>('');
+  const [filials, setFilials] = useState<PartnerFilial[]>([]);
+
   useEffect(() => {
     const data = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
     if (data) {
-      setPartnerUuid(JSON.parse(data).uuid);
+      const parsed = JSON.parse(data);
+      setPartnerUuid(parsed.uuid);
+      if (parsed.role === 'manager') {
+        setUserRole('manager');
+      } else {
+        setUserRole('superadmin');
+        filialApi.getFilials()
+          .then(res => setFilials(res))
+          .catch(err => console.error("Failed to fetch filials in OrdersPage:", err));
+      }
     }
     setToken(localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN));
   }, []);
 
-  const fetchOrders = useCallback(async (showLoading = true) => {
+  const fetchOrders = useCallback(async (showLoading = true, branchUuid?: string) => {
     if (showLoading) {
       setLoading(true);
     }
     setError(null);
     try {
-      const data = await ordersApi.getOrders();
+      const activeBranchUuid = branchUuid !== undefined ? branchUuid : selectedFilialUuid;
+      const data = await ordersApi.getOrders(activeBranchUuid || undefined);
       setOrders(data);
     } catch (err: any) {
       console.error("Failed to load orders from API:", err);
@@ -708,6 +725,29 @@ const OrdersPage: React.FC = () => {
             <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
             <span className="text-slate-300">{isConnected ? 'WS Bog\'langan' : 'WS Ajralgan'}</span>
           </div>
+
+          {/* Branch filter (Superadmin only) */}
+          {userRole === 'superadmin' && filials.length > 0 && (
+            <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl px-2 shrink-0">
+              <span className="text-[10px] uppercase font-bold text-slate-500 pl-1">Filial:</span>
+              <select
+                value={selectedFilialUuid}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedFilialUuid(val);
+                  fetchOrders(true, val);
+                }}
+                className="bg-transparent border-0 text-xs font-bold text-brand focus:ring-0 cursor-pointer pr-8 py-1.5 focus:outline-none"
+              >
+                <option value="" className="bg-darkCard text-slate-300">Barchasi</option>
+                {filials.map(filial => (
+                  <option key={filial.uuid} value={filial.uuid} className="bg-darkCard text-white">
+                    {filial.filial_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* View Toggle */}
           <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 shrink-0">

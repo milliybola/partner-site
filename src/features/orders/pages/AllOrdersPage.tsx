@@ -20,6 +20,9 @@ import {
 } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
 import type { Order } from '../services/ordersApi';
+import { filialApi } from '../services/filialApi';
+import type { PartnerFilial } from '../services/filialApi';
+import { STORAGE_KEYS } from '../../../core/config/constants';
 import { EditOrderModal } from '../components/EditOrderModal';
 
 const AllOrdersPage: React.FC = () => {
@@ -36,11 +39,17 @@ const AllOrdersPage: React.FC = () => {
   const [paymentFilter, setPaymentFilter] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<string>('newest');
 
-  const fetchOrders = useCallback(async () => {
+  // Filial / Role States
+  const [userRole, setUserRole] = useState<'superadmin' | 'manager'>('superadmin');
+  const [selectedFilialUuid, setSelectedFilialUuid] = useState<string>('');
+  const [filials, setFilials] = useState<PartnerFilial[]>([]);
+
+  const fetchOrders = useCallback(async (branchUuid?: string) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await ordersApi.getOrders();
+      const activeBranchUuid = branchUuid !== undefined ? branchUuid : selectedFilialUuid;
+      const data = await ordersApi.getOrders(activeBranchUuid || undefined);
       setOrders(data);
     } catch (err: any) {
       console.error("Failed to load orders:", err);
@@ -52,11 +61,23 @@ const AllOrdersPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedFilialUuid]);
 
   useEffect(() => {
+    const data = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
+    if (data) {
+      const parsed = JSON.parse(data);
+      if (parsed.role === 'manager') {
+        setUserRole('manager');
+      } else {
+        setUserRole('superadmin');
+        filialApi.getFilials()
+          .then(res => setFilials(res))
+          .catch(err => console.error("Failed to fetch filials in AllOrdersPage:", err));
+      }
+    }
     fetchOrders();
-  }, [fetchOrders]);
+  }, []);
 
   const handlePrintReceipt = useCallback(async (orderUuid: string) => {
     setPrintingUuid(orderUuid);
@@ -457,7 +478,7 @@ const AllOrdersPage: React.FC = () => {
         </div>
 
         <button
-          onClick={fetchOrders}
+          onClick={() => fetchOrders()}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white transition text-slate-300 text-sm cursor-pointer self-start sm:self-auto"
         >
           <RefreshCw className="w-4 h-4" />
@@ -582,6 +603,29 @@ const AllOrdersPage: React.FC = () => {
               <option value="price-asc" className="bg-slate-900 text-white">Summa: O'suvchi</option>
             </select>
           </div>
+
+          {/* Branch filter (Superadmin only) */}
+          {userRole === 'superadmin' && filials.length > 0 && (
+            <div className="flex items-center gap-2 bg-slate-900/50 border border-white/5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
+              <SlidersHorizontal className="w-3.5 h-3.5 shrink-0 text-brand" />
+              <select
+                value={selectedFilialUuid}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedFilialUuid(val);
+                  fetchOrders(val);
+                }}
+                className="bg-transparent text-white font-bold focus:outline-none cursor-pointer"
+              >
+                <option value="" className="bg-slate-900 text-white">Barcha filiallar</option>
+                {filials.map(filial => (
+                  <option key={filial.uuid} value={filial.uuid} className="bg-slate-900 text-white">
+                    {filial.filial_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -598,7 +642,7 @@ const AllOrdersPage: React.FC = () => {
             <h4 className="font-bold text-white text-base">Ma'lumot yuklashda xatolik</h4>
             <p className="text-xs max-w-sm mt-1 mb-4">{error}</p>
             <button
-              onClick={fetchOrders}
+              onClick={() => fetchOrders()}
               className="px-4 py-2.5 rounded-xl bg-brand text-white font-semibold text-xs transition hover:bg-brand-dark cursor-pointer flex items-center gap-1"
             >
               <RefreshCw className="w-4 h-4" /> Qayta urinish

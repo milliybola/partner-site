@@ -62,8 +62,12 @@ export const getStatusSlug = (status: string): string => {
 };
 
 export const ordersApi = {
-  getOrders: async (): Promise<Order[]> => {
-    const response = await apiClient.get(ENDPOINTS.ORDERS.LIST);
+  getOrders: async (filialUuid?: string): Promise<Order[]> => {
+    const config: any = {};
+    if (filialUuid) {
+      config.params = { filial: filialUuid };
+    }
+    const response = await apiClient.get(ENDPOINTS.ORDERS.LIST, config);
     // APIs might return results inside a 'results' field or direct array
     if (response.data.results) {
       return response.data.results;

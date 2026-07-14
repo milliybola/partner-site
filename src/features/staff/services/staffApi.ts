@@ -15,6 +15,14 @@ export interface StaffMember {
     completed_orders: number;
     revenue: number;
   };
+  home_filial?: {
+    uuid: string;
+    filial_name: string;
+  } | null;
+  current_filial?: {
+    uuid: string;
+    filial_name: string;
+  } | null;
 }
 
 export interface StaffPeriodStats {
@@ -59,6 +67,8 @@ export interface CreateStaffPayload {
   password?: string;
   role: 'manager' | 'waiter';
   is_active?: boolean;
+  home_filial_uuid?: string;
+  current_filial_uuid?: string;
 }
 
 export interface UpdateStaffPayload {
@@ -67,6 +77,8 @@ export interface UpdateStaffPayload {
   password?: string;
   role?: 'manager' | 'waiter';
   is_active?: boolean;
+  home_filial_uuid?: string;
+  current_filial_uuid?: string;
 }
 
 export const staffApi = {

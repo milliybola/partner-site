@@ -11,6 +11,7 @@ import CatalogPage from './features/catalog/pages/CatalogPage';
 import FinancePage from './features/finance/pages/FinancePage';
 import ProfilePage from './features/profile/pages/ProfilePage';
 import SettingsPage from './features/profile/pages/SettingsPage';
+import BranchesPage from './features/profile/pages/BranchesPage';
 import AllOrdersPage from './features/orders/pages/AllOrdersPage';
 import CreateOrderPage from './features/orders/pages/CreateOrderPage';
 import StaffPage from './features/staff/pages/StaffPage';
@@ -41,6 +42,7 @@ const App: React.FC = () => {
           <Route path="finance" element={<FinancePage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="branches" element={<BranchesPage />} />
           <Route path="all-orders" element={<AllOrdersPage />} />
           <Route path="staff" element={<StaffPage />} />
           <Route path="shift" element={<ShiftPage />} />

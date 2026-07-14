@@ -17,6 +17,7 @@ export const ENDPOINTS = {
     ME: 'partner/staff/me/',
     BASE: 'partner/staff/',
     STATISTICS: 'partner/staff/statistics/',
+    SWITCH_FILIAL: 'partner/filials/switch-staff-filial/',
   },
   SHIFTS: {
     CURRENT: 'partner/shifts/current/',
@@ -59,5 +60,10 @@ export const ENDPOINTS = {
     BULK_IMPORT: 'partner/tables/bulk-import/',
     UPDATE_STATUS: (uuid: string) => `partner/tables/${uuid}/status/`,
     DETAIL: (uuid: string) => `partner/tables/${uuid}/`,
+  },
+  FILIALS: {
+    BASE: 'partner/filials/',
+    DETAIL: (uuid: string) => `partner/filials/${uuid}/`,
+    ASSIGN_MANAGER: (uuid: string) => `partner/filials/${uuid}/assign-manager/`,
   },
 };

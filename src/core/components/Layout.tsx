@@ -14,9 +14,13 @@ import {
   Settings,
   Users,
   Clock,
-  Table
+  Table,
+  Building2
 } from 'lucide-react';
 import { STORAGE_KEYS } from '../config/constants';
+import { filialApi } from '../../features/orders/services/filialApi';
+import type { PartnerFilial } from '../../features/orders/services/filialApi';
+import apiClient from '../api/client';
 
 const Layout: React.FC = () => {
   const [partner, setPartner] = useState<any>(() => {
@@ -33,6 +37,42 @@ const Layout: React.FC = () => {
   const [time, setTime] = useState<string>('');
   const navigate = useNavigate();
   const location = useLocation();
+
+  const [filials, setFilials] = useState<PartnerFilial[]>([]);
+
+  useEffect(() => {
+    if (partner?.role === 'manager') {
+      filialApi.getFilials()
+        .then(data => setFilials(data))
+        .catch(err => console.error("Failed to load filials for switcher:", err));
+    }
+  }, [partner?.role]);
+
+  const handleSwitchFilial = async (filialUuid: string) => {
+    const staffUuid = partner?.staff_uuid || partner?.uuid;
+    if (!staffUuid) {
+      alert("Xodim identifikatori topilmadi.");
+      return;
+    }
+    try {
+      await filialApi.switchFilial(staffUuid, filialUuid);
+      
+      // Re-fetch staff profile to update local storage partner_data
+      const profileResponse = await apiClient.get('partner/staff/me/');
+      const staff = profileResponse.data?.data || profileResponse.data;
+      const updatedPartner = {
+        ...staff,
+        staff_uuid: staff?.uuid,
+        uuid: staff?.partner_uuid,
+        is_open: true,
+      };
+      localStorage.setItem(STORAGE_KEYS.PARTNER_DATA, JSON.stringify(updatedPartner));
+      window.location.reload();
+    } catch (err) {
+      console.error("Failed to switch branch:", err);
+      alert("Filialni almashtirishda xatolik yuz berdi.");
+    }
+  };
 
   useEffect(() => {
     const updateTime = () => {
@@ -95,6 +135,7 @@ const Layout: React.FC = () => {
     { to: '/shift', label: 'Smena', icon: Clock },
     { to: '/tables', label: 'Stollar', icon: Table },
     { to: '/catalog', label: 'Katalog', icon: Grid },
+    ...(partner?.role === 'manager' ? [] : [{ to: '/branches', label: 'Filiallar', icon: Building2 }]),
     ...(partner?.role === 'manager' ? [] : [{ to: '/finance', label: 'Moliya', icon: DollarSign }]),
     { to: '/all-orders', label: 'Barcha buyurtmalar', icon: ShoppingBag },
     { to: '/staff', label: 'Xodimlar', icon: Users },
@@ -182,6 +223,27 @@ const Layout: React.FC = () => {
               {isOpen ? "OCHIQ" : "YOPIQ"}
             </button>
           </div>
+
+          {/* Branch Switcher for Staff/Manager */}
+          {partner?.role === 'manager' && (
+            <div className="mt-1 space-y-1.5 text-left border-t border-white/5 pt-3">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Joriy filial:</span>
+              <div className="relative">
+                <select
+                  value={partner?.current_filial?.uuid || ''}
+                  onChange={(e) => handleSwitchFilial(e.target.value)}
+                  className="w-full bg-slate-900 border border-white/5 hover:border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-brand focus:outline-none transition cursor-pointer"
+                >
+                  <option value="" disabled>-- Filial tanlang --</option>
+                  {filials.map(filial => (
+                    <option key={filial.uuid} value={filial.uuid}>
+                      {filial.filial_name} {filial.is_main ? "(Asosiy)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Sidebar Nav Items */}
@@ -280,6 +342,24 @@ const Layout: React.FC = () => {
             })}
           </nav>
           <div className="p-6 border-t border-white/5 bg-darkCard/50 flex flex-col gap-4">
+            {/* Branch Switcher for Staff/Manager (Mobile) */}
+            {partner?.role === 'manager' && (
+              <div className="space-y-2 text-left">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Joriy filialni o'zgartirish:</span>
+                <select
+                  value={partner?.current_filial?.uuid || ''}
+                  onChange={(e) => handleSwitchFilial(e.target.value)}
+                  className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold text-brand focus:outline-none transition cursor-pointer"
+                >
+                  <option value="" disabled>-- Filial tanlang --</option>
+                  {filials.map(filial => (
+                    <option key={filial.uuid} value={filial.uuid}>
+                      {filial.filial_name} {filial.is_main ? "(Asosiy)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {/* Mobile Theme Toggle Button */}
             <button
               type="button"

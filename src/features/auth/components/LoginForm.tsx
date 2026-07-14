@@ -123,6 +123,7 @@ const LoginForm: React.FC = () => {
         // Map staff data directly from login response to expected partner data fields
         const partnerData = {
           ...staff,
+          staff_uuid: staff?.uuid, // Keep staff's own uuid
           uuid: staff?.partner_uuid, // Ensure partner uuid is set correctly
           is_open: true, // Default to true
         };

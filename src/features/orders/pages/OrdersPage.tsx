@@ -41,7 +41,7 @@ const KANBAN_COLUMNS: {
 }[] = [
     {
       status: 'PENDING',
-      label: "Yangi (Pending)",
+      label: "Milliy Go (Kuryer)",
       headerText: "text-amber-400 border-amber-500/20",
       badgeBg: "bg-amber-500/10",
       badgeText: "text-amber-400",
@@ -191,7 +191,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
             }}
             className="text-[10px] font-bold px-2.5 py-1 rounded bg-emerald-500 hover:bg-emerald-600 text-slate-950 transition cursor-pointer"
           >
-            Berish
+            Mijoz ketti
           </button>
         ) : (
           <span className="text-[10px] font-bold text-brand group-hover:translate-x-0.5 transition-transform">

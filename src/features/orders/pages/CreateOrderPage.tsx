@@ -389,7 +389,7 @@ const CreateOrderPage: React.FC = () => {
             </div>
 
             {/* Categories scrollable pills */}
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+            <div className="grid grid-rows-2 grid-flow-col gap-2 overflow-x-auto pb-1 scrollbar-thin">
               <button
                 onClick={() => setActiveCategoryUuid('all')}
                 className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${

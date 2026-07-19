@@ -131,10 +131,9 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
       draggable={isDraggable}
       onDragStart={isDraggable ? onDragStart : undefined}
       onDragEnd={isDraggable ? onDragEnd : undefined}
-      onClick={onClick}
       className={`p-4 rounded-xl border text-left transition-all duration-200 group hover:shadow-lg hover:-translate-y-0.5 ${isDraggable
         ? 'cursor-grab active:cursor-grabbing'
-        : 'cursor-pointer'
+        : 'cursor-default'
         } ${isSelected
           ? 'bg-brand/10 border-brand shadow-md shadow-brand/5'
           : 'bg-darkCard border-white/5 hover:border-white/10'
@@ -194,9 +193,15 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
             Mijoz ketti
           </button>
         ) : (
-          <span className="text-[10px] font-bold text-brand group-hover:translate-x-0.5 transition-transform">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick();
+            }}
+            className="text-[10px] font-bold text-brand group-hover:translate-x-0.5 transition-transform cursor-pointer"
+          >
             Batafsil →
-          </span>
+          </button>
         )}
       </div>
     </div>

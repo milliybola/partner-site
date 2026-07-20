@@ -5,7 +5,6 @@ import {
   Search, 
   MapPin, 
   Phone as PhoneIcon, 
-  CreditCard, 
   Utensils, 
   Plus, 
   Minus, 

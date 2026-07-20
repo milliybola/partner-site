@@ -550,24 +550,6 @@ const OrdersPage: React.FC = () => {
     const now = new Date();
     const timeStr = now.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    const itemsHtml = (order.items || []).map((item: any) => {
-      const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
-      const unitPrice = Number(item.price_at_time_of_order || item.product?.price || 0);
-      const quantity = item.quantity || 1;
-      const lineTotal = unitPrice * quantity;
-      return `
-        <div style="margin-bottom: 8px; margin-top: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: baseline;">
-            <span style="font-size: 11px; font-weight: 600;">${productName}</span>
-            <span style="font-size: 11px; font-weight: 600; white-space: nowrap; margin-left: 6px;">${quantity}</span>
-          </div>
-          <div style="display: flex; justify-content: space-between; font-size: 10px; color: #000;">
-            <span>Narxi: ${unitPrice.toLocaleString('uz-UZ')}</span>
-            <span>${lineTotal.toLocaleString('uz-UZ')}</span>
-          </div>
-        </div>
-      `;
-    }).join('');
 
     const totalAmount = Number(order.total_price || 0);
     const tableLabel = order.table_number ? `stol "${order.table_number}"` : '';

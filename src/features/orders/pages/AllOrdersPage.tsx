@@ -250,11 +250,7 @@ const AllOrdersPage: React.FC = () => {
               <span class="info-label">Stol:</span>
               <span class="info-value bold">${receiptData.table_number}-stol</span>
             </div>` : ''}
-            ${receiptData.order_source_display ? `
-            <div class="info-row">
-              <span class="info-label">Manba:</span>
-              <span class="info-value">${receiptData.order_source_display}</span>
-            </div>` : ''}
+
 
             <div class="divider"></div>
 

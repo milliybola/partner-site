@@ -15,6 +15,7 @@ import {
   LayoutGrid,
   List,
   Printer,
+  FileText,
   User,
   Truck,
   Utensils,
@@ -458,11 +459,7 @@ const OrdersPage: React.FC = () => {
               <span class="info-label">Stol:</span>
               <span class="info-value bold">${receiptData.table_number}-stol</span>
             </div>` : ''}
-            ${receiptData.order_source_display ? `
-            <div class="info-row">
-              <span class="info-label">Manba:</span>
-              <span class="info-value">${receiptData.order_source_display}</span>
-            </div>` : ''}
+            
 
             <div class="divider"></div>
 
@@ -546,6 +543,101 @@ const OrdersPage: React.FC = () => {
     } finally {
       setPrintingUuid(null);
     }
+  }, []);
+
+  // Pre-check (Preliminary receipt) — simple format matching the image
+  const handlePrintPreCheck = useCallback((order: Order) => {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const itemsHtml = (order.items || []).map((item: any) => {
+      const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
+      const unitPrice = Number(item.price_at_time_of_order || item.product?.price || 0);
+      const quantity = item.quantity || 1;
+      const lineTotal = unitPrice * quantity;
+      return `
+        <div style="margin-bottom: 8px; margin-top: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <span style="font-size: 11px; font-weight: 600;">${productName}</span>
+            <span style="font-size: 11px; font-weight: 600; white-space: nowrap; margin-left: 6px;">${quantity}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 10px; color: #000;">
+            <span>Narxi: ${unitPrice.toLocaleString('uz-UZ')}</span>
+            <span>${lineTotal.toLocaleString('uz-UZ')}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const totalAmount = Number(order.total_price || 0);
+    const tableLabel = order.table_number ? `stol "${order.table_number}"` : '';
+
+    const preCheckHtml = `
+      <html>
+        <head>
+          <title>Pre-chek</title>
+          <style>
+            @page { size: 80mm auto; margin: 0; }
+            * { box-sizing: border-box; }
+            body {
+              font-family: 'Courier New', Courier, monospace;
+              width: 74mm;
+              margin: 0 auto;
+              padding: 70px 6px 8px 6px;
+              color: #000;
+              background: #fff;
+              font-size: 12px;
+              font-weight: 700;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .center { text-align: center; }
+            .divider { border-top: 2px dashed #000; margin: 7px 0; }
+            .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
+            .total-row { display: flex; justify-content: space-between; font-weight: 700; font-size: 13px; margin-top: 3px; }
+          </style>
+        </head>
+        <body>
+          <div class="center" style="font-size: 15px; margin-bottom: 8px;">Buyurtmalaringiz</div>
+          <div style="margin-bottom: 2px;">Chek chiqarilgan vaqti: ${timeStr}</div>
+          ${tableLabel ? `<div style="margin-bottom: 2px;">${tableLabel}</div>` : ''}
+          <div class="divider"></div>
+          ${(order.items || []).map((item: any) => {
+            const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
+            const unitPrice = Number(item.price_at_time_of_order || item.product?.price || 0);
+            const quantity = item.quantity || 1;
+            const lineTotal = unitPrice * quantity;
+            return `
+              <div style="margin: 8px 0;">
+                <div class="row">
+                  <span style="font-size: 12px;">${productName}</span>
+                  <span style="font-size: 12px; margin-left: 6px; white-space: nowrap;">${quantity}</span>
+                </div>
+                <div class="row">
+                  <span style="font-size: 11px;">Narxi: ${unitPrice.toLocaleString('uz-UZ')}</span>
+                  <span style="font-size: 11px;">${lineTotal.toLocaleString('uz-UZ')}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+          <div class="divider"></div>
+          <div class="total-row"><span>Jami:</span><span>${totalAmount.toLocaleString('uz-UZ')} so'm</span></div>
+          <div class="total-row" style="margin-top: 4px;"><span>Jami to'lov:</span><span>${totalAmount.toLocaleString('uz-UZ')} so'm</span></div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.frameElement.remove(); }, 1000);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (doc) { doc.open(); doc.write(preCheckHtml); doc.close(); }
   }, []);
 
   // Handle incoming Websocket order alerts
@@ -1220,19 +1312,31 @@ const OrdersPage: React.FC = () => {
               )}
             </div>
 
-            {/* Print Receipt Button (Available in all statuses) */}
-            <button
-              onClick={() => handlePrintReceipt(selectedOrder.uuid)}
-              disabled={printingUuid === selectedOrder.uuid}
-              className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 shadow-lg shadow-amber-500/10"
-            >
-              {printingUuid === selectedOrder.uuid ? (
-                <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
-              ) : (
-                <Printer className="w-4 h-4" />
-              )}
-              <span>Chekni chop etish</span>
-            </button>
+            {/* Print buttons row */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Pre-chek button */}
+              <button
+                onClick={() => handlePrintPreCheck(selectedOrder)}
+                className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
+              >
+                <FileText className="w-4 h-4 text-slate-300" />
+                <span>Pre-chek</span>
+              </button>
+
+              {/* Full receipt button */}
+              <button
+                onClick={() => handlePrintReceipt(selectedOrder.uuid)}
+                disabled={printingUuid === selectedOrder.uuid}
+                className="py-3 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 shadow-lg shadow-amber-500/10"
+              >
+                {printingUuid === selectedOrder.uuid ? (
+                  <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
+                ) : (
+                  <Printer className="w-4 h-4" />
+                )}
+                <span>Chek chop etish</span>
+              </button>
+            </div>
 
             {/* Context Actions based on status */}
             <div className="space-y-2.5">

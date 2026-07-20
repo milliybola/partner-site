@@ -9,13 +9,14 @@ import {
   LogOut,
   Menu,
   X,
-  Radio,
   PlusCircle,
   Settings,
   Users,
   Clock,
   Table,
-  Building2
+  Building2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { STORAGE_KEYS } from '../config/constants';
 import { filialApi } from '../../features/orders/services/filialApi';
@@ -35,8 +36,17 @@ const Layout: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('milliygo_theme') as 'light' | 'dark') || 'dark');
   const [time, setTime] = useState<string>('');
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('sidebar_collapsed') === 'true';
+  });
   const navigate = useNavigate();
   const location = useLocation();
+
+  const toggleSidebar = () => {
+    const newVal = !isCollapsed;
+    setIsCollapsed(newVal);
+    localStorage.setItem('sidebar_collapsed', String(newVal));
+  };
 
   const [filials, setFilials] = useState<PartnerFilial[]>([]);
 
@@ -56,7 +66,7 @@ const Layout: React.FC = () => {
     }
     try {
       await filialApi.switchFilial(staffUuid, filialUuid);
-      
+
       // Re-fetch staff profile to update local storage partner_data
       const profileResponse = await apiClient.get('partner/staff/me/');
       const staff = profileResponse.data?.data || profileResponse.data;
@@ -147,7 +157,6 @@ const Layout: React.FC = () => {
 
   return (
     <div className="h-screen overflow-hidden bg-darkBg text-slate-100 flex flex-col md:flex-row font-Outfit">
-      {/* Mobile Top Header */}
       <header className="md:hidden flex items-center justify-between px-4 py-3 bg-darkCard border-b border-white/5 sticky top-0 z-40">
         <div className="flex items-center gap-2 overflow-hidden">
           {partner?.logo ? (
@@ -165,22 +174,19 @@ const Layout: React.FC = () => {
           )}
         </div>
         <div className="flex items-center gap-3">
-          {/* Active status indicator */}
           <button
             onClick={handleToggleOpenStatus}
             disabled={partner?.role === 'manager'}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition ${
-              partner?.role === 'manager' ? 'cursor-default opacity-80' : 'cursor-pointer'
-            } ${
-              isOpen
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition ${partner?.role === 'manager' ? 'cursor-default opacity-80' : 'cursor-pointer'
+              } ${isOpen
                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                 : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-            }`}
+              }`}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
             <span>{isOpen ? 'Ochiq' : 'Yopiq'}</span>
           </button>
-          
+
           <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-slate-400 hover:text-white">
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -188,45 +194,44 @@ const Layout: React.FC = () => {
       </header>
 
       {/* Sidebar - Desktop */}
-      <aside className={`hidden md:flex flex-col w-64 h-full bg-darkCard border-r border-white/5 shrink-0 transition-all duration-300 overflow-y-auto`}>
+      <aside className={`hidden md:flex flex-col h-full bg-darkCard border-r border-white/5 shrink-0 transition-all duration-300 overflow-y-auto ${isCollapsed ? 'w-20' : 'w-64'}`}>
         {/* Profile info in Sidebar */}
-        <div className="p-6 border-b border-white/5 flex flex-col gap-3">
-          <div className="flex items-center gap-3">
-            {partner?.logo ? (
-              <img src={partner.logo} alt="Logo" className="w-12 h-12 rounded-xl object-cover border border-white/10" />
-            ) : (
-              <div className="w-12 h-12 rounded-xl bg-brand flex items-center justify-center font-bold text-white text-xl">M</div>
+        <div className={`p-4 border-b border-white/5 flex flex-col gap-3 ${isCollapsed ? 'items-center' : ''}`}>
+          <div className="flex items-center justify-between w-full">
+            {!isCollapsed && (
+              <div className="flex items-center gap-3 truncate">
+                {partner?.logo ? (
+                  <img src={partner.logo} alt="Logo" className="w-8 h-8 rounded-lg object-cover border border-white/10" />
+                ) : (
+                  <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center font-bold text-white text-sm">M</div>
+                )}
+                <div className="truncate">
+                  <h3 className="font-semibold text-white text-sm truncate">
+                    {partner?.role === 'manager' ? partner.partner_name : partner?.name || 'Restaurant'}
+                  </h3>
+                </div>
+              </div>
             )}
-            <div className="truncate">
-              <h3 className="font-semibold text-white truncate">
-                {partner?.role === 'manager' ? partner.partner_name : partner?.name || 'Restaurant'}
-              </h3>
-              <p className="text-xs text-slate-400 truncate">
-                {partner?.role === 'manager' ? `Menejer: ${partner.name}` : partner?.address || 'Manzil yo\'q'}
-              </p>
-            </div>
-          </div>
-
-          {/* Active switch */}
-          <div className="mt-2 flex items-center justify-between p-2 rounded-xl bg-slate-900 border border-white/5">
-            <span className="text-xs font-medium text-slate-400">Muassasa holati:</span>
+            {/* {isCollapsed && (
+              <div className="mx-auto">
+                {partner?.logo ? (
+                  <img src={partner.logo} alt="Logo" className="w-8 h-8 rounded-lg object-cover border border-white/10" />
+                ) : (
+                  <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center font-bold text-white text-sm">M</div>
+                )}
+              </div>
+            )} */}
             <button
-              onClick={handleToggleOpenStatus}
-              disabled={partner?.role === 'manager'}
-              className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition ${
-                partner?.role === 'manager' ? 'cursor-default opacity-80' : 'cursor-pointer hover:bg-white/5'
-              } ${
-                isOpen ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
-              }`}
+              onClick={toggleSidebar}
+              className={`p-1.5 rounded-lg bg-slate-900 border border-white/5 hover:border-white/10 text-slate-400 hover:text-white transition cursor-pointer ${isCollapsed ? 'mt-2' : ''}`}
+              title={isCollapsed ? "Yoyish" : "Yig'ish"}
             >
-              <Radio className={`w-3.5 h-3.5 ${isOpen ? 'animate-pulse text-emerald-400' : 'text-rose-400'}`} />
-              {isOpen ? "OCHIQ" : "YOPIQ"}
+              {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </button>
           </div>
 
-          {/* Branch Switcher for Staff/Manager */}
-          {partner?.role === 'manager' && (
-            <div className="mt-1 space-y-1.5 text-left border-t border-white/5 pt-3">
+          {!isCollapsed && partner?.role === 'manager' && (
+            <div className="mt-1 space-y-1.5 text-left border-t border-white/5 pt-3 w-full">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Joriy filial:</span>
               <div className="relative">
                 <select
@@ -247,23 +252,24 @@ const Layout: React.FC = () => {
         </div>
 
         {/* Sidebar Nav Items */}
-        <nav className="flex-1 px-4 py-6 space-y-1">
+        <nav className={`flex-1 px-4 py-6 space-y-1 ${isCollapsed ? 'flex flex-col items-center px-2' : ''}`}>
           {desktopNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <NavLink
                 key={item.to}
                 to={item.to}
+                title={isCollapsed ? item.label : undefined}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-brand text-white shadow-lg shadow-brand/15 font-semibold'
-                      : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                  `flex items-center gap-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${isCollapsed ? 'p-3 justify-center w-12 h-12' : 'px-4 py-3 w-full'
+                  } ${isActive
+                    ? 'bg-brand text-white shadow-lg shadow-brand/15 font-semibold'
+                    : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
                   }`
                 }
               >
-                <Icon className="w-5 h-5" />
-                <span>{item.label}</span>
+                <Icon className="w-5 h-5 shrink-0" />
+                {!isCollapsed && <span>{item.label}</span>}
               </NavLink>
             );
           })}
@@ -272,45 +278,66 @@ const Layout: React.FC = () => {
         {/* Theme Toggle & Footer logout */}
         <div className="border-t border-white/5 flex flex-col">
           {/* Theme Toggle Switch */}
-          <div className="p-4 pb-2">
+          <div className={`p-4 pb-2 ${isCollapsed ? 'flex justify-center px-2' : ''}`}>
             <button
               type="button"
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-              className="flex items-center justify-between w-full px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:bg-white/5 hover:text-slate-200 transition cursor-pointer border border-white/5"
+              title={isCollapsed ? (theme === 'light' ? "Kunduzgi rejim" : "Tungi rejim") : undefined}
+              className={`flex items-center transition cursor-pointer ${isCollapsed
+                ? 'justify-center w-12 h-12 rounded-xl bg-slate-900 border border-white/5 text-slate-400 hover:text-white hover:border-white/10'
+                : 'justify-between w-full px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-white/5'
+                }`}
             >
-              <span className="flex items-center gap-2">
-                {theme === 'light' ? (
-                  <>
-                    <svg className="w-4.5 h-4.5 text-amber-500 animate-spin-slow" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 9H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
-                    </svg>
-                    <span>Kunduzgi rejim</span>
-                  </>
+              {isCollapsed ? (
+                theme === 'light' ? (
+                  <svg className="w-5 h-5 text-amber-500 animate-spin-slow shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 9H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+                  </svg>
                 ) : (
-                  <>
-                    <svg className="w-4.5 h-4.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                    </svg>
-                    <span>Tungi rejim</span>
-                  </>
-                )}
-              </span>
-              
-              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md ${
-                theme === 'light' ? 'bg-amber-500/10 text-amber-500' : 'bg-indigo-500/10 text-indigo-400'
-              }`}>
-                {theme === 'light' ? 'LIGHT' : 'DARK'}
-              </span>
+                  <svg className="w-5 h-5 text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                )
+              ) : (
+                <>
+                  <span className="flex items-center gap-2">
+                    {theme === 'light' ? (
+                      <>
+                        <svg className="w-4.5 h-4.5 text-amber-500 animate-spin-slow" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 9H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+                        </svg>
+                        <span>Kunduzgi rejim</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4.5 h-4.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                        </svg>
+                        <span>Tungi rejim</span>
+                      </>
+                    )}
+                  </span>
+
+                  <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md ${theme === 'light' ? 'bg-amber-500/10 text-amber-500' : 'bg-indigo-500/10 text-indigo-400'
+                    }`}>
+                    {theme === 'light' ? 'LIGHT' : 'DARK'}
+                  </span>
+                </>
+              )}
             </button>
           </div>
 
-          <div className="p-4 pt-0">
+          <div className={`p-4 pt-0 ${isCollapsed ? 'flex justify-center px-2' : ''}`}>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-medium text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition cursor-pointer"
+              title={isCollapsed ? "Chiqish" : undefined}
+              className={`flex items-center gap-3 transition cursor-pointer ${isCollapsed
+                ? 'justify-center w-12 h-12 rounded-xl text-rose-400 hover:bg-rose-500/10'
+                : 'w-full px-4 py-3 rounded-xl text-sm font-medium text-rose-400 hover:bg-rose-500/10 hover:text-rose-300'
+                }`}
             >
-              <LogOut className="w-5 h-5" />
-              <span>Chiqish</span>
+              <LogOut className="w-5 h-5 shrink-0" />
+              {!isCollapsed && <span>Chiqish</span>}
             </button>
           </div>
         </div>
@@ -328,10 +355,9 @@ const Layout: React.FC = () => {
                   to={item.to}
                   onClick={() => setMobileMenuOpen(false)}
                   className={({ isActive }) =>
-                    `flex items-center gap-4 px-5 py-4 rounded-xl text-base font-semibold transition ${
-                      isActive
-                        ? 'bg-brand text-white shadow-lg'
-                        : 'text-slate-300 hover:bg-white/5'
+                    `flex items-center gap-4 px-5 py-4 rounded-xl text-base font-semibold transition ${isActive
+                      ? 'bg-brand text-white shadow-lg'
+                      : 'text-slate-300 hover:bg-white/5'
                     }`
                   }
                 >
@@ -383,10 +409,9 @@ const Layout: React.FC = () => {
                   </>
                 )}
               </span>
-              
-              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md ${
-                theme === 'light' ? 'bg-amber-500/10 text-amber-500' : 'bg-indigo-500/10 text-indigo-400'
-              }`}>
+
+              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md ${theme === 'light' ? 'bg-amber-500/10 text-amber-500' : 'bg-indigo-500/10 text-indigo-400'
+                }`}>
                 {theme === 'light' ? 'LIGHT' : 'DARK'}
               </span>
             </button>
@@ -410,28 +435,37 @@ const Layout: React.FC = () => {
         {/* Desktop Top Header */}
         <header className="hidden md:flex items-center justify-between px-8 py-4 bg-darkCard/30 border-b border-white/5 backdrop-blur-md sticky top-0 z-40 shadow-sm shadow-black/5">
           <div className="flex items-center gap-4">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Hamkor paneli
-            </span>
+            {isCollapsed && (
+              <div className="mx-auto">
+                {partner?.logo ? (
+                  <div className="flex items-center gap-2">
+                    <img src={partner.logo} alt="Logo" className="w-8 h-8 rounded-lg object-cover border border-white/10" />
+                    <h3 className="font-semibold text-white text-sm truncate">
+                      {partner?.role === 'manager' ? partner.partner_name : partner?.name || 'Restaurant'}
+                    </h3>
+                  </div>
+                ) : (
+                  <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center font-bold text-white text-sm">M</div>
+                )}
+              </div>
+            )}
             {time && (
               <span className="text-xs font-bold text-brand bg-brand/10 border border-brand/20 px-3 py-1 rounded-xl font-mono">
                 {time}
               </span>
             )}
           </div>
-          
+
           <div className="flex items-center gap-4">
             {/* Store Status Toggle */}
             <button
               onClick={handleToggleOpenStatus}
               disabled={partner?.role === 'manager'}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition ${
-                partner?.role === 'manager' ? 'cursor-default opacity-85' : 'cursor-pointer'
-              } ${
-                isOpen
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition ${partner?.role === 'manager' ? 'cursor-default opacity-85' : 'cursor-pointer'
+                } ${isOpen
                   ? `bg-emerald-500/10 text-emerald-400 border-emerald-500/20${partner?.role === 'manager' ? '' : ' hover:bg-emerald-500/20'}`
                   : `bg-rose-500/10 text-rose-400 border-rose-500/20${partner?.role === 'manager' ? '' : ' hover:bg-rose-500/20'}`
-              }`}
+                }`}
             >
               <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
               <span>Muassasa: {isOpen ? 'OCHIQ' : 'YOPIQ'}</span>

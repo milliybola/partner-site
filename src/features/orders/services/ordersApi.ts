@@ -95,6 +95,14 @@ export const ordersApi = {
     return response.data;
   },
 
+  updateOrderPayment: async (
+    orderUuid: string,
+    payload: { payment_method: string; is_paid: boolean }
+  ): Promise<any> => {
+    const response = await apiClient.patch(`orders/${orderUuid}/`, payload);
+    return response.data;
+  },
+
   createOrder: async (payload: {
     description: string;
     address: string;

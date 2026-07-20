@@ -1,18 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { WS_BASE_URL } from '../config/constants';
 
-interface OrderAlertData {
-  uuid: string;
-  status: string;
-  total_price: string | number;
-  address: string;
-}
 
-interface NewOrderEvent {
-  type: string;
-  message: string;
-  order_data: OrderAlertData;
-}
 
 let sharedAudioCtx: AudioContext | null = null;
 
@@ -45,11 +34,13 @@ if (typeof window !== 'undefined') {
 export const useWebSocket = (
   restaurantUuid: string | undefined,
   token: string | null,
-  onNewOrder: (event: NewOrderEvent) => void
+  onNewOrder: (event: any) => void,
+  filialUuid?: string
 ) => {
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<any>(null);
+  const pingIntervalRef = useRef<any>(null);
   const isClosedIntentionallyRef = useRef(false);
 
   // Keep latest onNewOrder callback in a ref to avoid reconnecting when callback reference changes
@@ -120,6 +111,12 @@ export const useWebSocket = (
       reconnectTimeoutRef.current = null;
     }
 
+    // Clear any existing ping interval
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
+
     isClosedIntentionallyRef.current = false;
 
     // Close existing socket if any
@@ -129,32 +126,77 @@ export const useWebSocket = (
     }
 
     isClosedIntentionallyRef.current = false;
-    const wsUrl = `${WS_BASE_URL}${restaurantUuid}/orders/?token=${token}`;
+
+    // Determine filial UUID if user has branch assignments
+    let branchUuid = filialUuid;
+    if (!branchUuid && typeof window !== 'undefined') {
+      try {
+        const partnerDataStr = localStorage.getItem('milliygo_partner_data');
+        if (partnerDataStr) {
+          const partnerData = JSON.parse(partnerDataStr);
+          branchUuid = partnerData.current_filial?.uuid || 
+                       partnerData.home_filial?.uuid || 
+                       partnerData.current_filial_uuid || 
+                       partnerData.home_filial_uuid;
+        }
+      } catch (e) {
+        console.error('[WS] Failed to parse partner data from localStorage:', e);
+      }
+    }
+
+    // Route connection endpoint
+    const wsUrl = branchUuid
+      ? `${WS_BASE_URL}${restaurantUuid}/filial/${branchUuid}/orders/?token=${token}`
+      : `${WS_BASE_URL}${restaurantUuid}/orders/?token=${token}`;
+
+    console.log(`[WS] Connecting to URL: ${wsUrl}`);
     const socket = new WebSocket(wsUrl);
     socketRef.current = socket;
 
     socket.onopen = () => {
-      console.log('WebSocket Connection Established');
+      console.log('[WS] Connection Established successfully');
       setIsConnected(true);
+
+      // Start keep-alive ping interval (every 30 seconds)
+      pingIntervalRef.current = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          console.log('[WS] Sending ping to keep connection alive');
+          socket.send(JSON.stringify({ action: 'ping' }));
+        }
+      }, 30000);
     };
 
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('WebSocket received message:', data);
+        console.log('[WS] Received message:', data);
+
+        // Handle pong message
+        if (data.action === 'pong') {
+          console.log('[WS] Connection alive (received pong)');
+          return;
+        }
+
         if (data.type === 'new_order_alert') {
           playAlertSound();
-          onNewOrderRef.current(data as NewOrderEvent);
+          onNewOrderRef.current(data);
+        } else if (data.type === 'order_status_update') {
+          onNewOrderRef.current(data);
         }
       } catch (e) {
-        console.error('Failed to parse WebSocket message:', e);
+        console.error('[WS] Failed to parse message:', e);
       }
     };
 
     socket.onclose = (event) => {
-      console.log('WebSocket Connection Closed:', event.reason);
+      console.log('[WS] Connection Closed:', event.reason);
       setIsConnected(false);
       
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
+
       // Try to reconnect after 3 seconds if connection was not closed intentionally
       if (!isClosedIntentionallyRef.current) {
         _scheduleReconnect(3000);
@@ -162,9 +204,9 @@ export const useWebSocket = (
     };
 
     socket.onerror = (error) => {
-      console.error('WebSocket Error:', error);
+      console.error('[WS] Error occurred:', error);
     };
-  }, [restaurantUuid, token, playAlertSound, _scheduleReconnect]);
+  }, [restaurantUuid, token, playAlertSound, _scheduleReconnect, filialUuid]);
 
   // Keep connectRef pointing to the latest connect function
   useEffect(() => {
@@ -182,6 +224,10 @@ export const useWebSocket = (
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
     };
   }, [connect]);
 
@@ -189,7 +235,7 @@ export const useWebSocket = (
     console.log("Triggering mock WebSocket notification...");
     playAlertSound();
     
-    const mockEvent: NewOrderEvent = {
+    const mockEvent = {
       type: 'new_order_alert',
       message: 'Yangi buyurtma qabul qilindi (Test)',
       order_data: {

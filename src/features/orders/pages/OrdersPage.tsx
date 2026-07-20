@@ -111,7 +111,7 @@ interface KanbanCardProps {
   onDragStart: () => void;
   onDragEnd: () => void;
   onClick: () => void;
-  onComplete?: (orderUuid: string) => void;
+  onOpenPayment?: (order: Order) => void;
   isSelected: boolean;
   formatUzS: (amount: number | string | null | undefined) => string;
 }
@@ -121,7 +121,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
   onDragStart,
   onDragEnd,
   onClick,
-  onComplete,
+  onOpenPayment,
   isSelected,
   formatUzS
 }) => {
@@ -179,21 +179,12 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
         </p>
       </div>
 
-      <div className="mt-3 pt-2 border-t border-white/5 flex items-center justify-between">
-        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-          {(order.items || []).length} ta xil
-        </span>
-        {order.status === 'READY_FOR_PICKUP' && (order.delivery_type === 'PICKUP' || order.delivery_type === 'DINE_IN') && onComplete ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onComplete(order.uuid);
-            }}
-            className="text-[10px] font-bold px-2.5 py-1 rounded bg-emerald-500 hover:bg-emerald-600 text-slate-950 transition cursor-pointer"
-          >
-            Mijoz ketti
-          </button>
-        ) : (
+      <div className="mt-3 pt-2 border-t border-white/5 space-y-2">
+        {/* Row: item count + Batafsil */}
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+            {(order.items || []).length} ta xil
+          </span>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -202,6 +193,19 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
             className="text-[10px] font-bold text-brand group-hover:translate-x-0.5 transition-transform cursor-pointer"
           >
             Batafsil →
+          </button>
+        </div>
+        {/* Full-width To'lov button */}
+        {order.status === 'READY_FOR_PICKUP' && (order.delivery_type === 'PICKUP' || order.delivery_type === 'DINE_IN') && onOpenPayment && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenPayment(order);
+            }}
+            className="w-full py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-[11px] transition cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <CreditCard className="w-3 h-3" />
+            To'lov qilish
           </button>
         )}
       </div>
@@ -236,7 +240,20 @@ const OrdersPage: React.FC = () => {
     price: string | number;
   } | null>(null);
 
+  const [statusUpdateToast, setStatusUpdateToast] = useState<{
+    show: boolean;
+    message: string;
+    orderUuid: string;
+    statusDisplay?: string;
+  } | null>(null);
+
+  // Payment Modal State
+  const [paymentModalOrder, setPaymentModalOrder] = useState<Order | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CLICK' | 'PAYME' | 'UZCARD'>('CASH');
+  const [paymentSaving, setPaymentSaving] = useState(false);
+
   const [partnerUuid, setPartnerUuid] = useState<string | undefined>(undefined);
+  const [userFilialUuid, setUserFilialUuid] = useState<string | undefined>(undefined);
   const [token, setToken] = useState<string | null>(null);
 
   // Filial / Role States
@@ -249,6 +266,14 @@ const OrdersPage: React.FC = () => {
     if (data) {
       const parsed = JSON.parse(data);
       setPartnerUuid(parsed.uuid);
+      
+      // Determine filial UUID from partner data
+      const extractedFilialUuid = parsed.current_filial?.uuid || 
+                                  parsed.home_filial?.uuid || 
+                                  parsed.current_filial_uuid || 
+                                  parsed.home_filial_uuid;
+      setUserFilialUuid(extractedFilialUuid);
+
       if (parsed.role === 'manager') {
         setUserRole('manager');
       } else {
@@ -625,19 +650,35 @@ const OrdersPage: React.FC = () => {
   // Handle incoming Websocket order alerts
   const handleNewOrderAlert = useCallback((event: any) => {
     const orderData = event.order_data;
+    if (!orderData) return;
 
-    // Visual Slide-in toast
-    setNewOrderToast({
-      show: true,
-      message: event.message || 'Yangi buyurtma keldi!',
-      orderUuid: orderData.uuid,
-      price: orderData.total_price
-    });
+    if (event.type === 'new_order_alert') {
+      // Visual Slide-in toast
+      setNewOrderToast({
+        show: true,
+        message: event.message || 'Yangi buyurtma keldi!',
+        orderUuid: orderData.uuid,
+        price: orderData.total_price
+      });
 
-    // Auto-clear toast after 8 seconds
-    setTimeout(() => {
-      setNewOrderToast((current) => current?.orderUuid === orderData.uuid ? null : current);
-    }, 8000);
+      // Auto-clear toast after 8 seconds
+      setTimeout(() => {
+        setNewOrderToast((current) => current?.orderUuid === orderData.uuid ? null : current);
+      }, 8000);
+    } else if (event.type === 'order_status_update') {
+      // Visual Slide-in status update toast
+      setStatusUpdateToast({
+        show: true,
+        message: event.message || `Buyurtma holati: ${orderData.status_display || orderData.status}`,
+        orderUuid: orderData.uuid,
+        statusDisplay: orderData.status_display || orderData.status
+      });
+
+      // Auto-clear toast after 8 seconds
+      setTimeout(() => {
+        setStatusUpdateToast((current) => current?.orderUuid === orderData.uuid ? null : current);
+      }, 8000);
+    }
 
     // Refresh orders list silently
     fetchOrders(false);
@@ -647,7 +688,8 @@ const OrdersPage: React.FC = () => {
   const { isConnected } = useWebSocket(
     partnerUuid,
     token,
-    handleNewOrderAlert
+    handleNewOrderAlert,
+    userFilialUuid
   );
 
   const handleUpdateStatus = async (orderUuid: string, nextStatus: string) => {
@@ -695,6 +737,40 @@ const OrdersPage: React.FC = () => {
     } catch (err: any) {
       console.error("Failed to complete order:", err);
       alert(err.response?.data?.message || err.message || "Buyurtmani yakunlashda xatolik yuz berdi.");
+    }
+  };
+
+  // Open payment modal: pre-fill with current order payment info
+  const handleOpenPaymentModal = (order: Order) => {
+    setPaymentModalOrder(order);
+    setPaymentMethod((order.payment_method as any) || 'CASH');
+  };
+
+  // Save payment info then complete the order
+  const handleSubmitPayment = async () => {
+    if (!paymentModalOrder) return;
+    setPaymentSaving(true);
+    try {
+      // Update payment details (always mark as paid on confirm)
+      await ordersApi.updateOrderPayment(paymentModalOrder.uuid, {
+        payment_method: paymentMethod,
+        is_paid: true,
+      });
+      // Then complete the order
+      await ordersApi.completeOrder(paymentModalOrder.uuid);
+
+      setPaymentModalOrder(null);
+      if (selectedOrder && selectedOrder.uuid === paymentModalOrder.uuid) {
+        setSelectedOrder(null);
+      }
+      fetchOrders(false);
+      handlePrintReceipt(paymentModalOrder.uuid);
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+    } catch (err: any) {
+      console.error('Payment submit failed:', err);
+      alert(err.response?.data?.message || err.message || "To'lov ma'lumotlarini saqlashda xatolik yuz berdi.");
+    } finally {
+      setPaymentSaving(false);
     }
   };
 
@@ -780,6 +856,37 @@ const OrdersPage: React.FC = () => {
               </button>
               <button
                 onClick={() => setNewOrderToast(null)}
+                className="px-3 py-1.5 rounded-lg bg-transparent hover:bg-white/10 text-white font-semibold text-xs transition cursor-pointer"
+              >
+                Yopish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Status Update Toast popup */}
+      {statusUpdateToast && (
+        <div className="fixed top-24 right-6 z-50 w-full max-w-sm p-4 rounded-xl bg-slate-800 text-white shadow-2xl border border-white/10 flex gap-3 animate-[slide-in_0.3s_ease-out]">
+          <span className="p-2.5 rounded-lg bg-blue-500/20 text-blue-400 shrink-0 self-start">
+            <RefreshCw className="w-6 h-6 animate-spin" />
+          </span>
+          <div className="flex-1">
+            <h4 className="font-bold text-base">Buyurtma holati yangilandi</h4>
+            <p className="text-xs text-slate-350 mt-0.5">{statusUpdateToast.message}</p>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const targetOrd = orders.find((o) => o.uuid === statusUpdateToast.orderUuid);
+                  if (targetOrd) setSelectedOrder(targetOrd);
+                  setStatusUpdateToast(null);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white text-slate-900 font-bold text-xs hover:bg-slate-100 transition cursor-pointer"
+              >
+                Ko'rish
+              </button>
+              <button
+                onClick={() => setStatusUpdateToast(null)}
                 className="px-3 py-1.5 rounded-lg bg-transparent hover:bg-white/10 text-white font-semibold text-xs transition cursor-pointer"
               >
                 Yopish
@@ -1136,7 +1243,7 @@ const OrdersPage: React.FC = () => {
                               setIsDragging(false);
                             }}
                             onClick={() => setSelectedOrder(order)}
-                            onComplete={handleCompleteOrder}
+                            onOpenPayment={handleOpenPaymentModal}
                             isSelected={selectedOrder?.uuid === order.uuid}
                           />
                         ))
@@ -1382,7 +1489,10 @@ const OrdersPage: React.FC = () => {
                 <div className="space-y-2">
                   {(selectedOrder.delivery_type === 'PICKUP' || selectedOrder.delivery_type === 'DINE_IN') && (
                     <button
-                      onClick={() => handleCompleteOrder(selectedOrder.uuid)}
+                      onClick={() => {
+                        handleOpenPaymentModal(selectedOrder);
+                        setSelectedOrder(null);
+                      }}
                       className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 shadow-lg shadow-emerald-600/10"
                     >
                       <CheckCircle className="w-4 h-4" />
@@ -1427,7 +1537,103 @@ const OrdersPage: React.FC = () => {
         </div>
       )}
 
-      {/* Edit Order Modal Dialog */}
+      {/* ─── Payment Modal ─────────────────────────────────────── */}
+      {paymentModalOrder && (
+        <div
+          onClick={() => !paymentSaving && setPaymentModalOrder(null)}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+          className="w-full max-w-lg bg-darkCard border border-white/10 rounded-2xl shadow-2xl flex flex-col animate-[slideUp_0.25s_ease-out] overflow-hidden"
+          >
+            {/* Header */}
+            <div className="p-5 border-b border-white/5 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-lg text-white flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-emerald-400" />
+                  To'lov
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {paymentModalOrder.order_number || `#${paymentModalOrder.id}`}
+                  {paymentModalOrder.table_number ? ` · ${paymentModalOrder.table_number}-stol` : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => !paymentSaving && setPaymentModalOrder(null)}
+                disabled={paymentSaving}
+                className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer disabled:opacity-40"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-5">
+              {/* Total amount display */}
+              <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex items-center justify-between">
+                <span className="text-sm text-slate-400">Jami summa</span>
+                <span className="text-xl font-bold text-emerald-400">
+                  {Number(paymentModalOrder.total_price).toLocaleString('uz-UZ')} UZS
+                </span>
+              </div>
+
+              {/* Payment method selector */}
+              <div className="space-y-3">
+                <label className="text-xs uppercase font-bold text-slate-500 tracking-wider block">
+                  To'lov turi
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {([
+                    { value: 'CASH', label: 'Naqd pul', icon: '💵' },
+                    { value: 'CLICK', label: 'Click', icon: '📱' },
+                    { value: 'PAYME', label: 'Payme', icon: '💳' },
+                    { value: 'UZCARD', label: 'Uzcard', icon: '🏦' },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setPaymentMethod(opt.value)}
+                      className={`py-5 px-4 rounded-xl border-2 font-bold text-base transition-all cursor-pointer flex flex-col items-center justify-center gap-2 ${
+                        paymentMethod === opt.value
+                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400 shadow-lg shadow-emerald-500/10 scale-[1.02]'
+                          : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200'
+                      }`}
+                    >
+                      <span className="text-2xl">{opt.icon}</span>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer actions */}
+            <div className="p-5 border-t border-white/5 grid grid-cols-2 gap-3">
+              <button
+                onClick={() => !paymentSaving && setPaymentModalOrder(null)}
+                disabled={paymentSaving}
+                className="py-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-sm transition cursor-pointer border border-white/10 disabled:opacity-40"
+              >
+                Bekor qilish
+              </button>
+              <button
+                onClick={handleSubmitPayment}
+                disabled={paymentSaving}
+                className="py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-sm transition cursor-pointer shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {paymentSaving ? (
+                  <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
+                ) : (
+                  <CheckCircle className="w-4 h-4" />
+                )}
+                {paymentSaving ? 'Saqlanmoqda...' : 'Tasdiqlash'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Edit Order Modal Dialog ─────────────────────────────── */}
       {editingOrder && (
         <EditOrderModal
           orderUuid={editingOrder.uuid}

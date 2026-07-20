@@ -95,11 +95,11 @@ export const ordersApi = {
     return response.data;
   },
 
-  updateOrderPayment: async (
+  markOrderPaid: async (
     orderUuid: string,
-    payload: { payment_method: string; is_paid: boolean }
+    payload: { payment_method: string, is_paid: boolean }
   ): Promise<any> => {
-    const response = await apiClient.patch(`orders/${orderUuid}/`, payload);
+    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/mark-paid/`, payload);
     return response.data;
   },
 

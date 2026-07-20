@@ -751,12 +751,12 @@ const OrdersPage: React.FC = () => {
     if (!paymentModalOrder) return;
     setPaymentSaving(true);
     try {
-      // Update payment details (always mark as paid on confirm)
-      await ordersApi.updateOrderPayment(paymentModalOrder.uuid, {
+      // 1. To'lov usulini belgilab, to'langan deb qayd etish
+      await ordersApi.markOrderPaid(paymentModalOrder.uuid, {
         payment_method: paymentMethod,
         is_paid: true,
       });
-      // Then complete the order
+      // 2. Buyurtmani COMPLETED statusga o'tkazish
       await ordersApi.completeOrder(paymentModalOrder.uuid);
 
       setPaymentModalOrder(null);

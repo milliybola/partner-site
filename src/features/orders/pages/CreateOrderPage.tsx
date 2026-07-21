@@ -493,6 +493,12 @@ const CreateOrderPage: React.FC = () => {
           items: commonItems,
         };
         await ordersApi.createDineInOrder(payload);
+
+        if (selectedTableUuid) {
+          tablesApi.updateTableStatus(selectedTableUuid, 'OCCUPIED').catch((err) => {
+            console.error("Failed to mark table as occupied:", err);
+          });
+        }
       }
 
       setSubmitSuccess(true);

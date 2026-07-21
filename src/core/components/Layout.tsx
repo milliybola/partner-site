@@ -230,7 +230,7 @@ const Layout: React.FC = () => {
             </button>
           </div>
 
-          {!isCollapsed && partner?.role === 'manager' && (
+          {/* {!isCollapsed && partner?.role === 'manager' && (
             <div className="mt-1 space-y-1.5 text-left border-t border-white/5 pt-3 w-full">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Joriy filial:</span>
               <div className="relative">
@@ -248,7 +248,7 @@ const Layout: React.FC = () => {
                 </select>
               </div>
             </div>
-          )}
+          )} */}
         </div>
 
         {/* Sidebar Nav Items */}

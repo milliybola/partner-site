@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './core/components/Layout';
 import ProtectedRoute from './core/components/ProtectedRoute';
 
@@ -20,7 +20,7 @@ import TablesPage from './features/tables/pages/TablesPage';
 
 const App: React.FC = () => {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         {/* Auth Route */}
         <Route path="/login" element={<LoginPage />} />
@@ -52,7 +52,7 @@ const App: React.FC = () => {
         {/* Fallback redirect */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 };
 

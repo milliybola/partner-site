@@ -3,6 +3,29 @@ import { ENDPOINTS } from '../../../core/config/constants';
 
 export type TableStatus = 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
 
+export interface TableCurrentOrderItem {
+  uuid: string;
+  product_uuid: string;
+  product_name: string;
+  quantity: number;
+  price_at_time_of_order: string | number;
+  total_price: number;
+}
+
+export interface TableCurrentOrder {
+  uuid: string;
+  order_number: string;
+  status: string;
+  status_display: string;
+  delivery_type: string;
+  payment_method: string;
+  is_paid: boolean;
+  total_price: string | number;
+  waiter_name: string | null;
+  items: TableCurrentOrderItem[];
+  created_at: string;
+}
+
 export interface TableModel {
   uuid: string;
   table_number: string;
@@ -14,6 +37,7 @@ export interface TableModel {
   display_order?: number;
   partner_name?: string;
   filial_uuid?: string;
+  current_order?: TableCurrentOrder | null;
   created_at?: string;
   updated_at?: string;
 }

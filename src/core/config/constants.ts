@@ -66,4 +66,8 @@ export const ENDPOINTS = {
     DETAIL: (uuid: string) => `partner/filials/${uuid}/`,
     ASSIGN_MANAGER: (uuid: string) => `partner/filials/${uuid}/assign-manager/`,
   },
+  COURIERS: {
+    BASE: 'partner/couriers/',
+    DETAIL: (uuid: string) => `partner/couriers/${uuid}/`,
+  },
 };

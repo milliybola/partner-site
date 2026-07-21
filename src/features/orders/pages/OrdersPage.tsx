@@ -23,9 +23,12 @@ import {
 } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
 import type { Order } from '../services/ordersApi';
+import { printReceipt as printReceiptUtil, printPreCheck as printPreCheckUtil } from '../utils/printing';
 import { useWebSocket } from '../../../core/hooks/useWebSocket';
 import { filialApi } from '../services/filialApi';
 import type { PartnerFilial } from '../services/filialApi';
+import { tablesApi } from '../../tables/services/tablesApi';
+import type { TableModel } from '../../tables/services/tablesApi';
 import { STORAGE_KEYS } from '../../../core/config/constants';
 import confetti from 'canvas-confetti';
 import { EditOrderModal } from '../components/EditOrderModal';
@@ -84,6 +87,15 @@ const KANBAN_COLUMNS: {
       badgeText: "text-sky-400",
       hoverStyle: "border-sky-500 bg-brand/5 ring-sky-500/20",
       validBorder: "border-sky-500/40 border-dashed"
+    },
+    {
+      status: 'COMPLETED',
+      label: "Tugallandi",
+      headerText: "text-green-400 border-green-500/20",
+      badgeBg: "bg-green-500/10",
+      badgeText: "text-green-400",
+      hoverStyle: "border-green-500 bg-brand/5 ring-green-500/20",
+      validBorder: "border-green-500/40 border-dashed"
     }
   ];
 
@@ -99,7 +111,7 @@ const getValidTargets = (status: Order['status']): Order['status'][] => {
     case 'READY_FOR_PICKUP':
       return ['PREPARING'];
     case 'DELIVERING':
-      return ['READY_FOR_PICKUP'];
+      return ['READY_FOR_PICKUP', 'COMPLETED'];
     default:
       return [];
   }
@@ -125,7 +137,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
   isSelected,
   formatUzS
 }) => {
-  const isDraggable = order.status !== 'PENDING' && order.status !== 'SEARCHING_COURIER';
+  const isDraggable = order.status !== 'PENDING' && order.status !== 'SEARCHING_COURIER' && order.status !== 'COMPLETED' && order.status !== 'DELIVERED';
 
   return (
     <div
@@ -261,17 +273,36 @@ const OrdersPage: React.FC = () => {
   const [selectedFilialUuid, setSelectedFilialUuid] = useState<string>('');
   const [filials, setFilials] = useState<PartnerFilial[]>([]);
 
+  // Tables (used to free up a table's status once its dine-in order is paid)
+  const [tables, setTables] = useState<TableModel[]>([]);
+
+  useEffect(() => {
+    tablesApi.getTables()
+      .then(res => setTables(res))
+      .catch(err => console.error("Failed to fetch tables in OrdersPage:", err));
+  }, []);
+
+  // Mark the table for a dine-in order as free again once the order is paid/completed
+  const freeTableForOrder = useCallback((order: Order | undefined | null) => {
+    if (!order || order.delivery_type !== 'DINE_IN' || !order.table_number) return;
+    const table = tables.find((t) => t.table_number === order.table_number);
+    if (!table) return;
+    tablesApi.updateTableStatus(table.uuid, 'AVAILABLE').catch((err) => {
+      console.error("Failed to free table after order completion:", err);
+    });
+  }, [tables]);
+
   useEffect(() => {
     const data = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
     if (data) {
       const parsed = JSON.parse(data);
       setPartnerUuid(parsed.uuid);
-      
+
       // Determine filial UUID from partner data
-      const extractedFilialUuid = parsed.current_filial?.uuid || 
-                                  parsed.home_filial?.uuid || 
-                                  parsed.current_filial_uuid || 
-                                  parsed.home_filial_uuid;
+      const extractedFilialUuid = parsed.current_filial?.uuid ||
+        parsed.home_filial?.uuid ||
+        parsed.current_filial_uuid ||
+        parsed.home_filial_uuid;
       setUserFilialUuid(extractedFilialUuid);
 
       if (parsed.role === 'manager') {
@@ -316,252 +347,7 @@ const OrdersPage: React.FC = () => {
   const handlePrintReceipt = useCallback(async (orderUuid: string) => {
     setPrintingUuid(orderUuid);
     try {
-      const responseData = await ordersApi.getOrderReceipt(orderUuid);
-      const receiptData = responseData.data || responseData;
-
-      const itemsHtml = (receiptData.items || []).map((item: any) => {
-        const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
-        const unitPrice = Number(item.unit_price || 0).toLocaleString('uz-UZ');
-        const lineTotal = Number(item.line_total || 0).toLocaleString('uz-UZ');
-        return `
-          <div style="margin-bottom: 6px; font-size: 11px; font-weight: 500; color: #000;">
-            <div style="display: flex; justify-content: space-between; font-weight: 700; color: #000;">
-              <span>${productName}</span>
-              <span>${lineTotal} UZS</span>
-            </div>
-            <div style="font-size: 10px; color: #000; font-weight: 500; margin-top: 1px;">
-              ${unitPrice} UZS x ${item.quantity}
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      const formattedDate = receiptData.created_at || new Date().toLocaleString('uz-UZ');
-
-      const receiptHtml = `
-        <html>
-          <head>
-            <title>Chek #${receiptData.order_number}</title>
-            <style>
-              @page {
-                size: 80mm auto;
-                margin: 0;
-              }
-              body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                width: 74mm;
-                margin: 0 auto;
-                padding: 8px 4px;
-                color: #000;
-                background: #fff;
-                line-height: 1.35;
-                font-weight: 500;
-              }
-              .text-center { text-align: center; }
-              .bold { font-weight: 700; }
-              .header { margin-bottom: 8px; }
-              .header h2 { margin: 0 0 2px 0; font-size: 16px; font-weight: 700; letter-spacing: -0.3px; color: #000; }
-              .header p { margin: 1px 0; font-size: 11px; color: #000; font-weight: 500; }
-              .logo-box {
-                border: 1px solid #000;
-                display: inline-block;
-                padding: 1px 6px;
-                font-weight: 700;
-                font-size: 12px;
-                margin-bottom: 4px;
-                letter-spacing: 1px;
-                color: #000;
-              }
-              .divider { 
-                border-top: 1px dashed #000; 
-                margin: 8px 0; 
-              }
-              .info-row {
-                display: flex;
-                justify-content: space-between;
-                font-size: 11px;
-                margin-bottom: 4px;
-                font-weight: 500;
-                color: #000;
-              }
-              .info-label { color: #000; font-weight: 500; }
-              .info-value { font-weight: 700; text-align: right; color: #000; }
-              
-              .items-header {
-                display: flex;
-                justify-content: space-between;
-                font-weight: 700;
-                font-size: 11px;
-                border-bottom: 1px solid #000;
-                padding-bottom: 3px;
-                margin-bottom: 5px;
-                color: #000;
-              }
-              
-              .totals-section {
-                margin-top: 6px;
-              }
-              .totals-row {
-                display: flex;
-                justify-content: space-between;
-                font-size: 11px;
-                margin-bottom: 4px;
-                font-weight: 500;
-                color: #000;
-              }
-              .grand-total-row {
-                display: flex;
-                justify-content: space-between;
-                font-size: 14px;
-                font-weight: 700;
-                border-top: 1px solid #000;
-                border-bottom: 1px solid #000;
-                padding: 5px 0;
-                margin: 8px 0;
-                color: #000;
-              }
-              .footer {
-                margin-top: 15px;
-                font-size: 10px;
-                text-align: center;
-                color: #000;
-                font-weight: 500;
-              }
-              .barcode {
-                font-family: 'Courier New', Courier, monospace;
-                font-size: 12px;
-                margin-top: 6px;
-                letter-spacing: 2px;
-                font-weight: 700;
-                color: #000;
-              }
-            </style>
-          </head>
-          <body>
-            <div class="header text-center" style="display: flex; flex-direction: column; align-items: center; margin-bottom: 6px;">
-              <div style="display: flex; flex-direction: row; align-items: center; gap: 6px; margin-bottom: 2px;">  
-                <img src="${window.location.origin}/logo_bw.png" alt="MilliyGo Logo" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover;" />
-                <div style="font-size: 14px; font-weight: 700; letter-spacing: 1px; color: #000;">MILLIYGO</div>
-              </div>
-              <h2 style="margin: 0; font-size: 16px; font-weight: 700; color: #000; text-transform: uppercase;">${receiptData.partner_name || ''}</h2>
-              <div style="font-size: 10px; color: #000; font-weight: 500; margin-top: 2px; line-height: 1.2; text-align: center;">
-                <p style="margin: 1px 0;">${[receiptData.partner_address, receiptData.partner_phone].filter(Boolean).join(' | ')}</p>
-              </div>
-            </div>
-
-            <div class="divider"></div>
-
-            <div class="info-row">
-              <span class="info-label">Buyurtma:</span>
-              <span class="info-value bold">${receiptData.order_number}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Sana:</span>
-              <span class="info-value">${formattedDate}</span>
-            </div>
-            ${receiptData.contact_name ? `
-            <div class="info-row">
-              <span class="info-label">Mijoz:</span>
-              <span class="info-value">${receiptData.contact_name}</span>
-            </div>` : ''}
-            ${receiptData.contact_phone ? `
-            <div class="info-row">
-              <span class="info-label">Tel:</span>
-              <span class="info-value">${receiptData.contact_phone}</span>
-            </div>` : ''}
-            ${receiptData.address ? `
-            <div class="info-row">
-              <span class="info-label">Manzil:</span>
-              <span class="info-value">${receiptData.address}</span>
-            </div>` : ''}
-            ${receiptData.delivery_type_display ? `
-            <div class="info-row">
-              <span class="info-label">Turi:</span>
-              <span class="info-value">${receiptData.delivery_type_display}</span>
-            </div>` : ''}
-            ${receiptData.table_number ? `
-            <div class="info-row">
-              <span class="info-label">Stol:</span>
-              <span class="info-value bold">${receiptData.table_number}-stol</span>
-            </div>` : ''}
-            
-
-            <div class="divider"></div>
-
-            <div class="items-header">
-              <span>MAHSULOT</span>
-              <span>SUMMA</span>
-            </div>
-            
-            ${itemsHtml}
-
-            <div class="divider"></div>
-
-            <div class="totals-section">
-              <div class="totals-row">
-                <span class="info-label">Summa:</span>
-                <span class="info-value">${Number(receiptData.subtotal).toLocaleString('uz-UZ')} UZS</span>
-              </div>
-              <div class="totals-row">
-                <span class="info-label">Yetkazib berish:</span>
-                <span class="info-value">${Number(receiptData.delivery_fee || 0).toLocaleString('uz-UZ')} UZS</span>
-              </div>
-              
-              <div class="grand-total-row">
-                <span>JAMI:</span>
-                <span>${Number(receiptData.total_price).toLocaleString('uz-UZ')} UZS</span>
-              </div>
-              
-              <div class="info-row" style="margin-top: 4px;">
-                <span class="info-label">To'lov turi:</span>
-                <span class="info-value bold">${receiptData.payment_method_display || receiptData.payment_method || ''}</span>
-              </div>
-             
-              ${receiptData.description ? `
-              <div class="info-row" style="margin-top: 3px;">
-                <span class="info-label">Izoh:</span>
-                <span class="info-value">${receiptData.description}</span>
-              </div>` : ''}
-            </div>
-
-            <div class="footer">
-              <p class="bold" style="font-size: 11px; margin-bottom: 2px;">XARIDINGIZ UCHUN RAHMAT!</p>
-              <p style="margin: 0; font-weight: 700;">milliyapp.uz</p>
-              
-            </div>
-
-            <script>
-              window.onload = function() {
-                window.print();
-                setTimeout(function() {
-                  window.frameElement.remove();
-                }, 1000);
-              };
-            </script>
-          </body>
-        </html>
-      `;
-
-      const printCopies = parseInt(localStorage.getItem('milliygo_print_copies') || '1', 10) || 1;
-
-      for (let i = 0; i < printCopies; i++) {
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.bottom = '0';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = '0';
-        document.body.appendChild(iframe);
-
-        const doc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (doc) {
-          doc.open();
-          doc.write(receiptHtml);
-          doc.close();
-        }
-      }
-
+      await printReceiptUtil(orderUuid);
     } catch (err: any) {
       console.error("Chek chop etishda xatolik:", err);
       alert("Chek ma'lumotlarini yuklashda xatolik yuz berdi.");
@@ -572,79 +358,7 @@ const OrdersPage: React.FC = () => {
 
   // Pre-check (Preliminary receipt) — simple format matching the image
   const handlePrintPreCheck = useCallback((order: Order) => {
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-
-    const totalAmount = Number(order.total_price || 0);
-    const tableLabel = order.table_number ? `stol "${order.table_number}"` : '';
-
-    const preCheckHtml = `
-      <html>
-        <head>
-          <title>Pre-chek</title>
-          <style>
-            @page { size: 80mm auto; margin: 0; }
-            * { box-sizing: border-box; }
-            body {
-              font-family: 'Courier New', Courier, monospace;
-              width: 74mm;
-              margin: 0 auto;
-              padding: 70px 6px 8px 6px;
-              color: #000;
-              background: #fff;
-              font-size: 12px;
-              font-weight: 700;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-            .center { text-align: center; }
-            .divider { border-top: 2px dashed #000; margin: 7px 0; }
-            .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
-            .total-row { display: flex; justify-content: space-between; font-weight: 700; font-size: 13px; margin-top: 3px; }
-          </style>
-        </head>
-        <body>
-          <div class="center" style="font-size: 15px; margin-bottom: 8px;">Buyurtmalaringiz</div>
-          <div style="margin-bottom: 2px;">Chek chiqarilgan vaqti: ${timeStr}</div>
-          ${tableLabel ? `<div style="margin-bottom: 2px;">${tableLabel}</div>` : ''}
-          <div class="divider"></div>
-          ${(order.items || []).map((item: any) => {
-            const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
-            const unitPrice = Number(item.price_at_time_of_order || item.product?.price || 0);
-            const quantity = item.quantity || 1;
-            const lineTotal = unitPrice * quantity;
-            return `
-              <div style="margin: 8px 0;">
-                <div class="row">
-                  <span style="font-size: 12px;">${productName}</span>
-                  <span style="font-size: 12px; margin-left: 6px; white-space: nowrap;">${quantity}</span>
-                </div>
-                <div class="row">
-                  <span style="font-size: 11px;">Narxi: ${unitPrice.toLocaleString('uz-UZ')}</span>
-                  <span style="font-size: 11px;">${lineTotal.toLocaleString('uz-UZ')}</span>
-                </div>
-              </div>
-            `;
-          }).join('')}
-          <div class="divider"></div>
-          <div class="total-row"><span>Jami:</span><span>${totalAmount.toLocaleString('uz-UZ')} so'm</span></div>
-          <div class="total-row" style="margin-top: 4px;"><span>Jami to'lov:</span><span>${totalAmount.toLocaleString('uz-UZ')} so'm</span></div>
-          <script>
-            window.onload = function() {
-              window.print();
-              setTimeout(function() { window.frameElement.remove(); }, 1000);
-            };
-          </script>
-        </body>
-      </html>
-    `;
-
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (doc) { doc.open(); doc.write(preCheckHtml); doc.close(); }
+    printPreCheckUtil(order);
   }, []);
 
   // Handle incoming Websocket order alerts
@@ -729,10 +443,13 @@ const OrdersPage: React.FC = () => {
       if (selectedOrder && selectedOrder.uuid === orderUuid) {
         setSelectedOrder(null);
       }
-      
+
+      // Free up the dine-in table now that the order is settled
+      freeTableForOrder(orders.find((o) => o.uuid === orderUuid));
+
       // Auto-print receipt on completion
       handlePrintReceipt(orderUuid);
-      
+
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
     } catch (err: any) {
       console.error("Failed to complete order:", err);
@@ -758,6 +475,9 @@ const OrdersPage: React.FC = () => {
       });
       // 2. Buyurtmani COMPLETED statusga o'tkazish
       await ordersApi.completeOrder(paymentModalOrder.uuid);
+
+      // Free up the dine-in table now that payment is confirmed
+      freeTableForOrder(paymentModalOrder);
 
       setPaymentModalOrder(null);
       if (selectedOrder && selectedOrder.uuid === paymentModalOrder.uuid) {
@@ -787,7 +507,7 @@ const OrdersPage: React.FC = () => {
       case 'active':
         return typeFiltered.filter((o) => ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'DELIVERING'].includes(o.status));
       case 'history':
-        return typeFiltered.filter((o) => ['COMPLETED', 'REJECTED', 'CANCELLED'].includes(o.status));
+        return typeFiltered.filter((o) => ['COMPLETED', 'DELIVERED', 'REJECTED', 'CANCELLED'].includes(o.status));
       case 'all':
       default:
         return typeFiltered;
@@ -809,6 +529,7 @@ const OrdersPage: React.FC = () => {
       case 'DELIVERING':
         return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">Yo'lda</span>;
       case 'COMPLETED':
+      case 'DELIVERED':
         return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/15">Yetkazildi</span>;
       case 'REJECTED':
         return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/15">Rad etilgan</span>;
@@ -833,8 +554,8 @@ const OrdersPage: React.FC = () => {
   const activeCount = typeFilteredOrders.filter((o) => ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'DELIVERING'].includes(o.status)).length;
 
   return (
-    <div className="space-y-8 font-Outfit relative min-h-[80vh]">
-      {/* Toast Alert popup */}
+    <div className="space-y-3 font-Outfit relative min-h-[80vh]">
+      {/* Toast Alert popup*/}
       {newOrderToast && (
         <div className="fixed top-24 right-6 z-50 w-full max-w-sm p-4 rounded-xl bg-brand text-white shadow-2xl border border-white/20 flex gap-3 animate-[slide-in_0.3s_ease-out]">
           <span className="p-2.5 rounded-lg bg-white/20 text-white shrink-0 self-start">
@@ -897,15 +618,54 @@ const OrdersPage: React.FC = () => {
       )}
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-2">
-            Buyurtmalar <ShoppingBag className="w-7 h-7 text-brand" />
-          </h1>
-          <p className="text-slate-400">Kelayotgan va faol holatdagi buyurtmalarni real vaqtda boshqaring</p>
-        </div>
+  
 
-        <div className="flex flex-wrap items-center gap-3">
+      {/* Order Type Filter Tabs */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+
+        <div className="flex flex-wrap items-center gap-2 p-1 bg-white/5 rounded-2xl border border-white/10 w-fit">
+          <button
+            onClick={() => setOrderTypeFilter('ALL')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${orderTypeFilter === 'ALL'
+                ? 'bg-brand text-white border-brand shadow-lg shadow-brand/15'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
+              }`}
+          >
+            <ShoppingBag className="w-4 h-4" />
+            <span>Barchasi ({orders.length})</span>
+          </button>
+          <button
+            onClick={() => setOrderTypeFilter('DELIVERY')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${orderTypeFilter === 'DELIVERY'
+                ? 'bg-blue-500/20 text-blue-400 border-blue-500/30 shadow-lg shadow-blue-500/5'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
+              }`}
+          >
+            <Truck className="w-4 h-4" />
+            <span>Yetkazib berish ({orders.filter(o => o.delivery_type === 'DELIVERY').length})</span>
+          </button>
+          <button
+            onClick={() => setOrderTypeFilter('PICKUP')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${orderTypeFilter === 'PICKUP'
+                ? 'bg-amber-500/20 text-amber-400 border-amber-500/30 shadow-lg shadow-amber-500/5'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
+              }`}
+          >
+            <Clock className="w-4 h-4" />
+            <span>Olib ketish ({orders.filter(o => o.delivery_type === 'PICKUP').length})</span>
+          </button>
+          <button
+            onClick={() => setOrderTypeFilter('DINE_IN')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${orderTypeFilter === 'DINE_IN'
+                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 shadow-lg shadow-emerald-500/5'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
+              }`}
+          >
+            <Utensils className="w-4 h-4" />
+            <span>Stollar ({orders.filter(o => o.delivery_type === 'DINE_IN').length})</span>
+          </button>
+        </div>
+         <div className="flex flex-wrap items-center gap-3">
           {/* WebSocket indicator */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold">
             <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
@@ -961,53 +721,6 @@ const OrdersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Order Type Filter Tabs */}
-      <div className="flex flex-wrap items-center gap-2 p-1 bg-white/5 rounded-2xl border border-white/10 w-fit">
-        <button
-          onClick={() => setOrderTypeFilter('ALL')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${
-            orderTypeFilter === 'ALL'
-              ? 'bg-brand text-white border-brand shadow-lg shadow-brand/15'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
-          }`}
-        >
-          <ShoppingBag className="w-4 h-4" />
-          <span>Barchasi ({orders.length})</span>
-        </button>
-        <button
-          onClick={() => setOrderTypeFilter('DELIVERY')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${
-            orderTypeFilter === 'DELIVERY'
-              ? 'bg-blue-500/20 text-blue-400 border-blue-500/30 shadow-lg shadow-blue-500/5'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
-          }`}
-        >
-          <Truck className="w-4 h-4" />
-          <span>Yetkazib berish ({orders.filter(o => o.delivery_type === 'DELIVERY').length})</span>
-        </button>
-        <button
-          onClick={() => setOrderTypeFilter('PICKUP')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${
-            orderTypeFilter === 'PICKUP'
-              ? 'bg-amber-500/20 text-amber-400 border-amber-500/30 shadow-lg shadow-amber-500/5'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
-          }`}
-        >
-          <Clock className="w-4 h-4" />
-          <span>Olib ketish ({orders.filter(o => o.delivery_type === 'PICKUP').length})</span>
-        </button>
-        <button
-          onClick={() => setOrderTypeFilter('DINE_IN')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${
-            orderTypeFilter === 'DINE_IN'
-              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 shadow-lg shadow-emerald-500/5'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
-          }`}
-        >
-          <Utensils className="w-4 h-4" />
-          <span>Stollar ({orders.filter(o => o.delivery_type === 'DINE_IN').length})</span>
-        </button>
-      </div>
 
       {/* Main content container (full width) */}
       <div className="w-full space-y-6">
@@ -1180,7 +893,9 @@ const OrdersPage: React.FC = () => {
                 const colOrders = getFilteredOrdersByDeliveryType(orders).filter(o =>
                   col.status === 'PENDING'
                     ? (o.status === 'PENDING' || o.status === 'SEARCHING_COURIER')
-                    : o.status === col.status
+                    : col.status === 'COMPLETED'
+                      ? (o.status === 'COMPLETED' || o.status === 'DELIVERED')
+                      : o.status === col.status
                 );
                 const isValidDropTarget = draggedOrder && getValidTargets(draggedOrder.status).includes(col.status);
                 const isHovered = dragOverCol === col.status;
@@ -1205,7 +920,11 @@ const OrdersPage: React.FC = () => {
                     }}
                     onDrop={() => {
                       if (draggedOrder && isValidDropTarget) {
-                        handleUpdateStatus(draggedOrder.uuid, col.status);
+                        if (col.status === 'COMPLETED') {
+                          handleCompleteOrder(draggedOrder.uuid);
+                        } else {
+                          handleUpdateStatus(draggedOrder.uuid, col.status);
+                        }
                       }
                       setDragOverCol(null);
                     }}
@@ -1387,8 +1106,8 @@ const OrdersPage: React.FC = () => {
                 </p>
                 <div className="flex items-center gap-1.5">
                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${selectedOrder.is_paid
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/10'
-                      : 'bg-amber-500/10 text-amber-400 border border-amber-500/10'
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/10'
+                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/10'
                     }`}>
                     {selectedOrder.is_paid ? "To'langan" : "To'lanmagan"}
                   </span>
@@ -1516,6 +1235,15 @@ const OrdersPage: React.FC = () => {
                 <div className="space-y-2">
                   <button
                     onClick={() => {
+                      handleCompleteOrder(selectedOrder.uuid);
+                    }}
+                    className="w-full py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Tugallandi deb belgilash
+                  </button>
+                  <button
+                    onClick={() => {
                       handleUpdateStatus(selectedOrder.uuid, 'READY_FOR_PICKUP');
                       setSelectedOrder(null);
                     }}
@@ -1527,7 +1255,7 @@ const OrdersPage: React.FC = () => {
                 </div>
               )}
 
-              {['COMPLETED', 'REJECTED', 'CANCELLED'].includes(selectedOrder.status) && (
+              {['COMPLETED', 'DELIVERED', 'REJECTED', 'CANCELLED'].includes(selectedOrder.status) && (
                 <div className="p-3 text-center rounded-xl bg-white/5 border border-white/5 text-slate-400 text-xs">
                   Buyurtma faoliyati yakunlangan
                 </div>
@@ -1545,7 +1273,7 @@ const OrdersPage: React.FC = () => {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-          className="w-full max-w-lg bg-darkCard border border-white/10 rounded-2xl shadow-2xl flex flex-col animate-[slideUp_0.25s_ease-out] overflow-hidden"
+            className="w-full max-w-lg bg-darkCard border border-white/10 rounded-2xl shadow-2xl flex flex-col animate-[slideUp_0.25s_ease-out] overflow-hidden"
           >
             {/* Header */}
             <div className="p-5 border-b border-white/5 flex items-center justify-between">
@@ -1593,11 +1321,10 @@ const OrdersPage: React.FC = () => {
                     <button
                       key={opt.value}
                       onClick={() => setPaymentMethod(opt.value)}
-                      className={`py-5 px-4 rounded-xl border-2 font-bold text-base transition-all cursor-pointer flex flex-col items-center justify-center gap-2 ${
-                        paymentMethod === opt.value
+                      className={`py-5 px-4 rounded-xl border-2 font-bold text-base transition-all cursor-pointer flex flex-col items-center justify-center gap-2 ${paymentMethod === opt.value
                           ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400 shadow-lg shadow-emerald-500/10 scale-[1.02]'
                           : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200'
-                      }`}
+                        }`}
                     >
                       <span className="text-2xl">{opt.icon}</span>
                       {opt.label}

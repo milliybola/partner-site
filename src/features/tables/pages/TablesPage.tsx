@@ -5,16 +5,12 @@ import {
   Edit, 
   AlertCircle, 
   RefreshCw, 
-  Grid, 
-  List, 
   Users, 
-  Search, 
   Info,
   CheckCircle,
   HelpCircle,
   ShieldAlert,
   Loader2,
-  Sparkles,
   FileSpreadsheet
 } from 'lucide-react';
 import { STORAGE_KEYS } from '../../../core/config/constants';
@@ -22,6 +18,7 @@ import { tablesApi } from '../services/tablesApi';
 import type { TableModel, TableStatus } from '../services/tablesApi';
 import { filialApi } from '../../orders/services/filialApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
+import { TableOrderModal } from '../components/TableOrderModal';
 
 const TablesPage: React.FC = () => {
   // Authentication & Roles
@@ -48,10 +45,13 @@ const TablesPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [activeFilter, setActiveFilter] = useState<string>('ALL');
 
+  console.log(setViewMode,setSearchQuery,  setStatusFilter, setActiveFilter);
+
   // Modals state
   const [isCrudModalOpen, setIsCrudModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [selectedTable, setSelectedTable] = useState<TableModel | null>(null);
+  const [orderingTable, setOrderingTable] = useState<TableModel | null>(null);
 
   // Form states for Single Table CRUD
   const [tableNumber, setTableNumber] = useState('');
@@ -80,29 +80,25 @@ const TablesPage: React.FC = () => {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkSuccessMsg, setBulkSuccessMsg] = useState<string | null>(null);
 
-  // Fetch Tables
+  // Fetch Tables (full data, including active order info, for all roles —
+  // waiters need to see occupied tables too in order to manage their live orders)
   const fetchTables = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      let data: TableModel[] = [];
-      if (isWaiter) {
-        data = await tablesApi.getAvailableTables();
-      } else {
-        data = await tablesApi.getTables();
-      }
+      const data = await tablesApi.getTables();
       setTables(data);
     } catch (err: any) {
       console.error("Failed to fetch tables:", err);
       setError(
-        err.response?.data?.message || 
-        err.message || 
+        err.response?.data?.message ||
+        err.message ||
         "Stollar ma'lumotlarini yuklashda xatolik yuz berdi."
       );
     } finally {
       setLoading(false);
     }
-  }, [isWaiter]);
+  }, []);
 
   useEffect(() => {
     fetchTables();
@@ -198,26 +194,6 @@ const TablesPage: React.FC = () => {
         console.error("Delete table error:", err);
         alert(err.response?.data?.message || "Stolni o'chirishda xatolik yuz berdi.");
       }
-    }
-  };
-
-  // Fast patch status change
-  const handleStatusChange = async (uuid: string, currentStatus: TableStatus) => {
-    const statuses: TableStatus[] = ['AVAILABLE', 'OCCUPIED', 'RESERVED'];
-    const nextIdx = (statuses.indexOf(currentStatus) + 1) % statuses.length;
-    const nextStatus = statuses[nextIdx];
-
-    // Optimistic UI update
-    setTables(prev => prev.map(t => t.uuid === uuid ? { ...t, status: nextStatus } : t));
-
-    try {
-      await tablesApi.updateTableStatus(uuid, nextStatus);
-      fetchTables(); // sync from server
-    } catch (err: any) {
-      console.error("Failed to patch status:", err);
-      // Revert UI on failure
-      setTables(prev => prev.map(t => t.uuid === uuid ? { ...t, status: currentStatus } : t));
-      alert(err.response?.data?.message || "Stol holatini o'zgartirishda xatolik.");
     }
   };
 
@@ -374,15 +350,15 @@ const TablesPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 font-Outfit text-slate-200">
+    <div className="space-y-3 font-Outfit text-slate-200">
       
       {/* Title Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-2">
+          {/* <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-2">
             Stollarni Boshqarish <Sparkles className="w-6 h-6 text-brand animate-pulse" />
           </h1>
-          <p className="text-slate-400 text-sm">Muassasa zallaridagi stollar holatini boshqarish va buyurtma sozlamalari</p>
+          <p className="text-slate-400 text-sm">Muassasa zallaridagi stollar holatini boshqarish va buyurtma sozlamalari</p> */}
         </div>
 
         {isManagerOrOwner && (
@@ -410,16 +386,15 @@ const TablesPage: React.FC = () => {
         <div className="flex gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm items-start">
           <Info className="w-5 h-5 shrink-0 mt-0.5" />
           <div>
-            <span className="font-bold">Ofitsant rejimi:</span> Siz stollarni o'zgartira yoki yangilarini qo'sha olmaysiz. Zaldagi stollar bandlik statusini o'zgartirish uchun stol ustiga bir marta bosing.
+            <span className="font-bold">Ofitsant rejimi:</span> Siz stollarni o'zgartira yoki yangilarini qo'sha olmaysiz. Bo'sh stolga bosib yangi buyurtma yarating, band stolga bosib esa mavjud buyurtmani boshqaring (mahsulot qo'shish, pre-chek, to'lov).
           </div>
         </div>
       )}
 
       {/* Filtering and Toolbar */}
-      <div className="p-4 rounded-2xl bg-darkCard border border-white/5 shadow-md space-y-4">
+      {/* <div className="p-4 rounded-2xl bg-darkCard border border-white/5 shadow-md space-y-4">
         <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
           
-          {/* Search bar */}
           <div className="relative w-full lg:max-w-md">
             <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
             <input
@@ -431,10 +406,8 @@ const TablesPage: React.FC = () => {
             />
           </div>
 
-          {/* Filters selection */}
           <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end">
             
-            {/* Status filters */}
             <div className="flex items-center gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-white/5 text-xs font-semibold">
               <button
                 onClick={() => setStatusFilter('ALL')}
@@ -470,7 +443,6 @@ const TablesPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Active/Inactive filters */}
             {isManagerOrOwner && (
               <select
                 value={activeFilter}
@@ -483,7 +455,6 @@ const TablesPage: React.FC = () => {
               </select>
             )}
 
-            {/* View layout toggler */}
             <div className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-white/5">
               <button
                 onClick={() => setViewMode('grid')}
@@ -514,7 +485,7 @@ const TablesPage: React.FC = () => {
             </button>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Main Content Area */}
       {loading ? (
@@ -548,13 +519,14 @@ const TablesPage: React.FC = () => {
               } as Record<string, string>)[table.status || 'AVAILABLE'] || '';
 
               return (
-                <div 
+                <div
                   key={table.uuid}
-                  className={`relative p-5 rounded-2xl bg-darkCard/80 border ${
+                  onClick={() => setOrderingTable(table)}
+                  className={`relative p-5 rounded-2xl bg-darkCard/80 border cursor-pointer ${
                     table.is_active === false ? 'border-dashed border-white/5 opacity-55' : 'border-white/5'
                   } transition-all duration-300 group hover:-translate-y-1 hover:shadow-lg flex flex-col justify-between min-h-[175px] ${borderGlow}`}
                 >
-                  
+
                   {/* Card top */}
                   <div>
                     <div className="flex items-start justify-between gap-2">
@@ -565,10 +537,10 @@ const TablesPage: React.FC = () => {
                       {/* Display active status indicator (Manager option) */}
                       {isManagerOrOwner && (
                         <button
-                          onClick={() => handleToggleActive(table)}
+                          onClick={(e) => { e.stopPropagation(); handleToggleActive(table); }}
                           className={`w-3.5 h-3.5 rounded-full border border-white/10 ${
-                            table.is_active !== false 
-                              ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]' 
+                            table.is_active !== false
+                              ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
                               : 'bg-slate-700'
                           }`}
                           title={table.is_active !== false ? "Faol (Deaktiv qilish)" : "Nofaol (Faollashtirish)"}
@@ -581,7 +553,11 @@ const TablesPage: React.FC = () => {
                       <span>{table.capacity} kishi</span>
                     </div>
 
-                    {table.notes && (
+                    {table.current_order ? (
+                      <p className="text-[11px] text-slate-400 mt-2 leading-relaxed font-medium">
+                        {table.current_order.order_number} · {Number(table.current_order.total_price).toLocaleString('uz-UZ')} UZS
+                      </p>
+                    ) : table.notes && (
                       <p className="text-[11px] text-slate-500 line-clamp-2 mt-2 leading-relaxed font-medium">
                         {table.notes}
                       </p>
@@ -590,25 +566,19 @@ const TablesPage: React.FC = () => {
 
                   {/* Card Bottom status + action buttons */}
                   <div className="mt-4 pt-3.5 border-t border-white/5 flex flex-col gap-2">
-                    <button
-                      onClick={() => handleStatusChange(table.uuid, table.status)}
-                      className="w-full text-left focus:outline-none cursor-pointer"
-                      title="Holatni o'zgartirish uchun bosing"
-                    >
-                      {getStatusBadge(table.status)}
-                    </button>
+                    {getStatusBadge(table.status)}
 
                     {isManagerOrOwner && (
                       <div className="flex items-center justify-end gap-1.5 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                         <button
-                          onClick={() => openCrudModal(table)}
+                          onClick={(e) => { e.stopPropagation(); openCrudModal(table); }}
                           className="p-1.5 rounded-lg bg-white/5 border border-white/5 text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
                           title="Tahrirlash"
                         >
                           <Edit className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => handleDeleteTable(table.uuid, table.table_number)}
+                          onClick={(e) => { e.stopPropagation(); handleDeleteTable(table.uuid, table.table_number); }}
                           className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/10 text-rose-400 hover:text-white hover:bg-rose-500 transition cursor-pointer"
                           title="O'chirish (Deaktiv)"
                         >
@@ -640,11 +610,18 @@ const TablesPage: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-white/5 text-slate-300">
                   {filteredTables.map((table) => (
-                    <tr key={table.uuid} className={`hover:bg-white/[0.01] transition-colors ${
-                      table.is_active === false ? 'opacity-55 border-dashed' : ''
-                    }`}>
+                    <tr
+                      key={table.uuid}
+                      onClick={() => setOrderingTable(table)}
+                      className={`hover:bg-white/[0.01] transition-colors cursor-pointer ${
+                        table.is_active === false ? 'opacity-55 border-dashed' : ''
+                      }`}
+                    >
                       <td className="py-3.5 pl-2">
                         <div className="font-bold text-white text-base">{table.table_number}</div>
+                        {table.current_order && (
+                          <div className="text-[10px] text-slate-500 mt-0.5">{table.current_order.order_number}</div>
+                        )}
                       </td>
                       <td className="py-3.5 font-semibold text-slate-200">
                         <span className="flex items-center gap-1"><Users className="w-4 h-4 text-slate-500" /> {table.capacity} kishi</span>
@@ -656,21 +633,15 @@ const TablesPage: React.FC = () => {
                         <td className="py-3.5 text-center text-slate-400 font-semibold">{table.display_order ?? 0}</td>
                       )}
                       <td className="py-3.5 text-center">
-                        <button
-                          onClick={() => handleStatusChange(table.uuid, table.status)}
-                          className="focus:outline-none cursor-pointer"
-                          title="O'zgartirish uchun bosing"
-                        >
-                          {getStatusBadge(table.status)}
-                        </button>
+                        {getStatusBadge(table.status)}
                       </td>
                       {isManagerOrOwner && (
                         <td className="py-3.5 text-center">
                           <button
-                            onClick={() => handleToggleActive(table)}
+                            onClick={(e) => { e.stopPropagation(); handleToggleActive(table); }}
                             className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border transition ${
-                              table.is_active !== false 
-                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                              table.is_active !== false
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                                 : 'bg-slate-700/25 text-slate-500 border-slate-700/30'
                             }`}
                           >
@@ -682,14 +653,14 @@ const TablesPage: React.FC = () => {
                         <td className="py-3.5 text-right pr-2">
                           <div className="flex items-center justify-end gap-2">
                             <button
-                              onClick={() => openCrudModal(table)}
+                              onClick={(e) => { e.stopPropagation(); openCrudModal(table); }}
                               className="p-1.5 rounded-lg bg-white/5 border border-white/5 text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
                               title="Tahrirlash"
                             >
                               <Edit className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => handleDeleteTable(table.uuid, table.table_number)}
+                              onClick={(e) => { e.stopPropagation(); handleDeleteTable(table.uuid, table.table_number); }}
                               className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/10 text-rose-400 hover:text-white hover:bg-rose-500 transition cursor-pointer"
                               title="O'chirish"
                             >
@@ -1005,6 +976,19 @@ const TablesPage: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Table Order Modal (Create new order / Manage active order) */}
+      {orderingTable && (
+        <TableOrderModal
+          table={orderingTable}
+          onClose={(refresh) => {
+            setOrderingTable(null);
+            if (refresh) {
+              fetchTables();
+            }
+          }}
+        />
       )}
 
     </div>

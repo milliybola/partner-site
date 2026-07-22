@@ -98,13 +98,13 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="bg-darkCard border border-white/10 w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-[fade-in_0.25s_ease-out] text-left">
+      <div className="bg-darkCard border border-edge-strong w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-[fade-in_0.25s_ease-out] text-left">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-slate-900/50">
-          <h3 className="font-bold text-white text-lg">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-edge bg-slate-900/50">
+          <h3 className="font-bold text-ink text-lg">
             {product ? "Taomni Tahrirlash" : "Yangi Taom Qo'shish"}
           </h3>
-          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white transition cursor-pointer">
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-ink transition cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -115,7 +115,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Taom Rasmi</label>
             <div className="flex items-center gap-4">
-              <div className="relative w-24 h-24 rounded-xl bg-slate-900 border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
+              <div className="relative w-24 h-24 rounded-xl bg-slate-900 border border-edge-strong overflow-hidden flex items-center justify-center shrink-0">
                 {imagePreview ? (
                   <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
                 ) : (
@@ -123,7 +123,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 )}
               </div>
               <div className="flex-1">
-                <label className="inline-flex items-center px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-xs font-semibold text-white transition cursor-pointer">
+                <label className="inline-flex items-center px-4 py-2 rounded-xl bg-overlay border border-edge-strong hover:bg-overlay-strong text-xs font-semibold text-ink transition cursor-pointer">
                   <span>Rasm tanlash</span>
                   <input type="file" onChange={handleImageChange} accept="image/*" className="hidden" />
                 </label>
@@ -140,7 +140,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-white/10 text-white text-sm focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-edge-strong text-ink text-sm focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition"
                 placeholder="Masalan: Lavash MilliyGo"
                 required
               />
@@ -153,7 +153,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 type="number"
                 value={price || ''}
                 onChange={(e) => setPrice(Number(e.target.value))}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-white/10 text-white text-sm focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-edge-strong text-ink text-sm focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition"
                 placeholder="25000"
                 min="0"
                 required
@@ -167,7 +167,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-white/10 text-white text-sm focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition cursor-pointer"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-edge-strong text-ink text-sm focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition cursor-pointer"
               required
             >
               <option value="" disabled>Kategoriyani tanlang</option>
@@ -185,7 +185,7 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-white/10 text-white text-sm focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition h-20 resize-none"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-edge-strong text-ink text-sm focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition h-20 resize-none"
               placeholder="Masalan: Mol go'shti, pishloq, pomidor, maxsus sous..."
             />
           </div>
@@ -220,11 +220,11 @@ const ProductFormModal: React.FC<ProductFormModalProps> = ({
           </div>
 
           {/* Actions */}
-          <div className="pt-4 border-t border-white/5 flex justify-end gap-3">
+          <div className="pt-4 border-t border-edge flex justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl bg-transparent hover:bg-white/5 border border-white/5 text-slate-300 text-xs font-bold transition cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-transparent hover:bg-overlay border border-edge text-slate-300 text-xs font-bold transition cursor-pointer"
             >
               Bekor qilish
             </button>

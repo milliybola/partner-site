@@ -23,6 +23,7 @@ import { ordersApi } from '../services/ordersApi';
 import { tablesApi } from '../../tables/services/tablesApi';
 import type { TableModel } from '../../tables/services/tablesApi';
 import confetti from 'canvas-confetti';
+import { useConfirm } from '../../../core/components/ConfirmProvider';
 
 interface Product {
   uuid: string;
@@ -64,6 +65,7 @@ interface CartTab {
 
 const CreateOrderPage: React.FC = () => {
   const navigate = useNavigate();
+  const confirm = useConfirm();
 
   // Catalog State
   const [categories, setCategories] = useState<Category[]>([]);
@@ -334,12 +336,12 @@ const CreateOrderPage: React.FC = () => {
     setActiveCartId(newId);
   };
 
-  const closeCartTab = (id: string) => {
+  const closeCartTab = async (id: string) => {
     if (activeCarts.length <= 1) return;
-    
+
     const targetCart = activeCarts.find(c => c.id === id);
     if (targetCart && targetCart.cart.length > 0) {
-      const confirmClose = window.confirm(`"${targetCart.name}" tarkibida taomlar bor. Uni yopib o'chirib yubormoqchimisiz?`);
+      const confirmClose = await confirm(`"${targetCart.name}" tarkibida taomlar bor. Uni yopib o'chirib yubormoqchimisiz?`, { danger: true, confirmText: "Yopish" });
       if (!confirmClose) return;
     }
 
@@ -427,9 +429,9 @@ const CreateOrderPage: React.FC = () => {
     });
   };
 
-  const handleTableSelect = (table: TableModel) => {
+  const handleTableSelect = async (table: TableModel) => {
     if (table.status !== 'AVAILABLE') {
-      const confirmNew = window.confirm(
+      const confirmNew = await confirm(
         `Diqqat! Stol ${table.table_number} hozirda "${table.status === 'OCCUPIED' ? 'Band' : 'Bron'}" holatda. Baribir ushbu stolda buyurtma yaratmoqchimisiz?`
       );
       if (!confirmNew) return;
@@ -536,7 +538,7 @@ const CreateOrderPage: React.FC = () => {
     return (
       <div className="max-w-4xl mx-auto py-10 pt-4 space-y-4 animate-fade-in text-center">
         <div className="space-y-2">
-          <h2 className="text-3xl font-bold text-white tracking-tight flex items-center justify-center gap-3">
+          <h2 className="text-3xl font-bold text-ink tracking-tight flex items-center justify-center gap-3">
             Yangi buyurtma <span className="bg-brand/10 text-brand p-1.5 rounded-xl"><Utensils className="w-6 h-6" /></span>
           </h2>
           <p className="text-sm text-slate-400">Buyurtma turini tanlang</p>
@@ -547,7 +549,7 @@ const CreateOrderPage: React.FC = () => {
           <button
             type="button"
             onClick={() => handleServiceSelect('DELIVERY')}
-            className="p-8 rounded-3xl bg-darkCard border border-white/5 hover:border-emerald-500/30 transition-all duration-300 flex flex-col items-center justify-center text-center space-y-5 cursor-pointer group hover:shadow-2xl hover:shadow-emerald-500/5 hover:-translate-y-1"
+            className="p-8 rounded-3xl bg-darkCard border border-edge hover:border-emerald-500/30 transition-all duration-300 flex flex-col items-center justify-center text-center space-y-5 cursor-pointer group hover:shadow-2xl hover:shadow-emerald-500/5 hover:-translate-y-1"
           >
             <div className="w-24 h-24 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform duration-300 border border-emerald-500/5">
               <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -555,7 +557,7 @@ const CreateOrderPage: React.FC = () => {
               </svg>
             </div>
             <div>
-              <h3 className="font-bold text-white text-lg group-hover:text-emerald-400 transition-colors">Yetkazish</h3>
+              <h3 className="font-bold text-ink text-lg group-hover:text-emerald-400 transition-colors">Yetkazish</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-[200px] leading-relaxed">Mijoz manziliga yetkazib berish xizmati</p>
             </div>
           </button>
@@ -564,13 +566,13 @@ const CreateOrderPage: React.FC = () => {
           <button
             type="button"
             onClick={() => handleServiceSelect('PICKUP')}
-            className="p-8 rounded-3xl bg-darkCard border border-white/5 hover:border-amber-500/30 transition-all duration-300 flex flex-col items-center justify-center text-center space-y-5 cursor-pointer group hover:shadow-2xl hover:shadow-amber-500/5 hover:-translate-y-1"
+            className="p-8 rounded-3xl bg-darkCard border border-edge hover:border-amber-500/30 transition-all duration-300 flex flex-col items-center justify-center text-center space-y-5 cursor-pointer group hover:shadow-2xl hover:shadow-amber-500/5 hover:-translate-y-1"
           >
             <div className="w-24 h-24 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform duration-300 border border-amber-500/5">
               <ShoppingBag className="w-12 h-12 stroke-[1.2]" />
             </div>
             <div>
-              <h3 className="font-bold text-white text-lg group-hover:text-amber-400 transition-colors">Olib ketish</h3>
+              <h3 className="font-bold text-ink text-lg group-hover:text-amber-400 transition-colors">Olib ketish</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-[200px] leading-relaxed">Mijoz taomlarni o'zi kelib olib ketadi</p>
             </div>
           </button>
@@ -579,13 +581,13 @@ const CreateOrderPage: React.FC = () => {
           <button
             type="button"
             onClick={() => handleServiceSelect('DINE_IN')}
-            className="p-8 rounded-3xl bg-darkCard border border-white/5 hover:border-purple-500/30 transition-all duration-300 flex flex-col items-center justify-center text-center space-y-5 cursor-pointer group hover:shadow-2xl hover:shadow-purple-500/5 hover:-translate-y-1"
+            className="p-8 rounded-3xl bg-darkCard border border-edge hover:border-purple-500/30 transition-all duration-300 flex flex-col items-center justify-center text-center space-y-5 cursor-pointer group hover:shadow-2xl hover:shadow-purple-500/5 hover:-translate-y-1"
           >
             <div className="w-24 h-24 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform duration-300 border border-purple-500/5">
               <Utensils className="w-12 h-12 stroke-[1.2]" />
             </div>
             <div>
-              <h3 className="font-bold text-white text-lg group-hover:text-purple-400 transition-colors">Stol uchun</h3>
+              <h3 className="font-bold text-ink text-lg group-hover:text-purple-400 transition-colors">Stol uchun</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-[200px] leading-relaxed">Restoran stolida o'tirib xizmat ko'rsatish</p>
             </div>
           </button>
@@ -595,7 +597,7 @@ const CreateOrderPage: React.FC = () => {
           <button
             type="button"
             onClick={() => navigate('/orders')}
-            className="px-6 py-3 rounded-xl bg-slate-900 border border-white/5 hover:border-white/10 text-slate-400 hover:text-white transition cursor-pointer font-bold text-xs"
+            className="px-6 py-3 rounded-xl bg-slate-900 border border-edge hover:border-edge-strong text-slate-400 hover:text-ink transition cursor-pointer font-bold text-xs"
           >
             Bekor qilish
           </button>
@@ -608,17 +610,17 @@ const CreateOrderPage: React.FC = () => {
   const renderTableSelectStep = () => {
     return (
       <div className="max-w-5xl mx-auto py-6 space-y-2 animate-fade-in">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-edge pb-4">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => updateActiveCart({ step: 'SERVICE_TYPE' })}
-              className="p-2 rounded-xl bg-slate-900 border border-white/5 text-slate-400 hover:text-white transition cursor-pointer"
+              className="p-2 rounded-xl bg-slate-900 border border-edge text-slate-400 hover:text-ink transition cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
             <div>
-              <h2 className="text-2xl font-bold text-white tracking-tight">Stolni tanlang</h2>
+              <h2 className="text-2xl font-bold text-ink tracking-tight">Stolni tanlang</h2>
               <p className="text-xs text-slate-400 mt-0.5">Xizmat ko'rsatiladigan stol raqamini tanlang</p>
             </div>
           </div>
@@ -653,7 +655,7 @@ const CreateOrderPage: React.FC = () => {
               let badgeText = '';
 
               if (isAvailable) {
-                cardStyles = 'border-white/5 bg-darkCard hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/5';
+                cardStyles = 'border-edge bg-darkCard hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/5';
                 iconStyles = 'text-emerald-400 bg-emerald-500/10';
                 badgeStyles = 'bg-emerald-500/10 text-emerald-400';
                 badgeText = "Bo'sh";
@@ -680,7 +682,7 @@ const CreateOrderPage: React.FC = () => {
                     <Utensils className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-lg text-white font-Outfit">Stol {table.table_number}</h3>
+                    <h3 className="font-bold text-lg text-ink font-Outfit">Stol {table.table_number}</h3>
                     <p className="text-[10px] text-slate-400 mt-0.5">{table.capacity} kishilik</p>
                   </div>
                   <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md ${badgeStyles}`}>
@@ -691,9 +693,9 @@ const CreateOrderPage: React.FC = () => {
             })}
           </div>
         ) : (
-          <div className="p-12 text-center bg-darkCard border border-dashed border-white/5 rounded-2xl space-y-2">
+          <div className="p-12 text-center bg-darkCard border border-dashed border-edge rounded-2xl space-y-2">
             <Utensils className="w-12 h-12 text-slate-600 mx-auto" />
-            <h4 className="font-bold text-white text-sm">Bo'sh stollar topilmadi</h4>
+            <h4 className="font-bold text-ink text-sm">Bo'sh stollar topilmadi</h4>
             <p className="text-xs text-slate-400">Tizimda faol stollar mavjud emas.</p>
           </div>
         )}
@@ -728,12 +730,12 @@ const CreateOrderPage: React.FC = () => {
                   step: serviceType === 'DINE_IN' ? 'TABLE_SELECT' : 'SERVICE_TYPE'
                 });
               }} 
-              className="p-2 rounded-xl bg-slate-900 border border-white/5 text-slate-400 hover:text-white transition cursor-pointer"
+              className="p-2 rounded-xl bg-slate-900 border border-edge text-slate-400 hover:text-ink transition cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
             <div>
-              <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+              <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-3">
                 <span className={`text-xs font-extrabold uppercase px-2.5 py-1 rounded-xl border ${headerColor}`}>
                   {headerText}
                 </span>
@@ -746,7 +748,7 @@ const CreateOrderPage: React.FC = () => {
           {/* Left Side: Catalog Menu & Search (Col span: 7) */}
           <div className="lg:col-span-8 space-y-4">
             {/* Filters Bar */}
-            <div className="p-4 rounded-2xl bg-darkCard border border-white/5 space-y-4">
+            <div className="p-4 rounded-2xl bg-darkCard border border-edge space-y-4">
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500 pointer-events-none">
                   <Search className="w-4.5 h-4.5" />
@@ -756,7 +758,7 @@ const CreateOrderPage: React.FC = () => {
                   placeholder="Taom nomini yozing..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-900/50 border border-white/5 hover:border-white/10 focus:border-brand rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                  className="w-full bg-slate-900/50 border border-edge hover:border-edge-strong focus:border-brand rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                 />
               </div>
 
@@ -767,7 +769,7 @@ const CreateOrderPage: React.FC = () => {
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
                     activeCategoryUuid === 'all'
                       ? 'bg-brand text-white'
-                      : 'bg-slate-900 text-slate-400 border border-white/5 hover:border-white/10 hover:text-slate-200'
+                      : 'bg-slate-900 text-slate-400 border border-edge hover:border-edge-strong hover:text-slate-200'
                   }`}
                 >
                   Barcha taomlar
@@ -779,7 +781,7 @@ const CreateOrderPage: React.FC = () => {
                     className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
                       activeCategoryUuid === cat.uuid
                         ? 'bg-brand text-white'
-                        : 'bg-slate-900 text-slate-400 border border-white/5 hover:border-white/10 hover:text-slate-200'
+                        : 'bg-slate-900 text-slate-400 border border-edge hover:border-edge-strong hover:text-slate-200'
                     }`}
                   >
                     {cat.name}
@@ -796,7 +798,7 @@ const CreateOrderPage: React.FC = () => {
             ) : errorCatalog ? (
               <div className="p-6 rounded-2xl bg-rose-500/5 border border-rose-500/10 text-center space-y-4">
                 <AlertCircle className="w-12 h-12 text-rose-400 mx-auto animate-pulse" />
-                <h4 className="font-bold text-white">Taomlarni yuklab bo'lmadi</h4>
+                <h4 className="font-bold text-ink">Taomlarni yuklab bo'lmadi</h4>
                 <p className="text-xs text-slate-400 max-w-sm mx-auto">{errorCatalog}</p>
                 <button
                   onClick={fetchCatalog}
@@ -815,8 +817,8 @@ const CreateOrderPage: React.FC = () => {
                       key={prod.uuid}
                       className={`rounded-2xl border bg-darkCard overflow-hidden transition-all duration-200 flex flex-col justify-between ${
                         !prod.is_available 
-                          ? 'opacity-50 border-white/5' 
-                          : 'border-white/5 hover:border-white/10 hover:shadow-lg'
+                          ? 'opacity-50 border-edge' 
+                          : 'border-edge hover:border-edge-strong hover:shadow-lg'
                       }`}
                     >
                       <div>
@@ -836,7 +838,7 @@ const CreateOrderPage: React.FC = () => {
 
                         {/* Content details */}
                         <div className="p-4 space-y-1">
-                          <h4 className="font-bold text-white text-sm truncate" title={prod.name}>
+                          <h4 className="font-bold text-ink text-sm truncate" title={prod.name}>
                             {prod.name}
                           </h4>
                           <p className="text-[11px] text-slate-400 line-clamp-2 h-7">
@@ -859,19 +861,19 @@ const CreateOrderPage: React.FC = () => {
                       </div>
 
                       {/* Footer add button action */}
-                      <div className="p-3 border-t border-white/5 bg-slate-900/20">
+                      <div className="p-3 border-t border-edge bg-slate-900/20">
                         {cartQty > 0 ? (
-                          <div className="flex items-center justify-between bg-slate-900 rounded-lg p-1 border border-white/5">
+                          <div className="flex items-center justify-between bg-slate-900 rounded-lg p-1 border border-edge">
                             <button
                               onClick={() => decreaseQuantity(prod.uuid)}
-                              className="p-1 rounded bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                              className="p-1 rounded bg-overlay text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
                             >
                               <Minus className="w-3.5 h-3.5" />
                             </button>
-                            <span className="text-xs font-bold text-white px-2">{cartQty} ta</span>
+                            <span className="text-xs font-bold text-ink px-2">{cartQty} ta</span>
                             <button
                               onClick={() => addToCart(prod)}
-                              className="p-1 rounded bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                              className="p-1 rounded bg-overlay text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
                             >
                               <Plus className="w-3.5 h-3.5" />
                             </button>
@@ -896,9 +898,9 @@ const CreateOrderPage: React.FC = () => {
                 })}
               </div>
             ) : (
-              <div className="p-12 rounded-2xl bg-darkCard/50 border border-dashed border-white/5 text-center space-y-2">
+              <div className="p-12 rounded-2xl bg-darkCard/50 border border-dashed border-edge text-center space-y-2">
                 <FolderOpen className="w-12 h-12 text-slate-600 mx-auto" />
-                <h4 className="font-bold text-white text-sm">Mos keladigan taomlar topilmadi</h4>
+                <h4 className="font-bold text-ink text-sm">Mos keladigan taomlar topilmadi</h4>
                 <p className="text-xs text-slate-400">Turkum yoki qidiruv so'zini o'zgartirib ko'ring.</p>
               </div>
             )}
@@ -906,8 +908,8 @@ const CreateOrderPage: React.FC = () => {
 
           {/* Right Side: Cart Sidebar & Form Parameters (Col span: 5) */}
           <div className="sticky top-[100px] lg:col-span-4 space-y-6 overflow-y-auto">
-            <div className="p-6 rounded-2xl bg-darkCard border border-white/5 space-y-6 shadow-xl text-left">
-              <h3 className="font-bold text-white text-lg flex items-center justify-between border-b border-white/5 pb-3">
+            <div className="p-6 rounded-2xl bg-darkCard border border-edge space-y-6 shadow-xl text-left">
+              <h3 className="font-bold text-ink text-lg flex items-center justify-between border-b border-edge pb-3">
                 <span className="flex items-center gap-2">
                   <ShoppingBag className="w-5 h-5 text-brand" />
                   <span>Savatcha</span>
@@ -925,11 +927,11 @@ const CreateOrderPage: React.FC = () => {
 
               {/* Cart Items List */}
               {cart.length > 0 ? (
-                <div className="divide-y divide-white/5 max-h-56 overflow-y-auto pr-1 scrollbar-thin space-y-1">
+                <div className="divide-y divide-edge max-h-56 overflow-y-auto pr-1 scrollbar-thin space-y-1">
                   {cart.map((item) => (
                     <div key={item.product.uuid} className="py-2.5 flex items-center justify-between gap-3 text-xs">
                       <div className="min-w-0 flex-1 flex flex-col items-start text-left">
-                        <p className="font-bold text-white truncate w-full" title={item.product.name}>
+                        <p className="font-bold text-ink truncate w-full" title={item.product.name}>
                           {item.product.name}
                         </p>
                         <p className="text-slate-400 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
@@ -943,19 +945,19 @@ const CreateOrderPage: React.FC = () => {
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        <div className="flex items-center bg-slate-900 rounded-lg p-0.5 border border-white/5">
+                        <div className="flex items-center bg-slate-900 rounded-lg p-0.5 border border-edge">
                           <button
                             type="button"
                             onClick={() => decreaseQuantity(item.product.uuid)}
-                            className="p-1 rounded text-slate-400 hover:text-white transition cursor-pointer"
+                            className="p-1 rounded text-slate-400 hover:text-ink transition cursor-pointer"
                           >
                             <Minus className="w-3 h-3" />
                           </button>
-                          <span className="font-bold text-white px-1.5 text-xs">{item.quantity}</span>
+                          <span className="font-bold text-ink px-1.5 text-xs">{item.quantity}</span>
                           <button
                             type="button"
                             onClick={() => addToCart(item.product)}
-                            className="p-1 rounded text-slate-400 hover:text-white transition cursor-pointer"
+                            className="p-1 rounded text-slate-400 hover:text-ink transition cursor-pointer"
                           >
                             <Plus className="w-3 h-3" />
                           </button>
@@ -974,7 +976,7 @@ const CreateOrderPage: React.FC = () => {
                   ))}
                 </div>
               ) : (
-                <div className="py-8 text-center text-slate-500 bg-slate-900/30 rounded-xl border border-dashed border-white/5 space-y-1">
+                <div className="py-8 text-center text-slate-500 bg-slate-900/30 rounded-xl border border-dashed border-edge space-y-1">
                   <ShoppingBag className="w-8 h-8 text-slate-600 mx-auto" />
                   <p className="text-xs font-semibold text-slate-400">Savatcha bo'sh</p>
                   <p className="text-[10px]">Chap tomondan menyudan taom qo'shing</p>
@@ -982,17 +984,17 @@ const CreateOrderPage: React.FC = () => {
               )}
 
               {/* Form Input Fields */}
-              <div className="space-y-4 border-t border-white/5 pt-4">
+              <div className="space-y-4 border-t border-edge pt-4">
                 {/* Selected Table banner (Dine-in only) */}
                 {serviceType === 'DINE_IN' && (
-                  <div className="p-3 rounded-xl bg-slate-900 border border-white/5 flex items-center justify-between animate-fade-in text-left">
+                  <div className="p-3 rounded-xl bg-slate-900 border border-edge flex items-center justify-between animate-fade-in text-left">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="p-2 rounded-lg bg-brand/10 text-brand shrink-0">
                         <Utensils className="w-4 h-4" />
                       </div>
                       <div className="min-w-0 flex flex-col items-start">
                         <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Tanlangan stol</span>
-                        <p className="text-xs font-bold text-white truncate">
+                        <p className="text-xs font-bold text-ink truncate">
                           Stol {tables.find(t => t.uuid === selectedTableUuid)?.table_number || 'Tanlanmagan'}
                         </p>
                       </div>
@@ -1021,7 +1023,7 @@ const CreateOrderPage: React.FC = () => {
                       placeholder="Masalan: Anvar"
                       value={contactName}
                       onChange={(e) => updateActiveCart({ contactName: e.target.value })}
-                      className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                      className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                     />
                   </div>
 
@@ -1037,7 +1039,7 @@ const CreateOrderPage: React.FC = () => {
                       placeholder="+998901234567"
                       value={contactPhone}
                       onChange={(e) => updateActiveCart({ contactPhone: e.target.value })}
-                      className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                      className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                     />
                   </div>
                 </div>
@@ -1055,7 +1057,7 @@ const CreateOrderPage: React.FC = () => {
                       placeholder="Ko'cha, uy, kvartira, podyezd, qavat, mo'ljal..."
                       value={address}
                       onChange={(e) => updateActiveCart({ address: e.target.value })}
-                      className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition h-16 resize-none"
+                      className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition h-16 resize-none"
                     />
                   </div>
                 )}
@@ -1069,12 +1071,12 @@ const CreateOrderPage: React.FC = () => {
                   <select
                     value={paymentMethod}
                     onChange={(e) => updateActiveCart({ paymentMethod: e.target.value as any })}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none transition cursor-pointer"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-ink focus:outline-none transition cursor-pointer"
                   >
-                    <option value="CASH" className="bg-slate-900 text-white">Naqd (CASH)</option>
-                    <option value="CLICK" className="bg-slate-900 text-white">CLICK</option>
-                    <option value="PAYME" className="bg-slate-900 text-white">Payme</option>
-                    <option value="UZCARD" className="bg-slate-900 text-white">Uzcard</option>
+                    <option value="CASH" className="bg-slate-900 text-ink">Naqd (CASH)</option>
+                    <option value="CLICK" className="bg-slate-900 text-ink">CLICK</option>
+                    <option value="PAYME" className="bg-slate-900 text-ink">Payme</option>
+                    <option value="UZCARD" className="bg-slate-900 text-ink">Uzcard</option>
                   </select>
                 </div> */}
 
@@ -1089,13 +1091,13 @@ const CreateOrderPage: React.FC = () => {
                     placeholder="Buyurtma uchun maxsus izohlar..."
                     value={comment}
                     onChange={(e) => updateActiveCart({ comment: e.target.value })}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition h-16 resize-none"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition h-16 resize-none"
                   />
                 </div>
               </div>
 
               {/* Calculations and Breakdown */}
-              <div className="pt-4 border-t border-white/5 space-y-2 text-xs">
+              <div className="pt-4 border-t border-edge space-y-2 text-xs">
                 <div className="flex justify-between text-slate-400">
                   <span>Savatcha summasi:</span>
                   <span>{formatUzS(subtotal)}</span>
@@ -1108,7 +1110,7 @@ const CreateOrderPage: React.FC = () => {
                   </div>
                 )}
 
-                <div className="flex justify-between font-bold text-white text-sm pt-1 border-t border-white/5">
+                <div className="flex justify-between font-bold text-ink text-sm pt-1 border-t border-edge">
                   <span>Jami:</span>
                   <span className="text-emerald-400 text-base">{formatUzS(total)}</span>
                 </div>
@@ -1130,12 +1132,12 @@ const CreateOrderPage: React.FC = () => {
                 className={`w-full py-3.5 rounded-xl font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 ${
                   isFormValid && !submitting
                     ? 'bg-brand hover:bg-brand-dark text-white shadow-lg shadow-brand/10 hover:shadow-brand/20 hover:scale-[1.01]'
-                    : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5'
+                    : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-edge'
                 }`}
               >
                 {submitting ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-edge-strong border-t-white rounded-full animate-spin" />
                     <span>Kiritilmoqda...</span>
                   </>
                 ) : (
@@ -1161,7 +1163,7 @@ const CreateOrderPage: React.FC = () => {
             <div className="inline-flex p-3 rounded-full bg-emerald-500/10 text-emerald-400">
               <CheckCircle className="w-12 h-12" />
             </div>
-            <h3 className="text-xl font-bold text-white font-Outfit">Buyurtma Qabul Qilindi!</h3>
+            <h3 className="text-xl font-bold text-ink font-Outfit">Buyurtma Qabul Qilindi!</h3>
             <p className="text-sm text-slate-400 leading-relaxed">
               Telefon orqali tushgan buyurtma tizimga muvaffaqiyatli kiritildi.
             </p>
@@ -1237,7 +1239,7 @@ const CreateOrderPage: React.FC = () => {
         <button
           type="button"
           onClick={addNewCartTab}
-          className="px-4 py-2 rounded-2xl text-xs font-bold transition shrink-0 cursor-pointer bg-slate-900 border border-dashed border-white/10 text-slate-400 hover:text-white hover:border-white/20 flex items-center gap-1.5"
+          className="px-4 py-2 rounded-2xl text-xs font-bold transition shrink-0 cursor-pointer bg-slate-900 border border-dashed border-edge-strong text-slate-400 hover:text-ink hover:border-edge-strong flex items-center gap-1.5"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>Yangi savat</span>

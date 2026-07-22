@@ -1,42 +1,66 @@
-import packager from 'electron-packager';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Force the Electron download mirror to bypass GitHub timeouts
-process.env.ELECTRON_MIRROR = 'https://npmmirror.com/mirrors/electron/';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-async function bundle() {
-  console.log('--- Starting Electron Desktop Packaging ---');
-  console.log('Electron Mirror set to:', process.env.ELECTRON_MIRROR);
-  
-  try {
-    const appPaths = await packager({
-      dir: '.',
-      name: 'Milliy Partner',
-      platform: 'win32',
-      arch: 'x64',
-      out: 'dist-electron',
-      overwrite: true,
-      prune: false, // We ignore node_modules anyway, so no pruning needed
-      ignore: [
-        /^\/src/,
-        /^\/tsconfig/,
-        /^\/vite\.config/,
-        /^\/eslint/,
-        /^\/postcss/,
-        /^\/tailwind/,
-        /^\/vercel/,
-        /^\/dist-electron/,
-        /^\/node_modules/
-      ]
-    });
-    console.log('\n==================================================');
-    console.log('SUCCESS: Application packaged successfully!');
-    console.log('Output location:', appPaths[0]);
-    console.log('==================================================');
-  } catch (err) {
-    console.error('ERROR: Packaging failed!');
-    console.error(err);
-    process.exit(1);
+const APP_NAME = 'Milliy Partner';
+const ELECTRON_DIST = path.join(__dirname, 'node_modules', 'electron', 'dist');
+const OUT_DIR = path.join(__dirname, 'dist-electron', `${APP_NAME}-win32-x64`);
+const RESOURCES_APP_DIR = path.join(OUT_DIR, 'resources', 'app');
+
+function copyDirSync(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
   }
 }
 
-bundle();
+console.log('--- Packaging Electron Desktop App ---');
+
+if (!fs.existsSync(ELECTRON_DIST)) {
+  console.error('ERROR: Electron runtime not found at', ELECTRON_DIST);
+  console.error('Run this first: node node_modules/electron/install.js');
+  process.exit(1);
+}
+
+if (!fs.existsSync(path.join(__dirname, 'dist', 'index.html'))) {
+  console.error('ERROR: No production build found at ./dist — run "npm run build" first.');
+  process.exit(1);
+}
+
+if (fs.existsSync(OUT_DIR)) {
+  console.log('Removing previous build output...');
+  fs.rmSync(OUT_DIR, { recursive: true, force: true });
+}
+
+console.log('Copying Electron runtime...');
+copyDirSync(ELECTRON_DIST, OUT_DIR);
+fs.renameSync(path.join(OUT_DIR, 'electron.exe'), path.join(OUT_DIR, `${APP_NAME}.exe`));
+
+console.log('Copying application resources...');
+fs.mkdirSync(RESOURCES_APP_DIR, { recursive: true });
+copyDirSync(path.join(__dirname, 'dist'), path.join(RESOURCES_APP_DIR, 'dist'));
+fs.copyFileSync(path.join(__dirname, 'main.js'), path.join(RESOURCES_APP_DIR, 'main.js'));
+fs.copyFileSync(path.join(__dirname, 'preload.js'), path.join(RESOURCES_APP_DIR, 'preload.js'));
+
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'));
+const appPkg = {
+  name: pkg.name,
+  version: pkg.version,
+  private: true,
+  type: 'module',
+  main: 'main.js',
+};
+fs.writeFileSync(path.join(RESOURCES_APP_DIR, 'package.json'), JSON.stringify(appPkg, null, 2));
+
+console.log('\n==================================================');
+console.log('SUCCESS: Application packaged successfully!');
+console.log('Executable:', path.join(OUT_DIR, `${APP_NAME}.exe`));
+console.log('==================================================');

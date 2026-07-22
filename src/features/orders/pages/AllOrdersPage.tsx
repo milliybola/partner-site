@@ -24,8 +24,10 @@ import { filialApi } from '../services/filialApi';
 import type { PartnerFilial } from '../services/filialApi';
 import { STORAGE_KEYS } from '../../../core/config/constants';
 import { EditOrderModal } from '../components/EditOrderModal';
+import { useToast } from '../../../core/components/ToastProvider';
 
 const AllOrdersPage: React.FC = () => {
+  const toast = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -330,7 +332,7 @@ const AllOrdersPage: React.FC = () => {
 
     } catch (err: any) {
       console.error("Chek chop etishda xatolik:", err);
-      alert("Chek ma'lumotlarini yuklashda xatolik yuz berdi.");
+      toast.error("Chek ma'lumotlarini yuklashda xatolik yuz berdi.");
     } finally {
       setPrintingUuid(null);
     }
@@ -467,7 +469,7 @@ const AllOrdersPage: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-2">
             Barcha buyurtmalar <ShoppingBag className="w-7 h-7 text-brand" />
           </h1>
           <p className="text-slate-400">Buyurtmalar to'liq tarixi, qidiruv va batafsil hisobotlari</p>
@@ -475,7 +477,7 @@ const AllOrdersPage: React.FC = () => {
 
         <button
           onClick={() => fetchOrders()}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white transition text-slate-300 text-sm cursor-pointer self-start sm:self-auto"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-overlay border border-edge-strong hover:bg-overlay-strong hover:text-ink transition text-slate-300 text-sm cursor-pointer self-start sm:self-auto"
         >
           <RefreshCw className="w-4 h-4" />
           <span>Yangilash</span>
@@ -485,27 +487,27 @@ const AllOrdersPage: React.FC = () => {
       {/* KPI Counters Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
         {/* Total Orders */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-white/5 relative overflow-hidden group hover:border-brand/20 transition-all duration-300">
+        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-brand/20 transition-all duration-300">
           <div className="flex items-center justify-between mb-3">
             <span className="p-2.5 rounded-xl bg-brand/10 text-brand"><ShoppingBag className="w-5 h-5" /></span>
             <span className="text-[10px] font-bold text-slate-500 uppercase">Jami</span>
           </div>
           <p className="text-xs text-slate-400 font-semibold">Jami buyurtmalar</p>
-          <h3 className="text-2xl font-bold text-white mt-1">{totalCount} ta</h3>
+          <h3 className="text-2xl font-bold text-ink mt-1">{totalCount} ta</h3>
         </div>
 
         {/* Active Orders */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-white/5 relative overflow-hidden group hover:border-blue-500/20 transition-all duration-300">
+        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-blue-500/20 transition-all duration-300">
           <div className="flex items-center justify-between mb-3">
             <span className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400"><Clock className="w-5 h-5" /></span>
             <span className="text-[10px] font-bold text-blue-400 uppercase">Faol</span>
           </div>
           <p className="text-xs text-slate-400 font-semibold">Jarayondagilar</p>
-          <h3 className="text-2xl font-bold text-white mt-1">{activeCount} ta</h3>
+          <h3 className="text-2xl font-bold text-ink mt-1">{activeCount} ta</h3>
         </div>
 
         {/* Completed Orders */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-white/5 relative overflow-hidden group hover:border-emerald-500/20 transition-all duration-300">
+        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-emerald-500/20 transition-all duration-300">
           <div className="flex items-center justify-between mb-3">
             <span className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400"><CheckCircle className="w-5 h-5" /></span>
             <span className="text-[10px] font-bold text-emerald-400 uppercase">Yakunlandi</span>
@@ -515,17 +517,17 @@ const AllOrdersPage: React.FC = () => {
         </div>
 
         {/* Cancelled/Rejected Orders */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-white/5 relative overflow-hidden group hover:border-rose-500/20 transition-all duration-300">
+        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-rose-500/20 transition-all duration-300">
           <div className="flex items-center justify-between mb-3">
             <span className="p-2.5 rounded-xl bg-rose-500/10 text-rose-400"><XCircle className="w-5 h-5" /></span>
             <span className="text-[10px] font-bold text-rose-400 uppercase">Bekor qilingan</span>
           </div>
           <p className="text-xs text-slate-400 font-semibold">Rad/Bekor bo'lganlar</p>
-          <h3 className="text-2xl font-bold text-white mt-1">{cancelledCount} ta</h3>
+          <h3 className="text-2xl font-bold text-ink mt-1">{cancelledCount} ta</h3>
         </div>
 
         {/* Completed revenue */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-white/5 relative overflow-hidden group hover:border-amber-500/20 transition-all duration-300 sm:col-span-2 lg:col-span-1">
+        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-amber-500/20 transition-all duration-300 sm:col-span-2 lg:col-span-1">
           <div className="flex items-center justify-between mb-3">
             <span className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400"><DollarSign className="w-5 h-5" /></span>
             <span className="text-[10px] font-bold text-amber-400 uppercase">Kirim</span>
@@ -536,7 +538,7 @@ const AllOrdersPage: React.FC = () => {
       </div>
 
       {/* Advanced Filter and Search Bar */}
-      <div className="p-5 rounded-2xl bg-darkCard border border-white/5 flex flex-col xl:flex-row xl:items-center justify-between gap-4 shadow-xl">
+      <div className="p-5 rounded-2xl bg-darkCard border border-edge flex flex-col xl:flex-row xl:items-center justify-between gap-4 shadow-xl">
         <div className="flex-1 relative">
           <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500 pointer-events-none">
             <Search className="w-4.5 h-4.5" />
@@ -546,63 +548,63 @@ const AllOrdersPage: React.FC = () => {
             placeholder="Buyurtma raqami, manzil yoki telefon orqali qidirish..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-900/50 border border-white/5 hover:border-white/10 focus:border-brand rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+            className="w-full bg-slate-900/50 border border-edge hover:border-edge-strong focus:border-brand rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           {/* Status filter */}
-          <div className="flex items-center gap-2 bg-slate-900/50 border border-white/5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
+          <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
             <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-transparent text-white font-bold focus:outline-none cursor-pointer"
+              className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
             >
-              <option value="ALL" className="bg-slate-900 text-white">Barcha holatlar</option>
-              <option value="PENDING_GROUP" className="bg-slate-900 text-white">Yangi (Pending / Kuryer kutilmoqda)</option>
-              <option value="ACTIVE_GROUP" className="bg-slate-900 text-white">Faol jarayondagilar (Yo'lda/Tayyorlanayotgan)</option>
-              <option value="HISTORY_GROUP" className="bg-slate-900 text-white">Yakunlanganlar / Rad qilinganlar</option>
-              <option value="COMPLETED" className="bg-slate-900 text-white">Yetkazib berilganlar</option>
-              <option value="CANCELLED" className="bg-slate-900 text-white">Bekor qilinganlar</option>
-              <option value="REJECTED" className="bg-slate-900 text-white">Rad etilganlar</option>
+              <option value="ALL" className="bg-slate-900 text-ink">Barcha holatlar</option>
+              <option value="PENDING_GROUP" className="bg-slate-900 text-ink">Yangi (Pending / Kuryer kutilmoqda)</option>
+              <option value="ACTIVE_GROUP" className="bg-slate-900 text-ink">Faol jarayondagilar (Yo'lda/Tayyorlanayotgan)</option>
+              <option value="HISTORY_GROUP" className="bg-slate-900 text-ink">Yakunlanganlar / Rad qilinganlar</option>
+              <option value="COMPLETED" className="bg-slate-900 text-ink">Yetkazib berilganlar</option>
+              <option value="CANCELLED" className="bg-slate-900 text-ink">Bekor qilinganlar</option>
+              <option value="REJECTED" className="bg-slate-900 text-ink">Rad etilganlar</option>
             </select>
           </div>
 
           {/* Payment filter */}
-          <div className="flex items-center gap-2 bg-slate-900/50 border border-white/5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
+          <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
             <CreditCard className="w-3.5 h-3.5 shrink-0" />
             <select
               value={paymentFilter}
               onChange={(e) => setPaymentFilter(e.target.value)}
-              className="bg-transparent text-white font-bold focus:outline-none cursor-pointer"
+              className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
             >
-              <option value="ALL" className="bg-slate-900 text-white">Barcha to'lovlar</option>
-              <option value="CASH" className="bg-slate-900 text-white">CASH</option>
-              <option value="CLICK" className="bg-slate-900 text-white">CLICK</option>
-              <option value="PAYME" className="bg-slate-900 text-white">Payme</option>
-              <option value="UZCARD" className="bg-slate-900 text-white">Uzcard</option>
+              <option value="ALL" className="bg-slate-900 text-ink">Barcha to'lovlar</option>
+              <option value="CASH" className="bg-slate-900 text-ink">CASH</option>
+              <option value="CLICK" className="bg-slate-900 text-ink">CLICK</option>
+              <option value="PAYME" className="bg-slate-900 text-ink">Payme</option>
+              <option value="UZCARD" className="bg-slate-900 text-ink">Uzcard</option>
             </select>
           </div>
 
           {/* Sort selection */}
-          <div className="flex items-center gap-2 bg-slate-900/50 border border-white/5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
+          <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
             <Calendar className="w-3.5 h-3.5 shrink-0" />
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="bg-transparent text-white font-bold focus:outline-none cursor-pointer"
+              className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
             >
-              <option value="newest" className="bg-slate-900 text-white">Yangi buyurtmalar birinchi</option>
-              <option value="oldest" className="bg-slate-900 text-white">Eski buyurtmalar birinchi</option>
-              <option value="price-desc" className="bg-slate-900 text-white">Summa: Kamayuvchi</option>
-              <option value="price-asc" className="bg-slate-900 text-white">Summa: O'suvchi</option>
+              <option value="newest" className="bg-slate-900 text-ink">Yangi buyurtmalar birinchi</option>
+              <option value="oldest" className="bg-slate-900 text-ink">Eski buyurtmalar birinchi</option>
+              <option value="price-desc" className="bg-slate-900 text-ink">Summa: Kamayuvchi</option>
+              <option value="price-asc" className="bg-slate-900 text-ink">Summa: O'suvchi</option>
             </select>
           </div>
 
           {/* Branch filter (Superadmin only) */}
           {userRole === 'superadmin' && filials.length > 0 && (
-            <div className="flex items-center gap-2 bg-slate-900/50 border border-white/5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
+            <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
               <SlidersHorizontal className="w-3.5 h-3.5 shrink-0 text-brand" />
               <select
                 value={selectedFilialUuid}
@@ -611,11 +613,11 @@ const AllOrdersPage: React.FC = () => {
                   setSelectedFilialUuid(val);
                   fetchOrders(val);
                 }}
-                className="bg-transparent text-white font-bold focus:outline-none cursor-pointer"
+                className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
               >
-                <option value="" className="bg-slate-900 text-white">Barcha filiallar</option>
+                <option value="" className="bg-slate-900 text-ink">Barcha filiallar</option>
                 {filials.map(filial => (
-                  <option key={filial.uuid} value={filial.uuid} className="bg-slate-900 text-white">
+                  <option key={filial.uuid} value={filial.uuid} className="bg-slate-900 text-ink">
                     {filial.filial_name}
                   </option>
                 ))}
@@ -626,7 +628,7 @@ const AllOrdersPage: React.FC = () => {
       </div>
 
       {/* Main Table view of Orders */}
-      <div className="p-6 rounded-2xl bg-darkCard border border-white/5 flex flex-col shadow-xl">
+      <div className="p-6 rounded-2xl bg-darkCard border border-edge flex flex-col shadow-xl">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <div className="w-10 h-10 border-4 border-brand/30 border-t-brand rounded-full animate-spin" />
@@ -635,7 +637,7 @@ const AllOrdersPage: React.FC = () => {
         ) : error ? (
           <div className="flex flex-col items-center justify-center py-16 text-slate-400 text-center">
             <AlertCircle className="w-12 h-12 text-rose-500 animate-pulse mb-3" />
-            <h4 className="font-bold text-white text-base">Ma'lumot yuklashda xatolik</h4>
+            <h4 className="font-bold text-ink text-base">Ma'lumot yuklashda xatolik</h4>
             <p className="text-xs max-w-sm mt-1 mb-4">{error}</p>
             <button
               onClick={() => fetchOrders()}
@@ -649,7 +651,7 @@ const AllOrdersPage: React.FC = () => {
             {/* Desktop Table View */}
             <table className="w-full text-left border-collapse text-sm hidden md:table">
               <thead>
-                <tr className="border-b border-white/5 text-slate-500 text-xs uppercase tracking-wider font-bold">
+                <tr className="border-b border-edge text-slate-500 text-xs uppercase tracking-wider font-bold">
                   <th className="pb-3.5 pl-2">ID</th>
                   <th className="pb-3.5">Sana / Vaqt</th>
                   <th className="pb-3.5">Telefon</th>
@@ -660,15 +662,15 @@ const AllOrdersPage: React.FC = () => {
                   <th className="pb-3.5 text-center pr-2">Chek</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5 text-slate-300">
+              <tbody className="divide-y divide-edge text-slate-300">
                 {filteredAndSortedOrders.map((order) => (
                   <tr
                     key={order.uuid}
                     onClick={() => setSelectedOrder(order)}
-                    className="hover:bg-white/[0.01] transition-colors cursor-pointer"
+                    className="hover:bg-overlay transition-colors cursor-pointer"
                   >
                     <td className="py-4 pl-2">
-                      <span className="font-bold text-white text-xs block">{order.order_number || `#${order.id}`}</span>
+                      <span className="font-bold text-ink text-xs block">{order.order_number || `#${order.id}`}</span>
                       {order.delivery_type === 'DELIVERY' && (
                         <span className="text-[9px] px-1 py-0.5 rounded font-extrabold bg-blue-500/10 text-blue-400 border border-blue-500/20 mt-1 inline-block">
                           Kuryer
@@ -690,7 +692,7 @@ const AllOrdersPage: React.FC = () => {
                     <td className="py-4 text-xs max-w-[200px] truncate" title={order.address}>{order.address}</td>
                     <td className="py-4 text-center">{getPaymentBadge(order.payment)}</td>
                     <td className="py-4 text-center">{getStatusBadge(order.status)}</td>
-                    <td className="py-4 text-right pr-2 font-bold text-white text-xs">{formatUzS(order.total_price)}</td>
+                    <td className="py-4 text-right pr-2 font-bold text-ink text-xs">{formatUzS(order.total_price)}</td>
                     <td className="py-4 text-center pr-2">
                       <button
                         onClick={(e) => {
@@ -698,7 +700,7 @@ const AllOrdersPage: React.FC = () => {
                           handlePrintReceipt(order.uuid);
                         }}
                         disabled={printingUuid === order.uuid}
-                        className="p-2 rounded-lg bg-white/5 hover:bg-brand/10 border border-white/10 hover:border-brand/20 text-slate-400 hover:text-brand transition cursor-pointer flex items-center justify-center mx-auto disabled:opacity-50"
+                        className="p-2 rounded-lg bg-overlay hover:bg-brand/10 border border-edge-strong hover:border-brand/20 text-slate-400 hover:text-brand transition cursor-pointer flex items-center justify-center mx-auto disabled:opacity-50"
                         title="Chekni chop etish"
                       >
                         {printingUuid === order.uuid ? (
@@ -721,11 +723,11 @@ const AllOrdersPage: React.FC = () => {
                 <div
                   key={order.uuid}
                   onClick={() => setSelectedOrder(order)}
-                  className="p-4 rounded-xl border border-white/5 bg-slate-900/40 flex flex-col gap-3 cursor-pointer"
+                  className="p-4 rounded-xl border border-edge bg-slate-900/40 flex flex-col gap-3 cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-white text-xs">{order.order_number || `#${order.id}`}</span>
+                      <span className="font-bold text-ink text-xs">{order.order_number || `#${order.id}`}</span>
                       {order.delivery_type === 'DELIVERY' && (
                         <span className="text-[9px] px-1 py-0.2 rounded font-extrabold bg-blue-500/10 text-blue-400 border border-blue-500/10">
                           Kuryer
@@ -748,20 +750,20 @@ const AllOrdersPage: React.FC = () => {
                     <p className="text-xs text-slate-400 truncate">{order.address}</p>
                     <p className="text-xs font-semibold text-slate-300 mt-1">{formatPhone(order.contact_phone)}</p>
                   </div>
-                  <div className="flex items-center justify-between pt-2.5 border-t border-white/5">
+                  <div className="flex items-center justify-between pt-2.5 border-t border-edge">
                     <div className="flex items-center gap-1.5">
                       {getPaymentBadge(order.payment)}
                       {getStatusBadge(order.status)}
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-white text-xs">{formatUzS(order.total_price)}</span>
+                      <span className="font-bold text-ink text-xs">{formatUzS(order.total_price)}</span>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           handlePrintReceipt(order.uuid);
                         }}
                         disabled={printingUuid === order.uuid}
-                        className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white transition cursor-pointer disabled:opacity-50"
+                        className="p-1.5 rounded-lg bg-overlay border border-edge-strong text-slate-400 hover:text-ink transition cursor-pointer disabled:opacity-50"
                         title="Chekni chop etish"
                       >
                         {printingUuid === order.uuid ? (
@@ -779,7 +781,7 @@ const AllOrdersPage: React.FC = () => {
         ) : (
           <div className="flex flex-col items-center justify-center py-20 text-slate-500 text-center">
             <ShoppingBag className="w-16 h-16 stroke-[1.2] mb-3 text-slate-600" />
-            <h3 className="font-bold text-white mb-1">Buyurtmalar topilmadi</h3>
+            <h3 className="font-bold text-ink mb-1">Buyurtmalar topilmadi</h3>
             <p className="text-xs max-w-xs">Filtr parametrlari bo'yicha hech qanday buyurtma mavjud emas</p>
           </div>
         )}
@@ -793,12 +795,12 @@ const AllOrdersPage: React.FC = () => {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg bg-darkCard border border-white/10 rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-6 animate-[slideUp_0.3s_ease-out]"
+            className="w-full max-w-lg bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-6 animate-[slideUp_0.3s_ease-out]"
           >
             {/* Modal Header */}
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-lg text-white">Buyurtma {selectedOrder.order_number || `#${selectedOrder.id}`} Tafsilotlari</h3>
+                <h3 className="font-bold text-lg text-ink">Buyurtma {selectedOrder.order_number || `#${selectedOrder.id}`} Tafsilotlari</h3>
                 <p className="text-xs text-slate-400 mt-0.5">{selectedOrder.created_at}</p>
               </div>
               <div className="flex items-center gap-2">
@@ -811,7 +813,7 @@ const AllOrdersPage: React.FC = () => {
                 </button>
                 <button
                   onClick={() => setSelectedOrder(null)}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-white transition cursor-pointer text-xs font-bold"
+                  className="px-3 py-1.5 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer text-xs font-bold"
                 >
                   Yopish
                 </button>
@@ -827,7 +829,7 @@ const AllOrdersPage: React.FC = () => {
             {/* Dishes list items */}
             <div className="space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Buyurtma qilingan taomlar</h4>
-              <div className="divide-y divide-white/5 max-h-60 overflow-y-auto pr-1">
+              <div className="divide-y divide-edge max-h-60 overflow-y-auto pr-1">
                 {(selectedOrder.items || []).map((item, idx) => {
                   const productName = item?.product_name || item?.name || item?.product?.name || "Noma'lum taom";
                   const productPrice = Number(item?.price_at_time_of_order || item?.product?.price || 0);
@@ -835,7 +837,7 @@ const AllOrdersPage: React.FC = () => {
                   return (
                     <div key={idx} className="py-2.5 flex items-center justify-between gap-3 text-sm">
                       <div>
-                        <p className="font-medium text-white">{productName}</p>
+                        <p className="font-medium text-ink">{productName}</p>
                         <p className="text-xs text-slate-500">{formatUzS(productPrice)} x {quantity}</p>
                       </div>
                       <span className="font-semibold text-slate-300 shrink-0">
@@ -848,19 +850,19 @@ const AllOrdersPage: React.FC = () => {
             </div>
 
             {/* Pricing Details */}
-            <div className="pt-4 border-t border-white/5 space-y-2 text-sm">
+            <div className="pt-4 border-t border-edge space-y-2 text-sm">
               <div className="flex justify-between text-slate-400">
                 <span>Kuryer yetkazib berish xizmati</span>
                 <span>{formatUzS(selectedOrder.delivery_fee)}</span>
               </div>
-              <div className="flex justify-between font-bold text-white text-base pt-1">
+              <div className="flex justify-between font-bold text-ink text-base pt-1">
                 <span>Jami to'lov summasi</span>
                 <span className="text-emerald-400">{formatUzS(selectedOrder.total_price)}</span>
               </div>
             </div>
 
             {/* Client address details */}
-            <div className="p-4 rounded-xl bg-slate-900 border border-white/5 space-y-3 text-xs">
+            <div className="p-4 rounded-xl bg-slate-900 border border-edge space-y-3 text-xs">
               {selectedOrder.contact_name && (
                 <p className="flex items-center gap-2 text-slate-300">
                   <User className="w-4 h-4 text-brand shrink-0" />
@@ -903,7 +905,7 @@ const AllOrdersPage: React.FC = () => {
                   </span>
                 </p>
               )}
-              <div className="flex items-center justify-between text-slate-300 border-t border-white/5 pt-2">
+              <div className="flex items-center justify-between text-slate-300 border-t border-edge pt-2">
                 <p className="flex items-center gap-2">
                   <CreditCard className="w-4 h-4 text-brand shrink-0" />
                   <span>
@@ -921,7 +923,7 @@ const AllOrdersPage: React.FC = () => {
                 </div>
               </div>
               {selectedOrder.description && selectedOrder.description !== "Izoh yo'q" && (
-                <div className="border-t border-white/5 pt-2 text-slate-400 italic">
+                <div className="border-t border-edge pt-2 text-slate-400 italic">
                   <strong>Izoh:</strong> {selectedOrder.description}
                 </div>
               )}

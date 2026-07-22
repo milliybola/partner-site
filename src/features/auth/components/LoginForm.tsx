@@ -150,15 +150,15 @@ const LoginForm: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-md p-8 rounded-2xl bg-darkCard backdrop-blur-xl border border-white/10 shadow-2xl transition-all duration-300">
+    <div className="w-full max-w-md p-8 rounded-2xl bg-darkCard backdrop-blur-xl border border-edge-strong shadow-2xl transition-all duration-300">
       <div className="text-center mb-6">
         <img src="/logo.png" alt="Logo" className="w-24 h-24 mx-auto mb-4" />
-        <h2 className="text-3xl font-bold tracking-tight text-white mb-2">MilliyGo</h2>
+        <h2 className="text-3xl font-bold tracking-tight text-ink mb-2">MilliyGo</h2>
         <p className="text-slate-400">Hamkorlar boshqaruv paneliga xush kelibsiz</p>
       </div>
 
       {/* Login Type Switch */}
-      <div className="flex bg-slate-950/60 p-1.5 rounded-xl border border-white/5 mb-6">
+      <div className="flex bg-slate-950/60 p-1.5 rounded-xl border border-edge mb-6">
         <button
           type="button"
           onClick={() => {
@@ -207,7 +207,7 @@ const LoginForm: React.FC = () => {
               type="text"
               value={phone}
               onChange={handlePhoneChange}
-              className="block w-full pl-11 pr-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+              className="block w-full pl-11 pr-4 py-3 rounded-xl bg-slate-900 border border-edge-strong text-ink placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               placeholder="+998 (90) 123-45-67"
               disabled={loading}
               required
@@ -225,7 +225,7 @@ const LoginForm: React.FC = () => {
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="block w-full pl-11 pr-12 py-3 rounded-xl bg-slate-900 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
+              className="block w-full pl-11 pr-12 py-3 rounded-xl bg-slate-900 border border-edge-strong text-ink placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               placeholder="••••••••"
               disabled={loading}
               required
@@ -249,7 +249,7 @@ const LoginForm: React.FC = () => {
           className="w-full py-3.5 px-4 rounded-xl bg-brand hover:bg-brand-dark text-white font-medium shadow-lg hover:shadow-brand/20 transition duration-150 flex justify-center items-center gap-2 cursor-pointer disabled:opacity-50"
         >
           {loading ? (
-            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            <div className="w-5 h-5 border-2 border-edge-strong border-t-white rounded-full animate-spin" />
           ) : (
             "Kirish"
           )}

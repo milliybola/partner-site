@@ -16,6 +16,8 @@ import ProductFormModal from '../components/ProductFormModal';
 import type { ProductData } from '../components/ProductFormModal';
 import { STORAGE_KEYS } from '../../../core/config/constants';
 import apiClient from '../../../core/api/client';
+import { useToast } from '../../../core/components/ToastProvider';
+import { useConfirm } from '../../../core/components/ConfirmProvider';
 
 interface Product {
   uuid?: string;
@@ -46,6 +48,8 @@ interface BaseCategory {
 }
 
 const CatalogPage: React.FC = () => {
+  const toast = useToast();
+  const confirm = useConfirm();
   const isManager = (() => {
     try {
       const partnerData = JSON.parse(localStorage.getItem(STORAGE_KEYS.PARTNER_DATA) || '{}');
@@ -174,7 +178,7 @@ const CatalogPage: React.FC = () => {
     // Check if unlinking and category has products
     if (!isLinking) {
       if (linkedCat && linkedCat.products.length > 0) {
-        alert("Ushbu turkumda taomlar bor. Uni o'chirishdan oldin undagi barcha taomlarni o'chirishingiz yoki boshqa turkumga o'tkazishingiz kerak.");
+        toast.error("Ushbu turkumda taomlar bor. Uni o'chirishdan oldin undagi barcha taomlarni o'chirishingiz yoki boshqa turkumga o'tkazishingiz kerak.");
         return;
       }
     }
@@ -193,7 +197,7 @@ const CatalogPage: React.FC = () => {
       // Refresh local categories state
       await fetchCatalogData();
     } catch (err) {
-      alert("Kategoriya holatini o'zgartirib bo'lmadi.");
+      toast.error("Kategoriya holatini o'zgartirib bo'lmadi.");
     }
   };
 
@@ -220,7 +224,7 @@ const CatalogPage: React.FC = () => {
       // Reload everything
       await fetchCatalogData();
     } catch (err) {
-      alert("Taomni saqlashda xatolik yuz berdi.");
+      toast.error("Taomni saqlashda xatolik yuz berdi.");
     }
   };
 
@@ -239,13 +243,14 @@ const CatalogPage: React.FC = () => {
         }))
       );
     } catch (err) {
-      alert("Mavjudlik holatini o'zgartirib bo'lmadi.");
+      toast.error("Mavjudlik holatini o'zgartirib bo'lmadi.");
     }
   };
 
   // Delete Product
   const handleDeleteProduct = async (productUuid: string) => {
-    if (!window.confirm("Haqiqatan ham bu taomni o'chirmoqchimisiz?")) return;
+    const ok = await confirm("Haqiqatan ham bu taomni o'chirmoqchimisiz?", { danger: true, confirmText: "O'chirish" });
+    if (!ok) return;
 
     try {
       await apiClient.delete(`products/${productUuid}/`);
@@ -256,7 +261,7 @@ const CatalogPage: React.FC = () => {
         }))
       );
     } catch (err) {
-      alert("Taomni o'chirishda xatolik yuz berdi.");
+      toast.error("Taomni o'chirishda xatolik yuz berdi.");
     }
   };
 
@@ -271,9 +276,9 @@ const CatalogPage: React.FC = () => {
   return (
     <div className="space-y-8 font-Outfit">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-edge pb-4">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3 text-left">
+          <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-3 text-left">
             Katalog <span className="bg-brand/10 text-brand p-1.5 rounded-xl"><ShoppingBag className="w-6 h-6" /></span>
           </h1>
           <p className="text-slate-400 text-left text-sm mt-1">Muassasa turkumlari, taomlar va menyuni boshqaring</p>
@@ -294,7 +299,7 @@ const CatalogPage: React.FC = () => {
       </div>
 
       {/* Tabs navigation */}
-      <div className="flex gap-6 border-b border-white/5 pb-1">
+      <div className="flex gap-6 border-b border-edge pb-1">
         <button
           onClick={() => setActiveTab('menu')}
           className={`pb-3 text-sm font-bold border-b-2 transition duration-200 cursor-pointer flex items-center gap-2 ${
@@ -325,7 +330,7 @@ const CatalogPage: React.FC = () => {
       {error ? (
         <div className="flex flex-col items-center justify-center py-20 text-rose-400 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 text-center">
           <AlertCircle className="w-12 h-12 mb-3 animate-pulse" />
-          <h4 className="font-bold text-white text-base mb-1">Xatolik yuz berdi</h4>
+          <h4 className="font-bold text-ink text-base mb-1">Xatolik yuz berdi</h4>
           <p className="text-sm max-w-sm mb-4 text-slate-400">{error}</p>
           <button
             onClick={() => {
@@ -341,9 +346,9 @@ const CatalogPage: React.FC = () => {
       ) : activeTab === 'menu' ? (
         // Tab 1: Menu List
         categories.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/30 border border-dashed border-white/5 rounded-2xl">
+          <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/30 border border-dashed border-edge rounded-2xl">
             <Settings className="w-16 h-16 stroke-[1.2] mb-4 text-slate-600 animate-pulse" />
-            <h3 className="font-bold text-white mb-2 text-lg">Faol turkumlar topilmadi</h3>
+            <h3 className="font-bold text-ink mb-2 text-lg">Faol turkumlar topilmadi</h3>
             <p className="text-sm px-6 text-center text-slate-400 max-w-md">
               {isManager
                 ? "Sizda hali menyu turkumlari faol emas. Iltimos, tizim superadmini (restoran egasi) orqali menyu turkumlarini faollashtiring."
@@ -362,8 +367,8 @@ const CatalogPage: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
             {/* Left Side: Category List */}
-            <div className="lg:col-span-1 p-5 rounded-2xl bg-darkCard border border-white/5 space-y-4">
-              <h3 className="font-bold text-white text-base text-left">Sizning turkumlar</h3>
+            <div className="lg:col-span-1 p-5 rounded-2xl bg-darkCard border border-edge space-y-4">
+              <h3 className="font-bold text-ink text-base text-left">Sizning turkumlar</h3>
               
               <div className="space-y-2">
                 {categories.map((cat) => (
@@ -371,8 +376,8 @@ const CatalogPage: React.FC = () => {
                     key={cat.uuid}
                     className={`w-full flex items-center justify-between p-3 rounded-xl border text-left transition ${
                       activeCategory?.uuid === cat.uuid
-                        ? 'bg-brand/5 border-brand text-white shadow-sm shadow-brand/5'
-                        : 'bg-slate-900 border-white/5 text-slate-300 hover:border-white/10'
+                        ? 'bg-brand/5 border-brand text-ink shadow-sm shadow-brand/5'
+                        : 'bg-slate-900 border-edge text-slate-300 hover:border-edge-strong'
                     }`}
                   >
                     <button
@@ -386,7 +391,7 @@ const CatalogPage: React.FC = () => {
                     <button
                       onClick={() => !isManager && handleToggleCategoryOnBackend(cat.uuid, !cat.is_active)}
                       disabled={isManager}
-                      className={`text-slate-400 transition p-0.5 ml-2 ${isManager ? 'cursor-default opacity-90' : 'hover:text-white cursor-pointer'}`}
+                      className={`text-slate-400 transition p-0.5 ml-2 ${isManager ? 'cursor-default opacity-90' : 'hover:text-ink cursor-pointer'}`}
                       title={isManager ? "Faqat ko'rish uchun" : (cat.is_active ? "O'chirish" : "Yoqish")}
                     >
                       {cat.is_active ? (
@@ -403,7 +408,7 @@ const CatalogPage: React.FC = () => {
             {/* Right Side: Products in Active Category */}
             <div className="lg:col-span-3 space-y-5">
               <div className="flex items-center justify-between">
-                <h3 className="font-bold text-white text-lg flex items-center gap-2 text-left">
+                <h3 className="font-bold text-ink text-lg flex items-center gap-2 text-left">
                   <span>{activeCategory?.name || 'Turkum'}</span>
                   <span className="text-xs font-semibold px-2 py-0.5 bg-slate-800 text-slate-400 rounded-lg">
                     {activeCategoryProducts.length} ta taom
@@ -425,7 +430,7 @@ const CatalogPage: React.FC = () => {
                   {activeCategoryProducts.map((prod) => (
                     <div
                       key={prod.uuid}
-                      className="rounded-2xl border border-white/5 bg-darkCard overflow-hidden hover:border-white/10 transition duration-200 flex flex-col justify-between"
+                      className="rounded-2xl border border-edge bg-darkCard overflow-hidden hover:border-edge-strong transition duration-200 flex flex-col justify-between"
                     >
                       {/* Image/Details */}
                       <div>
@@ -450,7 +455,7 @@ const CatalogPage: React.FC = () => {
                         </div>
 
                         <div className="p-4 space-y-2 text-left">
-                          <h4 className="font-bold text-white text-base leading-tight truncate">{prod.name}</h4>
+                          <h4 className="font-bold text-ink text-base leading-tight truncate">{prod.name}</h4>
                           <p className="text-xs text-slate-400 line-clamp-2 min-h-8">
                             {prod.description || "Taom uchun tavsif berilmagan."}
                           </p>
@@ -459,7 +464,7 @@ const CatalogPage: React.FC = () => {
                       </div>
 
                       {/* Footer actions */}
-                      <div className="p-4 border-t border-white/5 flex items-center justify-between bg-slate-900/30">
+                      <div className="p-4 border-t border-edge flex items-center justify-between bg-slate-900/30">
                         <span className="flex items-center gap-1">
                           {prod.is_active ? (
                             <span className="text-[10px] text-slate-400 flex items-center gap-1 font-semibold uppercase">
@@ -478,7 +483,7 @@ const CatalogPage: React.FC = () => {
                               setSelectedProduct(prod);
                               setProductModalOpen(true);
                             }}
-                            className="p-2 rounded-lg bg-white/5 border border-white/5 text-slate-300 hover:text-white hover:border-white/10 transition cursor-pointer"
+                            className="p-2 rounded-lg bg-overlay border border-edge text-slate-300 hover:text-ink hover:border-edge-strong transition cursor-pointer"
                             title="Tahrirlash"
                           >
                             <Edit className="w-4 h-4" />
@@ -496,9 +501,9 @@ const CatalogPage: React.FC = () => {
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-white/5 rounded-2xl">
+                <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-edge rounded-2xl">
                   <ShoppingBag className="w-16 h-16 stroke-[1.2] mb-3 text-slate-600" />
-                  <h3 className="font-bold text-white mb-1">Turkumda taomlar yo'q</h3>
+                  <h3 className="font-bold text-ink mb-1">Turkumda taomlar yo'q</h3>
                   <p className="text-sm px-6 text-center">Bu turkumga hali hech qanday taom qo'shilmagan.</p>
                   <button
                     onClick={() => {
@@ -519,7 +524,7 @@ const CatalogPage: React.FC = () => {
         // Tab 2: Manage Categories (Unattached Categories)
         <div className="space-y-6">
           <div className="text-left max-w-2xl">
-            <h3 className="font-bold text-white text-lg">Umumiy turkumlarni menyuga biriktirish</h3>
+            <h3 className="font-bold text-ink text-lg">Umumiy turkumlarni menyuga biriktirish</h3>
             <p className="text-slate-400 text-sm mt-1">
               Menyuingizda faollashtirmoqchi bo'lgan turkumlarni yoqing. Biriktirilgan turkumlar darhol menyu sahifasida namoyon bo'ladi.
             </p>
@@ -544,12 +549,12 @@ const CatalogPage: React.FC = () => {
                     className={`p-5 rounded-2xl border transition duration-200 flex flex-col justify-between h-44 bg-darkCard ${
                       isLinked 
                         ? 'border-brand/30 shadow-md shadow-brand/5' 
-                        : 'border-white/5 hover:border-white/10'
+                        : 'border-edge hover:border-edge-strong'
                     }`}
                   >
                     <div className="flex gap-4 items-start">
                       {/* Logo container */}
-                      <div className="w-16 h-16 rounded-xl bg-slate-900 border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
+                      <div className="w-16 h-16 rounded-xl bg-slate-900 border border-edge-strong overflow-hidden flex items-center justify-center shrink-0">
                         {baseCat.logo ? (
                           <img src={baseCat.logo} alt={baseCat.name} className="w-full h-full object-cover animate-fade-in" />
                         ) : (
@@ -558,7 +563,7 @@ const CatalogPage: React.FC = () => {
                       </div>
                       
                       <div className="space-y-1 truncate flex-1">
-                        <h4 className="font-bold text-white text-base truncate">{baseCat.name}</h4>
+                        <h4 className="font-bold text-ink text-base truncate">{baseCat.name}</h4>
                         <p className="text-xs text-slate-400 line-clamp-2 pr-2 leading-relaxed whitespace-normal">
                           {baseCat.description || "Ushbu turkum uchun tavsif berilmagan."}
                         </p>
@@ -571,7 +576,7 @@ const CatalogPage: React.FC = () => {
                     </div>
                     
                     {/* Toggle switch for linking category */}
-                    <div className="flex items-center justify-between border-t border-white/5 pt-3.5 mt-2">
+                    <div className="flex items-center justify-between border-t border-edge pt-3.5 mt-2">
                       <span className="text-xs text-slate-400 font-semibold font-Outfit">
                         {isLinked ? 'Sizning menyuda faol' : 'Menyuga qo\'shilmagan'}
                       </span>

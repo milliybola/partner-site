@@ -22,8 +22,10 @@ import { STORAGE_KEYS } from '../config/constants';
 import { filialApi } from '../../features/orders/services/filialApi';
 import type { PartnerFilial } from '../../features/orders/services/filialApi';
 import apiClient from '../api/client';
+import { useToast } from './ToastProvider';
 
 const Layout: React.FC = () => {
+  const toast = useToast();
   const [partner, setPartner] = useState<any>(() => {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
@@ -61,7 +63,7 @@ const Layout: React.FC = () => {
   const handleSwitchFilial = async (filialUuid: string) => {
     const staffUuid = partner?.staff_uuid || partner?.uuid;
     if (!staffUuid) {
-      alert("Xodim identifikatori topilmadi.");
+      toast.error("Xodim identifikatori topilmadi.");
       return;
     }
     try {
@@ -80,7 +82,7 @@ const Layout: React.FC = () => {
       window.location.reload();
     } catch (err) {
       console.error("Failed to switch branch:", err);
-      alert("Filialni almashtirishda xatolik yuz berdi.");
+      toast.error("Filialni almashtirishda xatolik yuz berdi.");
     }
   };
 
@@ -102,13 +104,14 @@ const Layout: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const root = document.documentElement;
     if (theme === 'light') {
-      document.body.classList.add('light-theme');
-      document.body.classList.remove('dark-theme');
+      root.classList.add('light');
+      root.classList.remove('dark');
       localStorage.setItem('milliygo_theme', 'light');
     } else {
-      document.body.classList.add('dark-theme');
-      document.body.classList.remove('light-theme');
+      root.classList.add('dark');
+      root.classList.remove('light');
       localStorage.setItem('milliygo_theme', 'dark');
     }
   }, [theme]);
@@ -142,8 +145,8 @@ const Layout: React.FC = () => {
     { to: '/', label: 'Dashbord', icon: LayoutDashboard },
     { to: '/orders', label: 'Karban', icon: ShoppingBag },
     { to: '/new-order', label: 'Yangi buyurtma', icon: PlusCircle },
-    { to: '/shift', label: 'Smena', icon: Clock },
     { to: '/tables', label: 'Stollar', icon: Table },
+    { to: '/shift', label: 'Smena', icon: Clock },
     { to: '/catalog', label: 'Katalog', icon: Grid },
     ...(partner?.role === 'manager' ? [] : [{ to: '/branches', label: 'Filiallar', icon: Building2 }]),
     ...(partner?.role === 'manager' ? [] : [{ to: '/finance', label: 'Moliya', icon: DollarSign }]),
@@ -157,14 +160,14 @@ const Layout: React.FC = () => {
 
   return (
     <div className="h-screen overflow-hidden bg-darkBg text-slate-100 flex flex-col md:flex-row font-Outfit">
-      <header className="md:hidden flex items-center justify-between px-4 py-3 bg-darkCard border-b border-white/5 sticky top-0 z-40">
+      <header className="md:hidden flex items-center justify-between px-4 py-3 bg-darkCard border-b border-edge sticky top-0 z-40">
         <div className="flex items-center gap-2 overflow-hidden">
           {partner?.logo ? (
             <img src={partner.logo} alt="Logo" className="w-8 h-8 rounded-lg object-cover" />
           ) : (
             <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center font-bold text-white">M</div>
           )}
-          <span className="font-semibold text-white truncate max-w-[100px]">
+          <span className="font-semibold text-ink truncate max-w-[100px]">
             {partner?.role === 'manager' ? partner.partner_name : partner?.name || 'MilliyGo'}
           </span>
           {time && (
@@ -187,26 +190,26 @@ const Layout: React.FC = () => {
             <span>{isOpen ? 'Ochiq' : 'Yopiq'}</span>
           </button>
 
-          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-slate-400 hover:text-white">
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-slate-400 hover:text-ink">
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
         </div>
       </header>
 
       {/* Sidebar - Desktop */}
-      <aside className={`hidden md:flex flex-col h-full bg-darkCard border-r border-white/5 shrink-0 transition-all duration-300 overflow-y-auto ${isCollapsed ? 'w-20' : 'w-64'}`}>
+      <aside className={`hidden md:flex flex-col h-full bg-darkCard border-r border-edge shrink-0 transition-all duration-300 overflow-y-auto ${isCollapsed ? 'w-20' : 'w-64'}`}>
         {/* Profile info in Sidebar */}
-        <div className={`p-4 border-b border-white/5 flex flex-col gap-3 ${isCollapsed ? 'items-center' : ''}`}>
+        <div className={`p-4 border-b border-edge flex flex-col gap-3 ${isCollapsed ? 'items-center' : ''}`}>
           <div className="flex items-center justify-between w-full">
             {!isCollapsed && (
               <div className="flex items-center gap-3 truncate">
                 {partner?.logo ? (
-                  <img src={partner.logo} alt="Logo" className="w-8 h-8 rounded-lg object-cover border border-white/10" />
+                  <img src={partner.logo} alt="Logo" className="w-8 h-8 rounded-lg object-cover border border-edge-strong" />
                 ) : (
                   <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center font-bold text-white text-sm">M</div>
                 )}
                 <div className="truncate">
-                  <h3 className="font-semibold text-white text-sm truncate">
+                  <h3 className="font-semibold text-ink text-sm truncate">
                     {partner?.role === 'manager' ? partner.partner_name : partner?.name || 'Restaurant'}
                   </h3>
                 </div>
@@ -215,7 +218,7 @@ const Layout: React.FC = () => {
             {/* {isCollapsed && (
               <div className="mx-auto">
                 {partner?.logo ? (
-                  <img src={partner.logo} alt="Logo" className="w-8 h-8 rounded-lg object-cover border border-white/10" />
+                  <img src={partner.logo} alt="Logo" className="w-8 h-8 rounded-lg object-cover border border-edge-strong" />
                 ) : (
                   <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center font-bold text-white text-sm">M</div>
                 )}
@@ -223,7 +226,7 @@ const Layout: React.FC = () => {
             )} */}
             <button
               onClick={toggleSidebar}
-              className={`p-1.5 rounded-lg bg-slate-900 border border-white/5 hover:border-white/10 text-slate-400 hover:text-white transition cursor-pointer ${isCollapsed ? 'mt-2' : ''}`}
+              className={`p-1.5 rounded-lg bg-slate-900 border border-edge hover:border-edge-strong text-slate-400 hover:text-ink transition cursor-pointer ${isCollapsed ? 'mt-2' : ''}`}
               title={isCollapsed ? "Yoyish" : "Yig'ish"}
             >
               {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
@@ -231,13 +234,13 @@ const Layout: React.FC = () => {
           </div>
 
           {/* {!isCollapsed && partner?.role === 'manager' && (
-            <div className="mt-1 space-y-1.5 text-left border-t border-white/5 pt-3 w-full">
+            <div className="mt-1 space-y-1.5 text-left border-t border-edge pt-3 w-full">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Joriy filial:</span>
               <div className="relative">
                 <select
                   value={partner?.current_filial?.uuid || ''}
                   onChange={(e) => handleSwitchFilial(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/5 hover:border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-brand focus:outline-none transition cursor-pointer"
+                  className="w-full bg-slate-900 border border-edge hover:border-edge-strong rounded-xl px-3 py-2 text-xs font-bold text-brand focus:outline-none transition cursor-pointer"
                 >
                   <option value="" disabled>-- Filial tanlang --</option>
                   {filials.map(filial => (
@@ -264,7 +267,7 @@ const Layout: React.FC = () => {
                   `flex items-center gap-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${isCollapsed ? 'p-3 justify-center w-12 h-12' : 'px-4 py-3 w-full'
                   } ${isActive
                     ? 'bg-brand text-white shadow-lg shadow-brand/15 font-semibold'
-                    : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                    : 'text-slate-400 hover:bg-overlay hover:text-slate-200'
                   }`
                 }
               >
@@ -276,7 +279,7 @@ const Layout: React.FC = () => {
         </nav>
 
         {/* Theme Toggle & Footer logout */}
-        <div className="border-t border-white/5 flex flex-col">
+        <div className="border-t border-edge flex flex-col">
           {/* Theme Toggle Switch */}
           <div className={`p-4 pb-2 ${isCollapsed ? 'flex justify-center px-2' : ''}`}>
             <button
@@ -284,8 +287,8 @@ const Layout: React.FC = () => {
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
               title={isCollapsed ? (theme === 'light' ? "Kunduzgi rejim" : "Tungi rejim") : undefined}
               className={`flex items-center transition cursor-pointer ${isCollapsed
-                ? 'justify-center w-12 h-12 rounded-xl bg-slate-900 border border-white/5 text-slate-400 hover:text-white hover:border-white/10'
-                : 'justify-between w-full px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-white/5'
+                ? 'justify-center w-12 h-12 rounded-xl bg-slate-900 border border-edge text-slate-400 hover:text-ink hover:border-edge-strong'
+                : 'justify-between w-full px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:bg-overlay hover:text-slate-200 border border-edge'
                 }`}
             >
               {isCollapsed ? (
@@ -357,7 +360,7 @@ const Layout: React.FC = () => {
                   className={({ isActive }) =>
                     `flex items-center gap-4 px-5 py-4 rounded-xl text-base font-semibold transition ${isActive
                       ? 'bg-brand text-white shadow-lg'
-                      : 'text-slate-300 hover:bg-white/5'
+                      : 'text-slate-300 hover:bg-overlay'
                     }`
                   }
                 >
@@ -367,7 +370,7 @@ const Layout: React.FC = () => {
               );
             })}
           </nav>
-          <div className="p-6 border-t border-white/5 bg-darkCard/50 flex flex-col gap-4">
+          <div className="p-6 border-t border-edge bg-darkCard/50 flex flex-col gap-4">
             {/* Branch Switcher for Staff/Manager (Mobile) */}
             {partner?.role === 'manager' && (
               <div className="space-y-2 text-left">
@@ -375,7 +378,7 @@ const Layout: React.FC = () => {
                 <select
                   value={partner?.current_filial?.uuid || ''}
                   onChange={(e) => handleSwitchFilial(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-sm font-bold text-brand focus:outline-none transition cursor-pointer"
+                  className="w-full bg-slate-900 border border-edge-strong rounded-xl px-4 py-3 text-sm font-bold text-brand focus:outline-none transition cursor-pointer"
                 >
                   <option value="" disabled>-- Filial tanlang --</option>
                   {filials.map(filial => (
@@ -390,7 +393,7 @@ const Layout: React.FC = () => {
             <button
               type="button"
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-              className="flex items-center justify-between w-full px-5 py-3 rounded-xl text-sm font-semibold text-slate-400 hover:bg-white/5 hover:text-slate-200 transition cursor-pointer border border-white/5"
+              className="flex items-center justify-between w-full px-5 py-3 rounded-xl text-sm font-semibold text-slate-400 hover:bg-overlay hover:text-slate-200 transition cursor-pointer border border-edge"
             >
               <span className="flex items-center gap-2">
                 {theme === 'light' ? (
@@ -433,14 +436,14 @@ const Layout: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto h-full">
         {/* Desktop Top Header */}
-        <header className="hidden md:flex items-center justify-between px-8 py-4 bg-darkCard/30 border-b border-white/5 backdrop-blur-md sticky top-0 z-40 shadow-sm shadow-black/5">
+        <header className="hidden md:flex items-center justify-between px-8 py-4 bg-darkCard/30 border-b border-edge backdrop-blur-md sticky top-0 z-40 shadow-sm shadow-black/5">
           <div className="flex items-center gap-4">
             {isCollapsed && (
               <div className="mx-auto">
                 {partner?.logo ? (
                   <div className="flex items-center gap-2">
-                    <img src={partner.logo} alt="Logo" className="w-8 h-8 rounded-lg object-cover border border-white/10" />
-                    <h3 className="font-semibold text-white text-sm truncate">
+                    <img src={partner.logo} alt="Logo" className="w-8 h-8 rounded-lg object-cover border border-edge-strong" />
+                    <h3 className="font-semibold text-ink text-sm truncate">
                       {partner?.role === 'manager' ? partner.partner_name : partner?.name || 'Restaurant'}
                     </h3>
                   </div>
@@ -475,7 +478,7 @@ const Layout: React.FC = () => {
             {location.pathname !== '/new-order' && (
               <NavLink
                 to="/new-order"
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand to-sky-500 text-white font-bold text-sm shadow-lg shadow-brand/10 hover:shadow-brand/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand to-sky-500 text-ink font-bold text-sm shadow-lg shadow-brand/10 hover:shadow-brand/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
               >
                 <PlusCircle className="w-4 h-4" />
                 <span>Yangi buyurtma</span>

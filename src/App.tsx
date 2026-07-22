@@ -2,6 +2,8 @@ import React from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './core/components/Layout';
 import ProtectedRoute from './core/components/ProtectedRoute';
+import { ToastProvider } from './core/components/ToastProvider';
+import { ConfirmProvider } from './core/components/ConfirmProvider';
 
 // Lazy loading or direct imports
 import LoginPage from './features/auth/pages/LoginPage';
@@ -20,39 +22,43 @@ import TablesPage from './features/tables/pages/TablesPage';
 
 const App: React.FC = () => {
   return (
-    <HashRouter>
-      <Routes>
-        {/* Auth Route */}
-        <Route path="/login" element={<LoginPage />} />
+    <ToastProvider>
+      <ConfirmProvider>
+        <HashRouter>
+          <Routes>
+            {/* Auth Route */}
+            <Route path="/login" element={<LoginPage />} />
 
-        {/* Protected Dashboard Shell */}
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }
-        >
-          {/* Main sections */}
-          <Route index element={<DashboardPage />} />
-          <Route path="orders" element={<OrdersPage />} />
-          <Route path="new-order" element={<CreateOrderPage />} />
-          <Route path="catalog" element={<CatalogPage />} />
-          <Route path="finance" element={<FinancePage />} />
-          <Route path="profile" element={<ProfilePage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="branches" element={<BranchesPage />} />
-          <Route path="all-orders" element={<AllOrdersPage />} />
-          <Route path="staff" element={<StaffPage />} />
-          <Route path="shift" element={<ShiftPage />} />
-          <Route path="tables" element={<TablesPage />} />
-        </Route>
+            {/* Protected Dashboard Shell */}
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Layout />
+                </ProtectedRoute>
+              }
+            >
+              {/* Main sections */}
+              <Route index element={<DashboardPage />} />
+              <Route path="orders" element={<OrdersPage />} />
+              <Route path="new-order" element={<CreateOrderPage />} />
+              <Route path="catalog" element={<CatalogPage />} />
+              <Route path="finance" element={<FinancePage />} />
+              <Route path="profile" element={<ProfilePage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="branches" element={<BranchesPage />} />
+              <Route path="all-orders" element={<AllOrdersPage />} />
+              <Route path="staff" element={<StaffPage />} />
+              <Route path="shift" element={<ShiftPage />} />
+              <Route path="tables" element={<TablesPage />} />
+            </Route>
 
-        {/* Fallback redirect */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </HashRouter>
+            {/* Fallback redirect */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </HashRouter>
+      </ConfirmProvider>
+    </ToastProvider>
   );
 };
 

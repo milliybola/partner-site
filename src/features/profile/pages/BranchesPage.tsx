@@ -9,8 +9,7 @@ import {
   UserCheck, 
   AlertCircle, 
   RefreshCw, 
-  X, 
-  Check, 
+  X,
   CheckCircle,
   Map,
   ShieldAlert,
@@ -20,13 +19,16 @@ import { filialApi } from '../../orders/services/filialApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
 import { staffApi } from '../../staff/services/staffApi';
 import type { StaffMember } from '../../staff/services/staffApi';
+import { useToast } from '../../../core/components/ToastProvider';
+import { useConfirm } from '../../../core/components/ConfirmProvider';
 
 const BranchesPage: React.FC = () => {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [branches, setBranches] = useState<PartnerFilial[]>([]);
   const [managers, setManagers] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Modals
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -89,8 +91,7 @@ const BranchesPage: React.FC = () => {
   }, [fetchData]);
 
   const triggerSuccess = (msg: string) => {
-    setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 4000);
+    toast.success(msg);
   };
 
   // Open Create Modal
@@ -242,7 +243,8 @@ const BranchesPage: React.FC = () => {
 
   // Handle Branch Delete
   const handleDeleteBranch = async (branch: PartnerFilial) => {
-    if (!window.confirm(`Haqiqatan ham "${branch.filial_name}" filialini o'chirib tashlamoqchimisiz?`)) return;
+    const ok = await confirm(`Haqiqatan ham "${branch.filial_name}" filialini o'chirib tashlamoqchimisiz?`, { danger: true, confirmText: "O'chirish" });
+    if (!ok) return;
 
     try {
       await filialApi.deleteFilial(branch.uuid);
@@ -250,7 +252,7 @@ const BranchesPage: React.FC = () => {
       fetchData();
     } catch (err: any) {
       console.error("Failed to delete branch:", err);
-      alert(err.response?.data?.message || err.message || "Filialni o'chirishda xatolik yuz berdi.");
+      toast.error(err.response?.data?.message || err.message || "Filialni o'chirishda xatolik yuz berdi.");
     }
   };
 
@@ -266,9 +268,9 @@ const BranchesPage: React.FC = () => {
   return (
     <div className="space-y-8 font-Outfit text-left animate-fade-in pb-20">
       {/* Header */}
-      <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/5 pb-4">
+      <div className="flex justify-between items-center flex-wrap gap-4 border-b border-edge pb-4">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+          <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-3">
             Filiallar Boshqaruvi 
             <span className="bg-brand/10 text-brand p-1.5 rounded-xl"><Building2 className="w-6 h-6" /></span>
           </h1>
@@ -283,13 +285,6 @@ const BranchesPage: React.FC = () => {
         </button>
       </div>
 
-      {successMsg && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm max-w-xl animate-fade-in shadow-lg shadow-emerald-500/5">
-          <Check className="w-5 h-5 shrink-0" />
-          <span>{successMsg}</span>
-        </div>
-      )}
-
       {loading ? (
         <div className="flex flex-col items-center justify-center py-24 gap-4">
           <div className="w-10 h-10 border-4 border-brand/30 border-t-brand rounded-full animate-spin" />
@@ -298,7 +293,7 @@ const BranchesPage: React.FC = () => {
       ) : error ? (
         <div className="flex flex-col items-center justify-center py-20 text-rose-400 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 text-center">
           <AlertCircle className="w-12 h-12 mb-3 animate-pulse" />
-          <h4 className="font-bold text-white text-base mb-1">Xatolik yuz berdi</h4>
+          <h4 className="font-bold text-ink text-base mb-1">Xatolik yuz berdi</h4>
           <p className="text-sm max-w-sm mb-4 text-slate-400">{error}</p>
           <button
             onClick={fetchData}
@@ -309,9 +304,9 @@ const BranchesPage: React.FC = () => {
           </button>
         </div>
       ) : branches.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-white/5 rounded-2xl">
+        <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-edge rounded-2xl">
           <Building2 className="w-16 h-16 stroke-[1.2] mb-3 text-slate-600" />
-          <h3 className="font-bold text-white mb-1">Filiallar mavjud emas</h3>
+          <h3 className="font-bold text-ink mb-1">Filiallar mavjud emas</h3>
           <p className="text-xs px-6 text-center max-w-sm">Hali hech qanday filial qo'shilmagan. Yuqoridagi tugma orqali birinchi filialni qo'shishingiz mumkin.</p>
         </div>
       ) : (
@@ -332,16 +327,16 @@ const BranchesPage: React.FC = () => {
             return (
               <div 
                 key={branch.uuid}
-                className="bg-gradient-to-br from-darkCard to-slate-900/90 border border-white/5 hover:border-white/10 rounded-2xl shadow-xl p-5 flex flex-col justify-between transition-all duration-300 relative overflow-hidden group hover:scale-[1.01]"
+                className="bg-gradient-to-br from-darkCard to-slate-900/90 border border-edge hover:border-edge-strong rounded-2xl shadow-xl p-5 flex flex-col justify-between transition-all duration-300 relative overflow-hidden group hover:scale-[1.01]"
               >
                 {/* Visual side-marker for main filial */}
-                <div className={`absolute top-0 left-0 w-1 h-full ${isMainBranch ? 'bg-brand' : 'bg-white/5'}`}></div>
+                <div className={`absolute top-0 left-0 w-1 h-full ${isMainBranch ? 'bg-brand' : 'bg-overlay'}`}></div>
                 
                 <div className="space-y-4">
                   {/* Top line with title and status */}
                   <div className="flex justify-between items-start gap-2">
                     <div className="text-left space-y-1">
-                      <h3 className="font-bold text-white text-lg group-hover:text-brand transition duration-200 truncate pr-2 max-w-[200px]">
+                      <h3 className="font-bold text-ink text-lg group-hover:text-brand transition duration-200 truncate pr-2 max-w-[200px]">
                         {branch.filial_name}
                       </h3>
                       {isMainBranch && (
@@ -356,7 +351,7 @@ const BranchesPage: React.FC = () => {
                   </div>
 
                   {/* Details */}
-                  <div className="space-y-2.5 text-xs text-slate-400 border-t border-white/5 pt-3.5">
+                  <div className="space-y-2.5 text-xs text-slate-400 border-t border-edge pt-3.5">
                     <div className="flex items-start gap-2">
                       <MapPin className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
                       <span>{branch.address || "Manzil kiritilmagan"}</span>
@@ -386,11 +381,11 @@ const BranchesPage: React.FC = () => {
                   </div>
 
                   {/* Manager details */}
-                  <div className="p-3 rounded-xl bg-slate-900 border border-white/5 text-xs">
+                  <div className="p-3 rounded-xl bg-slate-900 border border-edge text-xs">
                     <div className="flex justify-between items-center text-slate-400">
                       <span>Bosh menejer:</span>
                       {(branch.manager_info || branch.manager) ? (
-                        <span className="font-bold text-white flex items-center gap-1.5">
+                        <span className="font-bold text-ink flex items-center gap-1.5">
                           <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
                           {branch.manager_info?.name || (branch.manager as any)?.name || 'Menejer'}
                         </span>
@@ -402,10 +397,10 @@ const BranchesPage: React.FC = () => {
 
                   {/* Opening hours info */}
                   {branch.opening_hours ? (
-                    <div className="flex items-start gap-2 pt-1 border-t border-white/5 mt-1 text-xs text-slate-400">
+                    <div className="flex items-start gap-2 pt-1 border-t border-edge mt-1 text-xs text-slate-400">
                       <Clock className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
                       <div className="flex flex-col gap-0.5">
-                        <span className="font-semibold text-white">
+                        <span className="font-semibold text-ink">
                           Ish vaqti: {branch.opening_hours.from_hour.substring(0, 5)} - {branch.opening_hours.to_hour.substring(0, 5)}
                         </span>
                         <span className="text-[10px] text-slate-500">
@@ -422,7 +417,7 @@ const BranchesPage: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 text-slate-600 pt-1 text-xs border-t border-white/5 mt-1">
+                    <div className="flex items-center gap-2 text-slate-600 pt-1 text-xs border-t border-edge mt-1">
                       <Clock className="w-4 h-4 shrink-0" />
                       <span>Ish vaqti kiritilmagan</span>
                     </div>
@@ -430,10 +425,10 @@ const BranchesPage: React.FC = () => {
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-2 mt-5 border-t border-white/5 pt-4">
+                <div className="flex items-center gap-2 mt-5 border-t border-edge pt-4">
                   <button
                     onClick={() => handleOpenEdit(branch)}
-                    className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-slate-300 font-bold text-[11px] transition flex justify-center items-center gap-1.5 cursor-pointer"
+                    className="flex-1 py-2 rounded-xl bg-overlay hover:bg-overlay-strong border border-edge-strong hover:border-edge-strong text-slate-300 font-bold text-[11px] transition flex justify-center items-center gap-1.5 cursor-pointer"
                   >
                     <Edit className="w-3.5 h-3.5" />
                     <span>Tahrirlash</span>
@@ -464,15 +459,15 @@ const BranchesPage: React.FC = () => {
       {/* CRUD Add/Edit Branch Modal */}
       {editModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
-          <div className="w-full max-w-md bg-darkCard border border-white/10 rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-5 animate-[slideUp_0.3s_ease-out]">
+          <div className="w-full max-w-md bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-5 animate-[slideUp_0.3s_ease-out]">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-white/5 pb-3">
-              <h3 className="font-bold text-lg text-white">
+            <div className="flex items-center justify-between border-b border-edge pb-3">
+              <h3 className="font-bold text-lg text-ink">
                 {selectedBranch ? "Filialni Tahrirlash" : "Yangi Filial Qo'shish"}
               </h3>
               <button
                 onClick={() => setEditModalOpen(false)}
-                className="p-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-white transition cursor-pointer"
+                className="p-1.5 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -496,7 +491,7 @@ const BranchesPage: React.FC = () => {
                   placeholder="Masalan: Milliy Chilonzor"
                   value={filialName}
                   onChange={(e) => setFilialName(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none transition"
+                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink focus:outline-none transition"
                 />
               </div>
 
@@ -508,7 +503,7 @@ const BranchesPage: React.FC = () => {
                   placeholder="Masalan: Chilonzor 6-daha, 12-uy"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none transition"
+                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink focus:outline-none transition"
                 />
               </div>
 
@@ -520,7 +515,7 @@ const BranchesPage: React.FC = () => {
                   placeholder="Masalan: +998901234567"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none transition"
+                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink focus:outline-none transition"
                 />
               </div>
 
@@ -534,7 +529,7 @@ const BranchesPage: React.FC = () => {
                     placeholder="41.2995"
                     value={lat}
                     onChange={(e) => setLat(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none transition"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink focus:outline-none transition"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -545,7 +540,7 @@ const BranchesPage: React.FC = () => {
                     placeholder="69.2401"
                     value={long}
                     onChange={(e) => setLong(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none transition"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink focus:outline-none transition"
                   />
                 </div>
               </div>
@@ -556,7 +551,7 @@ const BranchesPage: React.FC = () => {
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value as any)}
-                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none transition cursor-pointer"
+                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink focus:outline-none transition cursor-pointer"
                 >
                   <option value="ACTIVE">Faol (Ochiq)</option>
                   <option value="INACTIVE">Faol emas (Vaqtinchalik)</option>
@@ -570,7 +565,7 @@ const BranchesPage: React.FC = () => {
                 <select
                   value={managerUuid}
                   onChange={(e) => setManagerUuid(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none transition cursor-pointer"
+                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink focus:outline-none transition cursor-pointer"
                 >
                   <option value="">-- Menejersiz --</option>
                   {managers.map(mgr => (
@@ -590,7 +585,7 @@ const BranchesPage: React.FC = () => {
                     placeholder="08:00:00"
                     value={fromHour}
                     onChange={(e) => setFromHour(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none transition"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink focus:outline-none transition"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -600,7 +595,7 @@ const BranchesPage: React.FC = () => {
                     placeholder="22:00:00"
                     value={toHour}
                     onChange={(e) => setToHour(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none transition"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink focus:outline-none transition"
                   />
                 </div>
               </div>
@@ -609,45 +604,45 @@ const BranchesPage: React.FC = () => {
               <div className="space-y-2">
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">Ish kunlari</label>
                 <div className="flex flex-wrap gap-2">
-                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-white/5 text-xs font-semibold text-slate-300 cursor-pointer">
-                    <input type="checkbox" checked={mon} onChange={(e) => setMon(e.target.checked)} className="rounded text-brand bg-slate-900 border-white/10" />
+                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-edge text-xs font-semibold text-slate-300 cursor-pointer">
+                    <input type="checkbox" checked={mon} onChange={(e) => setMon(e.target.checked)} className="rounded text-brand bg-slate-900 border-edge-strong" />
                     <span>Dush</span>
                   </label>
-                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-white/5 text-xs font-semibold text-slate-300 cursor-pointer">
-                    <input type="checkbox" checked={tue} onChange={(e) => setTue(e.target.checked)} className="rounded text-brand bg-slate-900 border-white/10" />
+                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-edge text-xs font-semibold text-slate-300 cursor-pointer">
+                    <input type="checkbox" checked={tue} onChange={(e) => setTue(e.target.checked)} className="rounded text-brand bg-slate-900 border-edge-strong" />
                     <span>Sesh</span>
                   </label>
-                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-white/5 text-xs font-semibold text-slate-300 cursor-pointer">
-                    <input type="checkbox" checked={wed} onChange={(e) => setWed(e.target.checked)} className="rounded text-brand bg-slate-900 border-white/10" />
+                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-edge text-xs font-semibold text-slate-300 cursor-pointer">
+                    <input type="checkbox" checked={wed} onChange={(e) => setWed(e.target.checked)} className="rounded text-brand bg-slate-900 border-edge-strong" />
                     <span>Chor</span>
                   </label>
-                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-white/5 text-xs font-semibold text-slate-300 cursor-pointer">
-                    <input type="checkbox" checked={thu} onChange={(e) => setThu(e.target.checked)} className="rounded text-brand bg-slate-900 border-white/10" />
+                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-edge text-xs font-semibold text-slate-300 cursor-pointer">
+                    <input type="checkbox" checked={thu} onChange={(e) => setThu(e.target.checked)} className="rounded text-brand bg-slate-900 border-edge-strong" />
                     <span>Pay</span>
                   </label>
-                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-white/5 text-xs font-semibold text-slate-300 cursor-pointer">
-                    <input type="checkbox" checked={fri} onChange={(e) => setFri(e.target.checked)} className="rounded text-brand bg-slate-900 border-white/10" />
+                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-edge text-xs font-semibold text-slate-300 cursor-pointer">
+                    <input type="checkbox" checked={fri} onChange={(e) => setFri(e.target.checked)} className="rounded text-brand bg-slate-900 border-edge-strong" />
                     <span>Jum</span>
                   </label>
-                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-white/5 text-xs font-semibold text-slate-300 cursor-pointer">
-                    <input type="checkbox" checked={sat} onChange={(e) => setSat(e.target.checked)} className="rounded text-brand bg-slate-900 border-white/10" />
+                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-edge text-xs font-semibold text-slate-300 cursor-pointer">
+                    <input type="checkbox" checked={sat} onChange={(e) => setSat(e.target.checked)} className="rounded text-brand bg-slate-900 border-edge-strong" />
                     <span>Shan</span>
                   </label>
-                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-white/5 text-xs font-semibold text-slate-300 cursor-pointer">
-                    <input type="checkbox" checked={sun} onChange={(e) => setSun(e.target.checked)} className="rounded text-brand bg-slate-900 border-white/10" />
+                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-edge text-xs font-semibold text-slate-300 cursor-pointer">
+                    <input type="checkbox" checked={sun} onChange={(e) => setSun(e.target.checked)} className="rounded text-brand bg-slate-900 border-edge-strong" />
                     <span>Yak</span>
                   </label>
                 </div>
               </div>
 
               {/* Is Main */}
-              <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-slate-900/60 border border-white/5">
+              <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-slate-900/60 border border-edge">
                 <input
                   type="checkbox"
                   id="isMainCheckbox"
                   checked={isMain}
                   onChange={(e) => setIsMain(e.target.checked)}
-                  className="w-4 h-4 rounded text-brand focus:ring-brand bg-slate-900 border-white/10 cursor-pointer"
+                  className="w-4 h-4 rounded text-brand focus:ring-brand bg-slate-900 border-edge-strong cursor-pointer"
                 />
                 <label htmlFor="isMainCheckbox" className="text-xs font-bold text-slate-300 cursor-pointer select-none">
                   Ushbu filialni brendning asosiy filiali deb belgilash
@@ -655,11 +650,11 @@ const BranchesPage: React.FC = () => {
               </div>
 
               {/* Form Buttons */}
-              <div className="flex justify-end gap-2.5 border-t border-white/5 pt-4">
+              <div className="flex justify-end gap-2.5 border-t border-edge pt-4">
                 <button
                   type="button"
                   onClick={() => setEditModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition text-xs font-bold cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-overlay hover:bg-overlay-strong text-slate-400 hover:text-ink transition text-xs font-bold cursor-pointer"
                 >
                   Bekor qilish
                 </button>
@@ -680,22 +675,22 @@ const BranchesPage: React.FC = () => {
       {/* Assign Manager Modal */}
       {managerModalOpen && selectedBranchForManager && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
-          <div className="w-full max-w-md bg-darkCard border border-white/10 rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-5 animate-[slideUp_0.3s_ease-out]">
+          <div className="w-full max-w-md bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-5 animate-[slideUp_0.3s_ease-out]">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-white/5 pb-3">
-              <h3 className="font-bold text-lg text-white">
+            <div className="flex items-center justify-between border-b border-edge pb-3">
+              <h3 className="font-bold text-lg text-ink">
                 Menejerni Biriktirish
               </h3>
               <button
                 onClick={() => setManagerModalOpen(false)}
-                className="p-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-white transition cursor-pointer"
+                className="p-1.5 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-slate-900 border border-white/5 text-xs text-slate-400 leading-relaxed">
-              Filial nomi: <span className="font-bold text-white">{selectedBranchForManager.filial_name}</span>
+            <div className="p-3.5 rounded-xl bg-slate-900 border border-edge text-xs text-slate-400 leading-relaxed">
+              Filial nomi: <span className="font-bold text-ink">{selectedBranchForManager.filial_name}</span>
             </div>
 
             {/* Form */}
@@ -719,7 +714,7 @@ const BranchesPage: React.FC = () => {
                   <select
                     value={selectedManagerUuid}
                     onChange={(e) => setSelectedManagerUuid(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none transition cursor-pointer"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink focus:outline-none transition cursor-pointer"
                   >
                     <option value="">-- Menejerni tanlang --</option>
                     {managers.map(mgr => (
@@ -732,11 +727,11 @@ const BranchesPage: React.FC = () => {
               </div>
 
               {/* Form Buttons */}
-              <div className="flex justify-end gap-2.5 border-t border-white/5 pt-4">
+              <div className="flex justify-end gap-2.5 border-t border-edge pt-4">
                 <button
                   type="button"
                   onClick={() => setManagerModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition text-xs font-bold cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-overlay hover:bg-overlay-strong text-slate-400 hover:text-ink transition text-xs font-bold cursor-pointer"
                 >
                   Bekor qilish
                 </button>

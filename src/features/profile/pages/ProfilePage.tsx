@@ -18,6 +18,7 @@ import {
 import { STORAGE_KEYS } from '../../../core/config/constants';
 import apiClient from '../../../core/api/client';
 import confetti from 'canvas-confetti';
+import { useToast } from '../../../core/components/ToastProvider';
 
 declare global {
   interface Window {
@@ -39,6 +40,7 @@ interface OpeningHours {
 }
 
 const ProfilePage: React.FC = () => {
+  const toast = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [isManager, setIsManager] = useState(false);
   const [name, setName] = useState('');
@@ -207,7 +209,6 @@ const ProfilePage: React.FC = () => {
   });
 
   const [loading, setLoading] = useState(false);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -451,7 +452,6 @@ const ProfilePage: React.FC = () => {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setSuccessMsg(null);
 
     try {
       const formattedOpeningHours = {
@@ -542,13 +542,12 @@ const ProfilePage: React.FC = () => {
 
       setLoading(false);
       setIsEditing(false);
-      setSuccessMsg("Profil ma'lumotlari muvaffaqiyatli saqlandi!");
+      toast.success("Profil ma'lumotlari muvaffaqiyatli saqlandi!");
       confetti({ particleCount: 50, spread: 60 });
-      setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err: any) {
       setLoading(false);
       console.error("Profil saqlashda xatolik tafsilotlari:", err.response?.data || err);
-      alert("Profil ma'lumotlarini saqlashda xatolik yuz berdi.");
+      toast.error("Profil ma'lumotlarini saqlashda xatolik yuz berdi.");
     }
   };
 
@@ -566,9 +565,9 @@ const ProfilePage: React.FC = () => {
     return (
       <div className="space-y-8 font-Outfit text-left animate-fade-in">
         {/* Header */}
-        <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/5 pb-4">
+        <div className="flex justify-between items-center flex-wrap gap-4 border-b border-edge pb-4">
           <div>
-            <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+            <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-3">
               Mening Profilim <span className="bg-brand/10 text-brand p-1.5 rounded-xl"><User className="w-6 h-6" /></span>
             </h1>
             <p className="text-slate-400 text-sm mt-1">Tizimdagi shaxsiy profilingiz va xizmat ma'lumotlaringiz</p>
@@ -576,7 +575,7 @@ const ProfilePage: React.FC = () => {
         </div>
 
         {/* Profile Cover & Avatar Card */}
-        <div className="relative rounded-3xl overflow-hidden border border-white/5 bg-slate-900/50 shadow-xl">
+        <div className="relative rounded-3xl overflow-hidden border border-edge bg-slate-900/50 shadow-xl">
           {/* Banner container */}
           <div className="h-48 bg-gradient-to-r from-brand/20 via-slate-800 to-slate-900 relative group overflow-hidden">
             <div className="w-full h-full flex items-center justify-center text-slate-500 bg-slate-800/20 backdrop-blur-md">
@@ -585,18 +584,18 @@ const ProfilePage: React.FC = () => {
           </div>
           
           {/* Profile details overlap row */}
-          <div className="p-6 pt-0 relative flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-gradient-to-t from-darkCard to-darkCard/95 border-t border-white/5">
+          <div className="p-6 pt-0 relative flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-gradient-to-t from-darkCard to-darkCard/95 border-t border-edge">
             {/* Logo / Avatar container */}
             <div className="flex flex-col md:flex-row items-start md:items-end gap-4 -mt-12 md:-mt-10">
               <div className="relative w-24 h-24 rounded-2xl border-4 border-darkCard overflow-hidden bg-slate-900 shadow-lg shrink-0 flex items-center justify-center">
-                <div className="w-full h-full flex items-center justify-center text-slate-400 bg-slate-900 border border-white/10 font-bold text-2xl">
+                <div className="w-full h-full flex items-center justify-center text-slate-400 bg-slate-900 border border-edge-strong font-bold text-2xl">
                   {name.charAt(0).toUpperCase()}
                 </div>
               </div>
               
               {/* Title / Description info */}
               <div className="space-y-1 mb-1">
-                <h2 className="text-2xl font-bold text-white tracking-tight">{name}</h2>
+                <h2 className="text-2xl font-bold text-ink tracking-tight">{name}</h2>
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <span className="text-xs font-bold text-brand bg-brand/10 px-2.5 py-0.5 rounded-lg flex items-center gap-1 shadow-sm border border-brand/10">
                     Menejer
@@ -609,7 +608,7 @@ const ProfilePage: React.FC = () => {
             </div>
             
             {/* Active status indicator badge */}
-            <div className="flex items-center gap-2 bg-slate-900/60 py-1.5 px-3.5 rounded-xl border border-white/5 shadow-md">
+            <div className="flex items-center gap-2 bg-slate-900/60 py-1.5 px-3.5 rounded-xl border border-edge shadow-md">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping bg-emerald-400"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -624,22 +623,22 @@ const ProfilePage: React.FC = () => {
         {/* Card info */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start pb-24 text-left">
           <div className="lg:col-span-2 space-y-6">
-            <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-white/5 space-y-5 shadow-lg relative overflow-hidden">
+            <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-edge space-y-5 shadow-lg relative overflow-hidden">
               <div className="absolute top-0 left-0 w-1 h-full bg-brand/30"></div>
-              <h3 className="font-bold text-white text-lg flex items-center gap-2 border-b border-white/5 pb-3">
+              <h3 className="font-bold text-ink text-lg flex items-center gap-2 border-b border-edge pb-3">
                 <User className="w-5 h-5 text-brand" /> Shaxsiy ma'lumotlar
               </h3>
               
               <div className="space-y-4">
-                <div className="flex justify-between items-center py-2.5 border-b border-white/5">
+                <div className="flex justify-between items-center py-2.5 border-b border-edge">
                   <span className="text-slate-400 text-sm font-medium">To'liq ismingiz</span>
-                  <span className="font-bold text-white text-sm">{name}</span>
+                  <span className="font-bold text-ink text-sm">{name}</span>
                 </div>
-                <div className="flex justify-between items-center py-2.5 border-b border-white/5">
+                <div className="flex justify-between items-center py-2.5 border-b border-edge">
                   <span className="text-slate-400 text-sm font-medium">Telefon raqamingiz</span>
-                  <span className="font-bold text-white text-sm">{phone}</span>
+                  <span className="font-bold text-ink text-sm">{phone}</span>
                 </div>
-                <div className="flex justify-between items-center py-2.5 border-b border-white/5">
+                <div className="flex justify-between items-center py-2.5 border-b border-edge">
                   <span className="text-slate-400 text-sm font-medium">Lavozimingiz</span>
                   <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20">Menejer</span>
                 </div>
@@ -658,9 +657,9 @@ const ProfilePage: React.FC = () => {
   return (
     <div className="space-y-8 font-Outfit text-left animate-fade-in">
       {/* Header */}
-      <div className="flex justify-between items-center flex-wrap gap-4 border-b border-white/5 pb-4">
+      <div className="flex justify-between items-center flex-wrap gap-4 border-b border-edge pb-4">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+          <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-3">
             Sozlamalar <span className="bg-brand/10 text-brand p-1.5 rounded-xl"><User className="w-6 h-6" /></span>
           </h1>
           <p className="text-slate-400 text-sm mt-1">Muassasa ma'lumotlari, xaritadagi joylashuv va ish vaqtlarini o'zgartiring</p>
@@ -678,7 +677,7 @@ const ProfilePage: React.FC = () => {
           }}
           className={`px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
             isEditing
-              ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-white/10'
+              ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-edge-strong'
               : 'bg-brand hover:bg-brand-dark text-white border-transparent hover:shadow-brand/20 hover:scale-[1.02]'
           }`}
         >
@@ -694,15 +693,9 @@ const ProfilePage: React.FC = () => {
         </button>
       </div>
 
-      {successMsg && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm max-w-xl animate-fade-in shadow-lg shadow-emerald-500/5">
-          <Check className="w-5 h-5 shrink-0" />
-          <span>{successMsg}</span>
-        </div>
-      )}
 
       {/* Profile Cover & Avatar Card */}
-      <div className="relative rounded-3xl overflow-hidden border border-white/5 bg-slate-900/50 shadow-xl">
+      <div className="relative rounded-3xl overflow-hidden border border-edge bg-slate-900/50 shadow-xl">
         {/* Banner container */}
         <div className="h-48 bg-gradient-to-r from-brand/20 via-slate-800 to-slate-900 relative group overflow-hidden">
           {bannerPreview ? (
@@ -713,7 +706,7 @@ const ProfilePage: React.FC = () => {
             </div>
           )}
           {isEditing && (
-            <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition duration-200 flex items-center justify-center cursor-pointer text-white font-medium text-sm gap-2 backdrop-blur-xs">
+            <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition duration-200 flex items-center justify-center cursor-pointer text-ink font-medium text-sm gap-2 backdrop-blur-xs">
               <Upload className="w-5 h-5" /> Cover rasmni yangilash
               <input type="file" accept="image/*" onChange={handleBannerChange} className="hidden" />
             </label>
@@ -721,7 +714,7 @@ const ProfilePage: React.FC = () => {
         </div>
         
         {/* Profile details overlap row */}
-        <div className="p-6 pt-0 relative flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-gradient-to-t from-darkCard to-darkCard/95 border-t border-white/5">
+        <div className="p-6 pt-0 relative flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-gradient-to-t from-darkCard to-darkCard/95 border-t border-edge">
           {/* Logo / Avatar container */}
           <div className="flex flex-col md:flex-row items-start md:items-end gap-4 -mt-12 md:-mt-10">
             <div className="relative w-24 h-24 rounded-2xl border-4 border-darkCard overflow-hidden bg-slate-900 shadow-lg group shrink-0">
@@ -733,7 +726,7 @@ const ProfilePage: React.FC = () => {
                 </div>
               )}
               {isEditing && (
-                <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition duration-200 flex items-center justify-center cursor-pointer text-white backdrop-blur-xs">
+                <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition duration-200 flex items-center justify-center cursor-pointer text-ink backdrop-blur-xs">
                   <Upload className="w-5 h-5" />
                   <input type="file" accept="image/*" onChange={handleLogoChange} className="hidden" />
                 </label>
@@ -742,7 +735,7 @@ const ProfilePage: React.FC = () => {
             
             {/* Title / Description info */}
             <div className="space-y-1 mb-1">
-              <h2 className="text-2xl font-bold text-white tracking-tight">{name || "Muassasa nomi"}</h2>
+              <h2 className="text-2xl font-bold text-ink tracking-tight">{name || "Muassasa nomi"}</h2>
               <div className="flex items-center gap-2.5 flex-wrap">
                 <span className="text-xs font-bold text-brand bg-brand/10 px-2.5 py-0.5 rounded-lg flex items-center gap-1 shadow-sm border border-brand/10">
                   <Star className="w-3.5 h-3.5 fill-current text-brand" /> {rating}
@@ -755,7 +748,7 @@ const ProfilePage: React.FC = () => {
           </div>
           
           {/* Active status indicator badge */}
-          <div className="flex items-center gap-2 bg-slate-900/60 py-1.5 px-3.5 rounded-xl border border-white/5 shadow-md">
+          <div className="flex items-center gap-2 bg-slate-900/60 py-1.5 px-3.5 rounded-xl border border-edge shadow-md">
             <span className="relative flex h-2 w-2">
               <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${isOpen ? 'animate-ping bg-emerald-400' : 'bg-rose-400'}`}></span>
               <span className={`relative inline-flex rounded-full h-2 w-2 ${isOpen ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
@@ -772,9 +765,9 @@ const ProfilePage: React.FC = () => {
         <div className="lg:col-span-2 space-y-6">
           
           {/* Card 1: Basic Info */}
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-white/5 space-y-5 shadow-lg relative overflow-hidden">
+          <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-edge space-y-5 shadow-lg relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1 h-full bg-brand/30"></div>
-            <h3 className="font-bold text-white text-lg flex items-center gap-2 border-b border-white/5 pb-3">
+            <h3 className="font-bold text-ink text-lg flex items-center gap-2 border-b border-edge pb-3">
               <User className="w-5 h-5 text-brand" /> Muassasa ma'lumotlari
             </h3>
 
@@ -792,8 +785,8 @@ const ProfilePage: React.FC = () => {
                   readOnly={!isEditing}
                   className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm transition duration-150 font-Outfit ${
                     !isEditing
-                      ? 'bg-slate-900/20 border-white/5 text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
-                      : 'bg-slate-900 border-white/10 text-white focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
+                      ? 'bg-slate-900/20 border-edge text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
+                      : 'bg-slate-900 border-edge-strong text-ink focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
                   }`}
                   placeholder="Muassasa nomini kiriting"
                   required
@@ -814,8 +807,8 @@ const ProfilePage: React.FC = () => {
                   readOnly={!isEditing}
                   className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm transition h-24 resize-none font-Outfit ${
                     !isEditing
-                      ? 'bg-slate-900/20 border-white/5 text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
-                      : 'bg-slate-900 border-white/10 text-white focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
+                      ? 'bg-slate-900/20 border-edge text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
+                      : 'bg-slate-900 border-edge-strong text-ink focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
                   }`}
                   placeholder="Restoraningiz haqida ma'lumot kiriting..."
                 />
@@ -837,8 +830,8 @@ const ProfilePage: React.FC = () => {
                     readOnly={!isEditing}
                     className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm transition duration-150 font-Outfit ${
                       !isEditing
-                        ? 'bg-slate-900/20 border-white/5 text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
-                        : 'bg-slate-900 border-white/10 text-white focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
+                        ? 'bg-slate-900/20 border-edge text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
+                        : 'bg-slate-900 border-edge-strong text-ink focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
                     }`}
                     placeholder="+998 (90) 123-45-67"
                     required
@@ -860,8 +853,8 @@ const ProfilePage: React.FC = () => {
                     readOnly={!isEditing}
                     className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm transition duration-150 font-Outfit ${
                       !isEditing
-                        ? 'bg-slate-900/20 border-white/5 text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
-                        : 'bg-slate-900 border-white/10 text-white focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
+                        ? 'bg-slate-900/20 border-edge text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
+                        : 'bg-slate-900 border-edge-strong text-ink focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
                     }`}
                     placeholder="letsgo@example.com"
                   />
@@ -871,9 +864,9 @@ const ProfilePage: React.FC = () => {
           </div>
 
           {/* Card 2: Address and Map (Excluding coordinates inputs) */}
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-white/5 space-y-5 shadow-lg relative overflow-hidden">
+          <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-edge space-y-5 shadow-lg relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1 h-full bg-brand/30"></div>
-            <h3 className="font-bold text-white text-lg flex items-center gap-2 border-b border-white/5 pb-3">
+            <h3 className="font-bold text-ink text-lg flex items-center gap-2 border-b border-edge pb-3">
               <MapPin className="w-5 h-5 text-brand" /> Manzil va Joylashuv
             </h3>
 
@@ -891,8 +884,8 @@ const ProfilePage: React.FC = () => {
                   readOnly={!isEditing}
                   className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm transition duration-150 font-Outfit ${
                     !isEditing
-                      ? 'bg-slate-900/20 border-white/5 text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
-                      : 'bg-slate-900 border-white/10 text-white focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
+                      ? 'bg-slate-900/20 border-edge text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
+                      : 'bg-slate-900 border-edge-strong text-ink focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
                   }`}
                   placeholder="Muassasa manzili"
                   required
@@ -907,7 +900,7 @@ const ProfilePage: React.FC = () => {
               </label>
               <div 
                 className={`w-full h-80 rounded-2xl border overflow-hidden bg-slate-900 relative shadow-inner transition duration-200 ${
-                  isEditing ? 'ring-2 ring-brand/35 border-brand/50 shadow-brand/10' : 'border-white/5'
+                  isEditing ? 'ring-2 ring-brand/35 border-brand/50 shadow-brand/10' : 'border-edge'
                 }`}
                 style={{ minHeight: '320px' }}
               >
@@ -926,7 +919,7 @@ const ProfilePage: React.FC = () => {
 
                 {/* Edit active mode instruction banner overlay */}
                 {isEditing && (
-                  <div className="absolute top-3 left-3 right-3 bg-brand/90 backdrop-blur-md text-white py-2 px-3.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg border border-white/10 z-10 animate-slide-in">
+                  <div className="absolute top-3 left-3 right-3 bg-brand/90 backdrop-blur-md text-ink py-2 px-3.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg border border-edge-strong z-10 animate-slide-in">
                     <MapPin className="w-3.5 h-3.5 animate-bounce" />
                     <span>Tahrirlash: markerni sudrang yoki xaritani bosing</span>
                   </div>
@@ -934,7 +927,7 @@ const ProfilePage: React.FC = () => {
 
                 {/* Coordinates values overlay inside the map container */}
                 {locationLat && locationLong && (
-                  <div className="absolute bottom-3 left-3 bg-slate-950/85 backdrop-blur-md text-slate-200 py-2.5 px-3.5 rounded-xl text-xs font-mono flex items-center gap-2.5 shadow-xl border border-white/10 z-10">
+                  <div className="absolute bottom-3 left-3 bg-slate-950/85 backdrop-blur-md text-slate-200 py-2.5 px-3.5 rounded-xl text-xs font-mono flex items-center gap-2.5 shadow-xl border border-edge-strong z-10">
                     <Map className="w-3.5 h-3.5 text-brand" />
                     <span className="font-semibold">{parseFloat(locationLat.toString()).toFixed(6)}, {parseFloat(locationLong.toString()).toFixed(6)}</span>
                     <button
@@ -946,7 +939,7 @@ const ProfilePage: React.FC = () => {
                       {copiedCoords ? (
                         <Check className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
                       ) : (
-                        <svg className="w-3.5 h-3.5 text-slate-400 hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <svg className="w-3.5 h-3.5 text-slate-400 hover:text-ink" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
                         </svg>
                       )}
@@ -974,9 +967,9 @@ const ProfilePage: React.FC = () => {
           </div>
 
           {/* Card 3: Financial Settings */}
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-white/5 space-y-5 shadow-lg relative overflow-hidden">
+          <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-edge space-y-5 shadow-lg relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1 h-full bg-brand/30"></div>
-            <h3 className="font-bold text-white text-lg flex items-center gap-2 border-b border-white/5 pb-3">
+            <h3 className="font-bold text-ink text-lg flex items-center gap-2 border-b border-edge pb-3">
               <DollarSign className="w-5 h-5 text-brand" /> Moliyaviy va yetkazib berish sozlamalari
             </h3>
             
@@ -992,8 +985,8 @@ const ProfilePage: React.FC = () => {
                     readOnly={!isEditing}
                     className={`w-full pr-14 pl-4 py-2.5 rounded-xl border text-sm transition duration-150 font-Outfit ${
                       !isEditing
-                        ? 'bg-slate-900/20 border-white/5 text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
-                        : 'bg-slate-900 border-white/10 text-white focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
+                        ? 'bg-slate-900/20 border-edge text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
+                        : 'bg-slate-900 border-edge-strong text-ink focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
                     }`}
                     placeholder="30000"
                   />
@@ -1014,8 +1007,8 @@ const ProfilePage: React.FC = () => {
                     readOnly={!isEditing}
                     className={`w-full pr-14 pl-4 py-2.5 rounded-xl border text-sm transition duration-150 font-Outfit ${
                       !isEditing
-                        ? 'bg-slate-900/20 border-white/5 text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
-                        : 'bg-slate-900 border-white/10 text-white focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
+                        ? 'bg-slate-900/20 border-edge text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
+                        : 'bg-slate-900 border-edge-strong text-ink focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
                     }`}
                     placeholder="12000"
                   />
@@ -1036,8 +1029,8 @@ const ProfilePage: React.FC = () => {
                     readOnly={!isEditing}
                     className={`w-full pr-14 pl-4 py-2.5 rounded-xl border text-sm transition duration-150 font-Outfit ${
                       !isEditing
-                        ? 'bg-slate-900/20 border-white/5 text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
-                        : 'bg-slate-900 border-white/10 text-white focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
+                        ? 'bg-slate-900/20 border-edge text-slate-300 cursor-text select-all focus:outline-none focus:ring-0'
+                        : 'bg-slate-900 border-edge-strong text-ink focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand focus:shadow-[0_0_10px_rgba(14,165,233,0.15)]'
                     }`}
                     placeholder="50000"
                   />
@@ -1050,9 +1043,9 @@ const ProfilePage: React.FC = () => {
           </div>
 
           {/* Card 4: Operating Hours */}
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-white/5 space-y-5 shadow-lg relative overflow-hidden">
+          <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-edge space-y-5 shadow-lg relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1 h-full bg-brand/30"></div>
-            <h3 className="font-bold text-white text-lg flex items-center gap-2 border-b border-white/5 pb-3">
+            <h3 className="font-bold text-ink text-lg flex items-center gap-2 border-b border-edge pb-3">
               <Clock className="w-5 h-5 text-brand" /> Ish kunlari va ish vaqtlari
             </h3>
 
@@ -1074,11 +1067,11 @@ const ProfilePage: React.FC = () => {
                       className={`px-4.5 py-2 rounded-xl text-xs font-bold border transition duration-150 select-none flex items-center gap-1.5 ${
                         !isEditing
                           ? 'cursor-not-allowed opacity-80'
-                          : 'cursor-pointer hover:border-white/20 hover:scale-[1.02]'
+                          : 'cursor-pointer hover:border-edge-strong hover:scale-[1.02]'
                       } ${
                         isActive
                           ? 'bg-brand/15 border-brand text-brand shadow-sm shadow-brand/10'
-                          : 'bg-slate-900/50 border-white/5 text-slate-400'
+                          : 'bg-slate-900/50 border-edge text-slate-400'
                       }`}
                     >
                       {isActive && <Check className="w-3.5 h-3.5 animate-fade-in" />}
@@ -1098,7 +1091,7 @@ const ProfilePage: React.FC = () => {
                     type="time"
                     value={openingHours.from_hour}
                     onChange={(e) => setOpeningHours({ ...openingHours, from_hour: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-white/10 bg-slate-900 text-white cursor-pointer font-Outfit focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition"
+                    className="w-full px-4 py-2.5 rounded-xl border border-edge-strong bg-slate-900 text-ink cursor-pointer font-Outfit focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition"
                     required
                   />
                 ) : (
@@ -1118,7 +1111,7 @@ const ProfilePage: React.FC = () => {
                     type="time"
                     value={openingHours.to_hour}
                     onChange={(e) => setOpeningHours({ ...openingHours, to_hour: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-white/10 bg-slate-900 text-white cursor-pointer font-Outfit focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition"
+                    className="w-full px-4 py-2.5 rounded-xl border border-edge-strong bg-slate-900 text-ink cursor-pointer font-Outfit focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand transition"
                     required
                   />
                 ) : (
@@ -1138,15 +1131,15 @@ const ProfilePage: React.FC = () => {
         <div className="lg:col-span-1 space-y-6">
           
           {/* Status Switch (Control Panel) */}
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-white/5 space-y-5 shadow-lg text-left relative overflow-hidden">
+          <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-edge space-y-5 shadow-lg text-left relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1 h-full bg-brand/30"></div>
-            <h3 className="font-bold text-white text-base border-b border-white/5 pb-3">Muassasa holati</h3>
+            <h3 className="font-bold text-ink text-base border-b border-edge pb-3">Muassasa holati</h3>
             
             {/* Status toggle switch container */}
-            <div className="flex items-center justify-between p-4 rounded-xl bg-slate-900/50 border border-white/5">
+            <div className="flex items-center justify-between p-4 rounded-xl bg-slate-900/50 border border-edge">
               <div className="flex flex-col">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ish holati</span>
-                <span className="text-sm font-bold text-white mt-1 flex items-center gap-2 select-none font-Outfit">
+                <span className="text-sm font-bold text-ink mt-1 flex items-center gap-2 select-none font-Outfit">
                   <span className="relative flex h-2.5 w-2.5">
                     <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${isOpen ? 'animate-ping bg-emerald-400' : 'bg-rose-400'}`}></span>
                     <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isOpen ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
@@ -1187,13 +1180,13 @@ const ProfilePage: React.FC = () => {
           </div>
 
           {/* Card 6: Account Details & UUID (Copyable) */}
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-white/5 space-y-4 shadow-lg text-left relative overflow-hidden">
+          <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-edge space-y-4 shadow-lg text-left relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1 h-full bg-brand/30"></div>
-            <h4 className="font-bold text-white text-sm tracking-wide uppercase text-slate-400 border-b border-white/5 pb-2 font-Outfit">Hisob tafsilotlari</h4>
+            <h4 className="font-bold text-ink text-sm tracking-wide uppercase text-slate-400 border-b border-edge pb-2 font-Outfit">Hisob tafsilotlari</h4>
             <div className="space-y-3 text-xs text-slate-300">
               <div className="flex justify-between items-center py-1">
                 <span className="text-slate-400 font-Outfit">Restoran:</span>
-                <span className="font-bold text-white font-Outfit truncate max-w-[150px]">{name || 'N/A'}</span>
+                <span className="font-bold text-ink font-Outfit truncate max-w-[150px]">{name || 'N/A'}</span>
               </div>
               <div className="flex justify-between items-center py-1">
                 <span className="text-slate-400 font-Outfit">Reyting:</span>
@@ -1201,10 +1194,10 @@ const ProfilePage: React.FC = () => {
                   <Star className="w-3 h-3 fill-current text-brand" /> {rating}
                 </span>
               </div>
-              <div className="border-t border-white/5 my-2"></div>
+              <div className="border-t border-edge my-2"></div>
               <div className="flex flex-col gap-1.5 py-1">
                 <span className="text-slate-400 font-Outfit font-semibold">Muassasa UUID:</span>
-                <div className="flex items-center justify-between gap-2 bg-slate-900/50 p-2 rounded-lg border border-white/5 font-mono text-[10px] text-slate-400 select-all leading-tight">
+                <div className="flex items-center justify-between gap-2 bg-slate-900/50 p-2 rounded-lg border border-edge font-mono text-[10px] text-slate-400 select-all leading-tight">
                   <span className="truncate pr-1">{profileUuid || 'N/A'}</span>
                   {profileUuid && (
                     <button
@@ -1230,9 +1223,9 @@ const ProfilePage: React.FC = () => {
       {/* Floating Bottom Action Sheet for Edits */}
       {isEditing && (
         <div className="fixed bottom-6 left-0 right-0 flex justify-center z-50 px-4 pointer-events-none">
-          <div className="bg-slate-950/85 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4 w-full max-w-4xl pointer-events-auto animate-slide-up">
+          <div className="bg-slate-950/85 backdrop-blur-xl border border-edge-strong shadow-2xl rounded-2xl px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4 w-full max-w-4xl pointer-events-auto animate-slide-up">
             <div className="text-left">
-              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+              <h4 className="text-sm font-bold text-ink flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-brand animate-pulse" />
                 Tahrirlash rejimi faol
               </h4>
@@ -1243,7 +1236,7 @@ const ProfilePage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleCancelEdits}
-                className="flex-1 md:flex-none py-2.5 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold text-sm shadow-md transition duration-150 flex justify-center items-center gap-2 cursor-pointer border border-white/10 hover:border-white/20"
+                className="flex-1 md:flex-none py-2.5 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold text-sm shadow-md transition duration-150 flex justify-center items-center gap-2 cursor-pointer border border-edge-strong hover:border-edge-strong"
               >
                 <X className="w-4 h-4" />
                 <span>Bekor qilish</span>
@@ -1259,7 +1252,7 @@ const ProfilePage: React.FC = () => {
                 className="flex-1 md:flex-none py-2.5 px-6 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-sm shadow-lg hover:shadow-brand/20 transition duration-150 flex justify-center items-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {loading ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <div className="w-5 h-5 border-2 border-edge-strong border-t-white rounded-full animate-spin" />
                 ) : (
                   <>
                     <Check className="w-5 h-5" />

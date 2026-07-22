@@ -4,26 +4,99 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: 'Outfit', sans-serif;
-  background-color: #0F172A; /* Slate 900 */
-  color: #F8FAFC; /* Slate 50 */
+/*
+  Design tokens.
+  Values are "R G B" triples (no commas) so Tailwind's <alpha-value>
+  opacity-modifier syntax (e.g. bg-surface/50) works. `.dark` is the
+  default; `.light` overrides. The slate scale is intentionally
+  role-based rather than absolute — this codebase uses slate-300..600 as
+  muted text and slate-700..950 as surfaces throughout, so the scale
+  itself flips per theme instead of every component needing a `dark:`
+  variant.
+*/
+:root,
+.dark {
+  --color-canvas: 10 13 19;
+  --color-surface: 19 24 34;
+  --color-surface-2: 15 19 28;
+  --color-ink: 246 248 250;
+  --color-muted: 148 158 176;
+  --color-subtle: 103 113 133;
+
+  --color-brand: 56 130 255;
+  --color-brand-dark: 33 92 209;
+
+  --color-edge: rgba(255, 255, 255, 0.07);
+  --color-edge-strong: rgba(255, 255, 255, 0.14);
+  --color-overlay: rgba(255, 255, 255, 0.04);
+  --color-overlay-strong: rgba(255, 255, 255, 0.09);
+
+  --slate-50: 248 250 252;
+  --slate-100: 241 245 249;
+  --slate-200: 226 232 240;
+  --slate-300: 176 186 202;
+  --slate-400: 139 150 170;
+  --slate-500: 103 113 133;
+  --slate-600: 74 83 101;
+  --slate-700: 52 60 76;
+  --slate-800: 34 41 55;
+  --slate-900: 23 28 39;
+  --slate-950: 13 16 23;
+
+  color-scheme: dark;
 }
 
-/* Custom scrollbars for premium feel */
+.light {
+  --color-canvas: 247 248 250;
+  --color-surface: 255 255 255;
+  --color-surface-2: 241 243 246;
+  --color-ink: 15 20 30;
+  --color-muted: 90 99 117;
+  --color-subtle: 134 143 161;
+
+  --color-brand: 37 99 235;
+  --color-brand-dark: 29 78 216;
+
+  --color-edge: rgba(15, 23, 42, 0.08);
+  --color-edge-strong: rgba(15, 23, 42, 0.16);
+  --color-overlay: rgba(15, 23, 42, 0.035);
+  --color-overlay-strong: rgba(15, 23, 42, 0.07);
+
+  --slate-50: 13 16 23;
+  --slate-100: 23 28 39;
+  --slate-200: 52 60 76;
+  --slate-300: 88 98 117;
+  --slate-400: 110 120 140;
+  --slate-500: 134 143 161;
+  --slate-600: 165 173 188;
+  --slate-700: 203 209 219;
+  --slate-800: 230 234 239;
+  --slate-900: 255 255 255;
+  --slate-950: 247 248 250;
+
+  color-scheme: light;
+}
+
+body {
+  font-family: 'Outfit', sans-serif;
+  background-color: rgb(var(--color-canvas));
+  color: rgb(var(--color-ink));
+}
+
+/* Custom scrollbars, theme-aware */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0F172A;
+  background: rgb(var(--color-canvas));
 }
 ::-webkit-scrollbar-thumb {
-  background: #1E293B;
+  background: rgb(var(--color-surface));
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: var(--color-edge-strong);
 }
 
 /* Premium micro-animations */
@@ -70,277 +143,6 @@ body {
   animation: fadeIn 0.2s ease-out forwards;
 }
 
-/* Light theme overrides */
-body.light-theme {
-  background-color: #F8FAFC !important;
-  color: #0F172A !important;
-}
-
-body.light-theme .bg-darkBg {
-  background-color: #F8FAFC !important;
-}
-
-body.light-theme .bg-darkCard {
-  background-color: #FFFFFF !important;
-}
-
-body.light-theme .bg-darkCard\/50 {
-  background-color: rgba(255, 255, 255, 0.5) !important;
-}
-
-body.light-theme .bg-darkCard\/30 {
-  background-color: rgba(255, 255, 255, 0.3) !important;
-}
-
-body.light-theme .bg-slate-900 {
-  background-color: #F1F5F9 !important;
-}
-
-body.light-theme .bg-slate-900\/40 {
-  background-color: rgba(241, 245, 249, 0.4) !important;
-}
-
-body.light-theme .bg-slate-900\/50 {
-  background-color: rgba(241, 245, 249, 0.5) !important;
-}
-
-body.light-theme .bg-slate-900\/60 {
-  background-color: rgba(241, 245, 249, 0.6) !important;
-}
-
-body.light-theme .bg-slate-950\/85 {
-  background-color: rgba(255, 255, 255, 0.85) !important;
-}
-
-body.light-theme .bg-slate-950\/80 {
-  background-color: rgba(255, 255, 255, 0.8) !important;
-}
-
-body.light-theme .text-white {
-  color: #0F172A !important;
-}
-
-body.light-theme .text-slate-100 {
-  color: #0F172A !important;
-}
-
-body.light-theme .text-slate-200 {
-  color: #1E293B !important;
-}
-
-body.light-theme .text-slate-300 {
-  color: #334155 !important;
-}
-
-body.light-theme .text-slate-400 {
-  color: #475569 !important;
-}
-
-body.light-theme .border-white\/5 {
-  border-color: #E2E8F0 !important;
-}
-
-body.light-theme .border-white\/10 {
-  border-color: #CBD5E1 !important;
-}
-
-body.light-theme input,
-body.light-theme textarea,
-body.light-theme select {
-  background-color: #FFFFFF !important;
-  color: #0F172A !important;
-  border-color: #CBD5E1 !important;
-}
-
-body.light-theme input[readonly],
-body.light-theme textarea[readonly] {
-  background-color: rgba(241, 245, 249, 0.5) !important;
-  color: #475569 !important;
-  border-color: transparent !important;
-}
-
-/* Preserve active brand color text and layouts */
-body.light-theme .bg-brand.text-white,
-body.light-theme .bg-brand.text-white * {
-  color: #FFFFFF !important;
-}
-
-body.light-theme .bg-brand-dark.text-white,
-body.light-theme .bg-brand-dark.text-white * {
-  color: #FFFFFF !important;
-}
-
-body.light-theme .bg-rose-500.text-white,
-body.light-theme .bg-rose-500.text-white * {
-  color: #FFFFFF !important;
-}
-
-/* week days and settings overrides */
-body.light-theme .bg-slate-800 {
-  background-color: #E2E8F0 !important;
-  color: #334155 !important;
-}
-
-body.light-theme .bg-slate-900\/90 {
-  background-color: rgba(255, 255, 255, 0.9) !important;
-}
-
-body.light-theme .bg-brand\/10 {
-  background-color: rgba(14, 165, 233, 0.1) !important;
-}
-
-body.light-theme .bg-brand\/15 {
-  background-color: rgba(14, 165, 233, 0.15) !important;
-}
-
-body.light-theme .bg-emerald-500\/10 {
-  background-color: rgba(16, 185, 129, 0.1) !important;
-}
-
-body.light-theme .bg-emerald-500\/20 {
-  background-color: rgba(16, 185, 129, 0.2) !important;
-}
-
-body.light-theme .bg-rose-500\/10 {
-  background-color: rgba(244, 63, 94, 0.1) !important;
-}
-
-body.light-theme .bg-rose-500\/20 {
-  background-color: rgba(244, 63, 94, 0.2) !important;
-}
-
-body.light-theme .border-brand\/30 {
-  border-color: rgba(14, 165, 233, 0.3) !important;
-}
-
-/* Custom ProfilePage gradient and card background overrides */
-body.light-theme .bg-gradient-to-br.from-darkCard.to-slate-900\/90 {
-  background-image: none !important;
-  background-color: #FFFFFF !important;
-}
-
-body.light-theme .bg-gradient-to-t.from-darkCard.to-darkCard\/95 {
-  background-image: none !important;
-  background-color: #FFFFFF !important;
-}
-
-body.light-theme .from-brand\/20.via-slate-800.to-slate-900 {
-  background-image: linear-gradient(to right, rgba(14, 165, 233, 0.1), #F1F5F9, #E2E8F0) !important;
-}
-
-body.light-theme .bg-slate-900\/20 {
-  background-color: rgba(241, 245, 249, 0.6) !important;
-}
-
-body.light-theme .text-amber-400 {
-  color: #B45309 !important;
-}
-
-body.light-theme .text-blue-400 {
-  color: #1D4ED8 !important;
-}
-
-body.light-theme .text-purple-400 {
-  color: #7E22CE !important;
-}
-
-body.light-theme .text-sky-400 {
-  color: #0369A1 !important;
-}
-
-body.light-theme .text-rose-400 {
-  color: #BE123C !important;
-}
-
-body.light-theme .bg-amber-500\/10 {
-  background-color: rgba(180, 83, 9, 0.1) !important;
-}
-
-body.light-theme .bg-blue-500\/10 {
-  background-color: rgba(29, 78, 216, 0.1) !important;
-}
-
-body.light-theme .bg-purple-500\/10 {
-  background-color: rgba(126, 34, 206, 0.1) !important;
-}
-
-body.light-theme .bg-sky-500\/10 {
-  background-color: rgba(3, 105, 161, 0.1) !important;
-}
-
-body.light-theme .border-amber-500\/20 {
-  border-color: rgba(180, 83, 9, 0.2) !important;
-}
-
-body.light-theme .border-blue-500\/20 {
-  border-color: rgba(29, 78, 216, 0.2) !important;
-}
-
-body.light-theme .border-purple-500\/20 {
-  border-color: rgba(126, 34, 206, 0.2) !important;
-}
-
-body.light-theme .border-emerald-500\/20 {
-  border-color: rgba(4, 120, 87, 0.2) !important;
-}
-
-body.light-theme .border-sky-500\/20 {
-  border-color: rgba(3, 105, 161, 0.2) !important;
-}
-
-body.light-theme .border-rose-500\/20 {
-  border-color: rgba(190, 18, 60, 0.2) !important;
-}
-
-body.light-theme .border-rose-500\/10 {
-  border-color: rgba(190, 18, 60, 0.1) !important;
-}
-
-body.light-theme .border-amber-500\/15 {
-  border-color: rgba(180, 83, 9, 0.15) !important;
-}
-
-body.light-theme .border-blue-500\/15 {
-  border-color: rgba(29, 78, 216, 0.15) !important;
-}
-
-body.light-theme .border-purple-500\/15 {
-  border-color: rgba(126, 34, 206, 0.15) !important;
-}
-
-body.light-theme .border-emerald-500\/15 {
-  border-color: rgba(4, 120, 87, 0.15) !important;
-}
-
-body.light-theme .border-sky-500\/15 {
-  border-color: rgba(3, 105, 161, 0.15) !important;
-}
-
-body.light-theme .border-rose-500\/15 {
-  border-color: rgba(190, 18, 60, 0.15) !important;
-}
-
-body.light-theme .bg-slate-950 {
-  background-color: #F8FAFC !important;
-}
-
-body.light-theme .bg-slate-950\/95 {
-  background-color: rgba(248, 250, 252, 0.95) !important;
-}
-
-body.light-theme .bg-slate-900\/10 {
-  background-color: rgba(241, 245, 249, 0.1) !important;
-}
-
-body.light-theme .hover\:border-white\/10:hover {
-  border-color: #CBD5E1 !important;
-}
-
-body.light-theme .text-emerald-400 {
-  color: #059669 !important;
-}
-
-/* Custom animation for light mode sun spin */
 .animate-spin-slow {
   animation: spin 8s linear infinite;
 }
@@ -349,10 +151,47 @@ body.light-theme .text-emerald-400 {
   background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
                     linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
 }
-body.light-theme .login-grid-bg {
+.light .login-grid-bg {
   background-image: linear-gradient(to right, rgba(15, 23, 42, 0.03) 1px, transparent 1px),
-                    linear-gradient(to bottom, rgba(15, 23, 42, 0.03) 1px, transparent 1px) !important;
+                    linear-gradient(to bottom, rgba(15, 23, 42, 0.03) 1px, transparent 1px);
 }
 
+/* Text selection */
+::selection {
+  background-color: rgb(var(--color-brand) / 0.3);
+  color: rgb(var(--color-ink));
+}
 
+/* Native <select>: replace the default browser arrow with a themed chevron.
+   Two encoded SVGs (dark/light) since background-image can't read CSS vars. */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1rem;
+  padding-right: 2.25rem !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b96ad' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+.light select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+select:disabled {
+  background-image: none;
+}
 
+/* Checkboxes/radios: tint with the brand color instead of the browser default */
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: rgb(var(--color-brand));
+}
+
+/* Number inputs: drop the native up/down spinner for a cleaner field */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}

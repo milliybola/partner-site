@@ -1,17 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Plus, 
-  Trash2, 
-  Edit, 
-  AlertCircle, 
-  RefreshCw, 
-  Users, 
+import {
+  Plus,
+  Trash2,
+  Edit,
+  AlertCircle,
+  RefreshCw,
+  Users,
   Info,
   CheckCircle,
   HelpCircle,
   ShieldAlert,
   Loader2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Search,
+  LayoutGrid,
+  List,
+  Clock,
+  Table2
 } from 'lucide-react';
 import { STORAGE_KEYS } from '../../../core/config/constants';
 import { tablesApi } from '../services/tablesApi';
@@ -19,8 +24,12 @@ import type { TableModel, TableStatus } from '../services/tablesApi';
 import { filialApi } from '../../orders/services/filialApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
 import { TableOrderModal } from '../components/TableOrderModal';
+import { useToast } from '../../../core/components/ToastProvider';
+import { useConfirm } from '../../../core/components/ConfirmProvider';
 
 const TablesPage: React.FC = () => {
+  const toast = useToast();
+  const confirm = useConfirm();
   // Authentication & Roles
   const partnerData = (() => {
     try {
@@ -44,8 +53,6 @@ const TablesPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [activeFilter, setActiveFilter] = useState<string>('ALL');
-
-  console.log(setViewMode,setSearchQuery,  setStatusFilter, setActiveFilter);
 
   // Modals state
   const [isCrudModalOpen, setIsCrudModalOpen] = useState(false);
@@ -186,13 +193,14 @@ const TablesPage: React.FC = () => {
   // Delete / Deactivate Table
   const handleDeleteTable = async (uuid: string, tableNumber: string) => {
     if (!isManagerOrOwner) return;
-    if (window.confirm(`Haqiqatan ham ${tableNumber}-stolni o'chirmoqchimisiz? (U tizimda faol emas holatiga o'tkaziladi)`)) {
+    const ok = await confirm(`Haqiqatan ham ${tableNumber}-stolni o'chirmoqchimisiz? (U tizimda faol emas holatiga o'tkaziladi)`, { danger: true, confirmText: "O'chirish" });
+    if (ok) {
       try {
         await tablesApi.deleteTable(uuid);
         fetchTables();
       } catch (err: any) {
         console.error("Delete table error:", err);
-        alert(err.response?.data?.message || "Stolni o'chirishda xatolik yuz berdi.");
+        toast.error(err.response?.data?.message || "Stolni o'chirishda xatolik yuz berdi.");
       }
     }
   };
@@ -211,7 +219,7 @@ const TablesPage: React.FC = () => {
     } catch (err: any) {
       console.error("Toggle active error:", err);
       setTables(prev => prev.map(t => t.uuid === table.uuid ? { ...t, is_active: !updatedState } : t));
-      alert(err.response?.data?.message || "Stol faolligini o'zgartirishda xatolik.");
+      toast.error(err.response?.data?.message || "Stol faolligini o'zgartirishda xatolik.");
     }
   };
 
@@ -349,23 +357,30 @@ const TablesPage: React.FC = () => {
     }
   };
 
+  const tableStats = [
+    { label: 'Jami stollar', value: tables.length, icon: LayoutGrid, color: 'text-brand', bg: 'bg-brand/10' },
+    { label: 'Bo\'sh', value: tables.filter(t => t.status === 'AVAILABLE').length, icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+    { label: 'Band', value: tables.filter(t => t.status === 'OCCUPIED').length, icon: Users, color: 'text-rose-400', bg: 'bg-rose-500/10' },
+    { label: 'Rezerv', value: tables.filter(t => t.status === 'RESERVED').length, icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+  ];
+
   return (
-    <div className="space-y-3 font-Outfit text-slate-200">
-      
+    <div className="space-y-6 font-Outfit text-slate-200">
+
       {/* Title Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-edge pb-4">
         <div>
-          {/* <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-2">
-            Stollarni Boshqarish <Sparkles className="w-6 h-6 text-brand animate-pulse" />
+          <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-3">
+            Stollar <span className="bg-brand/10 text-brand p-1.5 rounded-xl"><Table2 className="w-6 h-6" /></span>
           </h1>
-          <p className="text-slate-400 text-sm">Muassasa zallaridagi stollar holatini boshqarish va buyurtma sozlamalari</p> */}
+          <p className="text-slate-400 text-sm mt-1">Zallardagi stollar holatini va buyurtmalarni shu yerdan boshqaring</p>
         </div>
 
         {isManagerOrOwner && (
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => setIsBulkModalOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 border border-white/10 hover:bg-slate-800 text-slate-300 font-bold text-xs transition duration-200 cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 border border-edge-strong hover:bg-slate-800 text-slate-300 font-bold text-xs transition duration-200 cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
               <span>Bulk Import</span>
@@ -381,6 +396,23 @@ const TablesPage: React.FC = () => {
         )}
       </div>
 
+      {/* Stats summary */}
+      {!loading && !error && tables.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {tableStats.map((stat) => (
+            <div key={stat.label} className="flex items-center gap-3 p-4 rounded-2xl bg-darkCard border border-edge">
+              <div className={`p-2.5 rounded-xl ${stat.bg}`}>
+                <stat.icon className={`w-5 h-5 ${stat.color}`} />
+              </div>
+              <div>
+                <p className="text-2xl font-black text-ink leading-none">{stat.value}</p>
+                <p className="text-[11px] text-slate-400 font-semibold mt-1">{stat.label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Info Warning banner for waiters */}
       {isWaiter && (
         <div className="flex gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm items-start">
@@ -392,9 +424,9 @@ const TablesPage: React.FC = () => {
       )}
 
       {/* Filtering and Toolbar */}
-      {/* <div className="p-4 rounded-2xl bg-darkCard border border-white/5 shadow-md space-y-4">
+      <div className="p-4 rounded-2xl bg-darkCard border border-edge shadow-md space-y-4">
         <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
-          
+
           <div className="relative w-full lg:max-w-md">
             <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
             <input
@@ -402,16 +434,16 @@ const TablesPage: React.FC = () => {
               placeholder="Stol raqami yoki izoh bo'yicha qidirish..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none transition duration-150"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none transition duration-150"
             />
           </div>
 
           <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end">
-            
-            <div className="flex items-center gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-white/5 text-xs font-semibold">
+
+            <div className="flex items-center gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-edge text-xs font-semibold">
               <button
                 onClick={() => setStatusFilter('ALL')}
-                className={`px-3 py-1.5 rounded-lg transition ${
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                   statusFilter === 'ALL' ? 'bg-brand text-white' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -419,7 +451,7 @@ const TablesPage: React.FC = () => {
               </button>
               <button
                 onClick={() => setStatusFilter('AVAILABLE')}
-                className={`px-3 py-1.5 rounded-lg transition ${
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                   statusFilter === 'AVAILABLE' ? 'bg-emerald-500/10 text-emerald-400' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -427,7 +459,7 @@ const TablesPage: React.FC = () => {
               </button>
               <button
                 onClick={() => setStatusFilter('OCCUPIED')}
-                className={`px-3 py-1.5 rounded-lg transition ${
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                   statusFilter === 'OCCUPIED' ? 'bg-rose-500/10 text-rose-400' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -435,7 +467,7 @@ const TablesPage: React.FC = () => {
               </button>
               <button
                 onClick={() => setStatusFilter('RESERVED')}
-                className={`px-3 py-1.5 rounded-lg transition ${
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                   statusFilter === 'RESERVED' ? 'bg-amber-500/10 text-amber-400' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -447,7 +479,7 @@ const TablesPage: React.FC = () => {
               <select
                 value={activeFilter}
                 onChange={(e) => setActiveFilter(e.target.value)}
-                className="bg-slate-950/70 border border-white/5 focus:border-brand/40 text-slate-300 px-3 py-2 rounded-xl text-xs focus:outline-none transition"
+                className="bg-slate-950/70 border border-edge focus:border-brand/40 text-slate-300 px-3 py-2 rounded-xl text-xs focus:outline-none transition cursor-pointer"
               >
                 <option value="ALL">Barcha holatdagilar</option>
                 <option value="ACTIVE">Faqat Faollar</option>
@@ -455,20 +487,20 @@ const TablesPage: React.FC = () => {
               </select>
             )}
 
-            <div className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-white/5">
+            <div className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-edge">
               <button
                 onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-lg transition ${
-                  viewMode === 'grid' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-slate-200'
+                className={`p-1.5 rounded-lg transition cursor-pointer ${
+                  viewMode === 'grid' ? 'bg-overlay-strong text-ink' : 'text-slate-400 hover:text-slate-200'
                 }`}
                 title="Grid ko'rinishi"
               >
-                <Grid className="w-4 h-4" />
+                <LayoutGrid className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-lg transition ${
-                  viewMode === 'list' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-slate-200'
+                className={`p-1.5 rounded-lg transition cursor-pointer ${
+                  viewMode === 'list' ? 'bg-overlay-strong text-ink' : 'text-slate-400 hover:text-slate-200'
                 }`}
                 title="Ro'yxat ko'rinishi"
               >
@@ -478,14 +510,14 @@ const TablesPage: React.FC = () => {
 
             <button
               onClick={fetchTables}
-              className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-white transition cursor-pointer"
+              className="p-2.5 rounded-xl bg-overlay border border-edge-strong text-slate-400 hover:text-ink transition cursor-pointer"
               title="Yangilash"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
           </div>
         </div>
-      </div> */}
+      </div>
 
       {/* Main Content Area */}
       {loading ? (
@@ -496,7 +528,7 @@ const TablesPage: React.FC = () => {
       ) : error ? (
         <div className="flex flex-col items-center justify-center py-20 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 text-center max-w-lg mx-auto">
           <AlertCircle className="w-12 h-12 text-rose-500 mb-3 animate-pulse" />
-          <h4 className="font-bold text-white text-base mb-1">Xatolik yuz berdi</h4>
+          <h4 className="font-bold text-ink text-base mb-1">Xatolik yuz berdi</h4>
           <p className="text-sm text-slate-400 mb-4">{error}</p>
           <button
             onClick={fetchTables}
@@ -510,82 +542,86 @@ const TablesPage: React.FC = () => {
         viewMode === 'grid' ? (
           
           /* Visual GRID View Layout */
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {filteredTables.map((table) => {
-              const borderGlow = ({
-                AVAILABLE: 'hover:border-emerald-500/40 hover:shadow-emerald-500/5',
-                OCCUPIED: 'hover:border-rose-500/40 hover:shadow-rose-500/5',
-                RESERVED: 'hover:border-amber-500/40 hover:shadow-amber-500/5'
-              } as Record<string, string>)[table.status || 'AVAILABLE'] || '';
+              const ring = ({
+                AVAILABLE: 'ring-emerald-500/50 group-hover:ring-emerald-500',
+                OCCUPIED: 'ring-rose-500/50 group-hover:ring-rose-500',
+                RESERVED: 'ring-amber-500/50 group-hover:ring-amber-500'
+              } as Record<string, string>)[table.status || 'AVAILABLE'] || 'ring-slate-600/50';
+
+              const isInactive = table.is_active === false;
 
               return (
                 <div
                   key={table.uuid}
                   onClick={() => setOrderingTable(table)}
-                  className={`relative p-5 rounded-2xl bg-darkCard/80 border cursor-pointer ${
-                    table.is_active === false ? 'border-dashed border-white/5 opacity-55' : 'border-white/5'
-                  } transition-all duration-300 group hover:-translate-y-1 hover:shadow-lg flex flex-col justify-between min-h-[175px] ${borderGlow}`}
+                  className={`relative p-4 pt-5 rounded-2xl border cursor-pointer transition-all duration-300 group hover:-translate-y-1 hover:shadow-lg flex flex-col items-center text-center gap-3 min-h-[195px] justify-between ${
+                    isInactive ? 'border-dashed border-edge bg-darkCard/50 opacity-55' : 'border-edge bg-darkCard hover:border-edge-strong'
+                  }`}
                 >
+                  {/* Manager quick actions (top-right, on hover) */}
+                  {isManagerOrOwner && (
+                    <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openCrudModal(table); }}
+                        className="p-1.5 rounded-lg bg-overlay border border-edge text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
+                        title="Tahrirlash"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteTable(table.uuid, table.table_number); }}
+                        className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/10 text-rose-400 hover:text-white hover:bg-rose-500 transition cursor-pointer"
+                        title="O'chirish (Deaktiv)"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
 
-                  {/* Card top */}
-                  <div>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="font-black text-2xl text-white tracking-tight group-hover:text-brand transition duration-150">
+                  {/* Table "surface" — circular motif carrying the number */}
+                  <div className="relative shrink-0">
+                    <div
+                      className={`w-16 h-16 rounded-full flex items-center justify-center bg-slate-900 ring-4 transition-all duration-300 ${
+                        isInactive ? 'ring-slate-700/40' : ring
+                      } ${table.status === 'OCCUPIED' && !isInactive ? 'animate-pulse' : ''}`}
+                    >
+                      <span className="font-black text-lg text-ink tracking-tight leading-none px-1 truncate max-w-[3.5rem]">
                         {table.table_number}
-                      </div>
-
-                      {/* Display active status indicator (Manager option) */}
-                      {isManagerOrOwner && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleToggleActive(table); }}
-                          className={`w-3.5 h-3.5 rounded-full border border-white/10 ${
-                            table.is_active !== false
-                              ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
-                              : 'bg-slate-700'
-                          }`}
-                          title={table.is_active !== false ? "Faol (Deaktiv qilish)" : "Nofaol (Faollashtirish)"}
-                        />
-                      )}
+                      </span>
                     </div>
 
-                    <div className="flex items-center gap-1 text-slate-400 text-xs font-bold mt-1.5">
-                      <Users className="w-3.5 h-3.5 shrink-0" />
-                      <span>{table.capacity} kishi</span>
-                    </div>
-
-                    {table.current_order ? (
-                      <p className="text-[11px] text-slate-400 mt-2 leading-relaxed font-medium">
-                        {table.current_order.order_number} · {Number(table.current_order.total_price).toLocaleString('uz-UZ')} UZS
-                      </p>
-                    ) : table.notes && (
-                      <p className="text-[11px] text-slate-500 line-clamp-2 mt-2 leading-relaxed font-medium">
-                        {table.notes}
-                      </p>
+                    {isManagerOrOwner && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleToggleActive(table); }}
+                        className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-darkCard ${
+                          table.is_active !== false
+                            ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]'
+                            : 'bg-slate-700'
+                        }`}
+                        title={table.is_active !== false ? "Faol (Deaktiv qilish)" : "Nofaol (Faollashtirish)"}
+                      />
                     )}
                   </div>
 
-                  {/* Card Bottom status + action buttons */}
-                  <div className="mt-4 pt-3.5 border-t border-white/5 flex flex-col gap-2">
-                    {getStatusBadge(table.status)}
+                  <div className="inline-flex items-center gap-1 text-slate-400 text-[11px] font-bold bg-overlay px-2 py-0.5 rounded-md">
+                    <Users className="w-3 h-3 shrink-0" />
+                    <span>{table.capacity} kishi</span>
+                  </div>
 
-                    {isManagerOrOwner && (
-                      <div className="flex items-center justify-end gap-1.5 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openCrudModal(table); }}
-                          className="p-1.5 rounded-lg bg-white/5 border border-white/5 text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
-                          title="Tahrirlash"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteTable(table.uuid, table.table_number); }}
-                          className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/10 text-rose-400 hover:text-white hover:bg-rose-500 transition cursor-pointer"
-                          title="O'chirish (Deaktiv)"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                  {/* Bottom block: order/notes + status */}
+                  <div className="w-full flex flex-col items-center gap-1.5">
+                    {table.current_order ? (
+                      <p className="text-[11px] text-slate-400 leading-relaxed font-medium truncate max-w-full">
+                        {table.current_order.order_number} · {Number(table.current_order.total_price).toLocaleString('uz-UZ')} UZS
+                      </p>
+                    ) : table.notes && (
+                      <p className="text-[11px] text-slate-500 line-clamp-1 leading-relaxed font-medium max-w-full">
+                        {table.notes}
+                      </p>
                     )}
+                    {getStatusBadge(table.status)}
                   </div>
                 </div>
               );
@@ -594,11 +630,11 @@ const TablesPage: React.FC = () => {
         ) : (
           
           /* Visual TABLE List Layout */
-          <div className="p-6 rounded-2xl bg-darkCard border border-white/5 shadow-xl">
+          <div className="p-6 rounded-2xl bg-darkCard border border-edge shadow-xl">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-white/5 text-slate-500 text-xs uppercase tracking-wider font-bold">
+                  <tr className="border-b border-edge text-slate-500 text-xs uppercase tracking-wider font-bold">
                     <th className="pb-3.5 pl-2">Stol Raqami</th>
                     <th className="pb-3.5">O'tirish joylari</th>
                     <th className="pb-3.5">Izoh / Tafsilotlar</th>
@@ -608,17 +644,17 @@ const TablesPage: React.FC = () => {
                     {isManagerOrOwner && <th className="pb-3.5 text-right pr-2">Amallar</th>}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5 text-slate-300">
+                <tbody className="divide-y divide-edge text-slate-300">
                   {filteredTables.map((table) => (
                     <tr
                       key={table.uuid}
                       onClick={() => setOrderingTable(table)}
-                      className={`hover:bg-white/[0.01] transition-colors cursor-pointer ${
+                      className={`hover:bg-overlay transition-colors cursor-pointer ${
                         table.is_active === false ? 'opacity-55 border-dashed' : ''
                       }`}
                     >
                       <td className="py-3.5 pl-2">
-                        <div className="font-bold text-white text-base">{table.table_number}</div>
+                        <div className="font-bold text-ink text-base">{table.table_number}</div>
                         {table.current_order && (
                           <div className="text-[10px] text-slate-500 mt-0.5">{table.current_order.order_number}</div>
                         )}
@@ -654,7 +690,7 @@ const TablesPage: React.FC = () => {
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={(e) => { e.stopPropagation(); openCrudModal(table); }}
-                              className="p-1.5 rounded-lg bg-white/5 border border-white/5 text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                              className="p-1.5 rounded-lg bg-overlay border border-edge text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
                               title="Tahrirlash"
                             >
                               <Edit className="w-3.5 h-3.5" />
@@ -679,11 +715,22 @@ const TablesPage: React.FC = () => {
       ) : (
         
         /* Empty State */
-        <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-white/5 rounded-2xl text-center">
+        <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-edge rounded-2xl text-center">
           <HelpCircle className="w-14 h-14 stroke-[1] mb-3 text-slate-600" />
-          <h3 className="font-bold text-white text-base mb-1">Stollar topilmadi</h3>
-          <p className="text-sm text-slate-400 max-w-sm">Qidiruv shartlariga mos keladigan yoki yaratilgan stollar mavjud emas.</p>
-          {isManagerOrOwner && (
+          <h3 className="font-bold text-ink text-base mb-1">Stollar topilmadi</h3>
+          <p className="text-sm text-slate-400 max-w-sm">
+            {tables.length > 0
+              ? "Qidiruv yoki filtr shartlariga mos keladigan stollar topilmadi."
+              : "Hozircha yaratilgan stollar mavjud emas."}
+          </p>
+          {tables.length > 0 && (searchQuery || statusFilter !== 'ALL' || activeFilter !== 'ALL') ? (
+            <button
+              onClick={() => { setSearchQuery(''); setStatusFilter('ALL'); setActiveFilter('ALL'); }}
+              className="mt-4 flex items-center gap-1 px-4 py-2.5 rounded-xl bg-overlay border border-edge-strong text-slate-300 hover:text-ink hover:bg-overlay-strong font-bold text-xs transition cursor-pointer"
+            >
+              <span>Filtrlarni tozalash</span>
+            </button>
+          ) : isManagerOrOwner && (
             <button
               onClick={() => openCrudModal(null)}
               className="mt-4 flex items-center gap-1 px-4 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs transition cursor-pointer"
@@ -698,10 +745,10 @@ const TablesPage: React.FC = () => {
       {/* CRUD MODAL (ADD / EDIT) */}
       {isCrudModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-darkCard border border-white/10 rounded-2xl shadow-2xl p-6 relative overflow-hidden animate-in fade-in zoom-in duration-200">
+          <div className="w-full max-w-md bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="absolute top-0 right-0 w-32 h-32 bg-brand/5 rounded-bl-full pointer-events-none filter blur-xl" />
             
-            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
               {selectedTable ? "Stol Ma'lumotlarini Tahrirlash" : "Yangi Stol Qo'shish"}
             </h3>
 
@@ -722,7 +769,7 @@ const TablesPage: React.FC = () => {
                   placeholder="Masalan: 1, 5, VIP-2, A1"
                   value={tableNumber}
                   onChange={(e) => setTableNumber(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150"
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150"
                 />
               </div>
 
@@ -737,7 +784,7 @@ const TablesPage: React.FC = () => {
                     placeholder="Masalan: 4"
                     value={capacity}
                     onChange={(e) => setCapacity(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150"
+                    className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150"
                   />
                 </div>
                 
@@ -748,7 +795,7 @@ const TablesPage: React.FC = () => {
                     placeholder="Masalan: 5"
                     value={displayOrder}
                     onChange={(e) => setDisplayOrder(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150"
+                    className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150"
                   />
                 </div>
               </div>
@@ -758,7 +805,7 @@ const TablesPage: React.FC = () => {
                 <select
                   value={tableStatus}
                   onChange={(e) => setTableStatus(e.target.value as TableStatus)}
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-300 focus:outline-none transition duration-150"
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-300 focus:outline-none transition duration-150"
                 >
                   <option value="AVAILABLE">Mavjud (Bo'sh)</option>
                   <option value="OCCUPIED">Band qilingan</option>
@@ -773,7 +820,7 @@ const TablesPage: React.FC = () => {
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150 resize-none"
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150 resize-none"
                 />
               </div>
 
@@ -784,7 +831,7 @@ const TablesPage: React.FC = () => {
                   <select
                     value={filialUuid}
                     onChange={(e) => setFilialUuid(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-300 focus:outline-none transition duration-150 cursor-pointer"
+                    className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-300 focus:outline-none transition duration-150 cursor-pointer"
                   >
                     <option value="">-- Filialni tanlang --</option>
                     {filialList.map(f => (
@@ -796,7 +843,7 @@ const TablesPage: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-white/5">
+              <div className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-edge">
                 <div className="flex flex-col">
                   <span className="text-xs font-semibold text-slate-300">Faol holatda</span>
                   <span className="text-[10px] text-slate-500">Stol ofitsantlar ro'yxatida ko'rinadi</span>
@@ -805,16 +852,16 @@ const TablesPage: React.FC = () => {
                   type="checkbox"
                   checked={isActive}
                   onChange={(e) => setIsActive(e.target.checked)}
-                  className="w-4 h-4 text-brand focus:ring-0 focus:ring-offset-0 rounded bg-slate-900 border-white/5 cursor-pointer"
+                  className="w-4 h-4 text-brand focus:ring-0 focus:ring-offset-0 rounded bg-slate-900 border-edge cursor-pointer"
                 />
               </div>
 
               {/* Action buttons */}
-              <div className="flex items-center gap-3 pt-3 border-t border-white/5">
+              <div className="flex items-center gap-3 pt-3 border-t border-edge">
                 <button
                   type="button"
                   onClick={() => setIsCrudModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition duration-150 font-bold text-xs cursor-pointer"
+                  className="flex-1 py-2.5 rounded-xl border border-edge-strong text-slate-400 hover:text-ink hover:bg-overlay transition duration-150 font-bold text-xs cursor-pointer"
                 >
                   Bekor qilish
                 </button>
@@ -835,10 +882,10 @@ const TablesPage: React.FC = () => {
       {/* BULK IMPORT MODAL */}
       {isBulkModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-darkCard border border-white/10 rounded-2xl shadow-2xl p-6 relative overflow-hidden animate-in fade-in zoom-in duration-200">
+          <div className="w-full max-w-lg bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-bl-full pointer-events-none filter blur-xl" />
             
-            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+            <h3 className="text-lg font-bold text-ink mb-2 flex items-center gap-2">
               <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
               Ko'p miqdorda stol import qilish
             </h3>
@@ -859,7 +906,7 @@ const TablesPage: React.FC = () => {
             )}
 
             {/* Selection tabs for import method */}
-            <div className="flex border-b border-white/5 mb-4 text-xs font-bold">
+            <div className="flex border-b border-edge mb-4 text-xs font-bold">
               <button
                 onClick={() => setBulkMethod('generator')}
                 className={`pb-2.5 px-4 border-b-2 transition ${
@@ -883,8 +930,8 @@ const TablesPage: React.FC = () => {
               {bulkMethod === 'generator' ? (
                 /* Method A: Generator */
                 <div className="space-y-4">
-                  <div className="p-3 bg-white/5 border border-white/5 rounded-xl text-[11px] text-slate-400 leading-relaxed">
-                    <span className="font-bold text-white">Generator qanday ishlaydi:</span> Boshlang'ich sondan yakuniy songacha stollar ketma-ket yaratiladi. Masalan, Prefiks: <code className="text-brand">VIP-</code>, Boshlanishi: <code className="text-brand">1</code>, Yakuni: <code className="text-brand">3</code> bo'lsa, zaldagi stollar: <code className="text-slate-300">VIP-1, VIP-2, VIP-3</code> ko'rinishida qo'shiladi.
+                  <div className="p-3 bg-overlay border border-edge rounded-xl text-[11px] text-slate-400 leading-relaxed">
+                    <span className="font-bold text-ink">Generator qanday ishlaydi:</span> Boshlang'ich sondan yakuniy songacha stollar ketma-ket yaratiladi. Masalan, Prefiks: <code className="text-brand">VIP-</code>, Boshlanishi: <code className="text-brand">1</code>, Yakuni: <code className="text-brand">3</code> bo'lsa, zaldagi stollar: <code className="text-slate-300">VIP-1, VIP-2, VIP-3</code> ko'rinishida qo'shiladi.
                   </div>
                   
                   <div className="grid grid-cols-3 gap-4">
@@ -895,7 +942,7 @@ const TablesPage: React.FC = () => {
                         placeholder="Masalan: VIP-"
                         value={bulkPrefix}
                         onChange={(e) => setBulkPrefix(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-slate-950 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-200 focus:outline-none transition"
+                        className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 focus:outline-none transition"
                       />
                     </div>
                     <div>
@@ -906,7 +953,7 @@ const TablesPage: React.FC = () => {
                         min="1"
                         value={bulkStart}
                         onChange={(e) => setBulkStart(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-slate-950 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-200 focus:outline-none transition"
+                        className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 focus:outline-none transition"
                       />
                     </div>
                     <div>
@@ -917,7 +964,7 @@ const TablesPage: React.FC = () => {
                         min="1"
                         value={bulkEnd}
                         onChange={(e) => setBulkEnd(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-slate-950 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-200 focus:outline-none transition"
+                        className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 focus:outline-none transition"
                       />
                     </div>
                   </div>
@@ -931,15 +978,15 @@ const TablesPage: React.FC = () => {
                       max="100"
                       value={bulkCapacity}
                       onChange={(e) => setBulkCapacity(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-950 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-200 focus:outline-none transition"
+                      className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 focus:outline-none transition"
                     />
                   </div>
                 </div>
               ) : (
                 /* Method B: Raw CSV like text area */
                 <div className="space-y-4">
-                  <div className="p-3 bg-white/5 border border-white/5 rounded-xl text-[11px] text-slate-400 leading-relaxed">
-                    <span className="font-bold text-white">Format:</span> Har bir qatorga bittadan stol yozing, format: <code className="text-emerald-400">stol_nomi, sig'im, izoh(ixtiyoriy)</code> ko'rinishida bo'lsin.
+                  <div className="p-3 bg-overlay border border-edge rounded-xl text-[11px] text-slate-400 leading-relaxed">
+                    <span className="font-bold text-ink">Format:</span> Har bir qatorga bittadan stol yozing, format: <code className="text-emerald-400">stol_nomi, sig'im, izoh(ixtiyoriy)</code> ko'rinishida bo'lsin.
                   </div>
 
                   <div>
@@ -949,18 +996,18 @@ const TablesPage: React.FC = () => {
                       rows={5}
                       value={bulkRawText}
                       onChange={(e) => setBulkRawText(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-950 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-700 focus:outline-none transition font-mono"
+                      className="w-full px-4 py-3 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-700 focus:outline-none transition font-mono"
                     />
                   </div>
                 </div>
               )}
 
               {/* Action buttons */}
-              <div className="flex items-center gap-3 pt-3 border-t border-white/5">
+              <div className="flex items-center gap-3 pt-3 border-t border-edge">
                 <button
                   type="button"
                   onClick={() => setIsBulkModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition duration-150 font-bold text-xs cursor-pointer"
+                  className="flex-1 py-2.5 rounded-xl border border-edge-strong text-slate-400 hover:text-ink hover:bg-overlay transition duration-150 font-bold text-xs cursor-pointer"
                 >
                   Bekor qilish
                 </button>

@@ -11,6 +11,8 @@ import {
 import { ordersApi } from '../services/ordersApi';
 import apiClient from '../../../core/api/client';
 import { STORAGE_KEYS } from '../../../core/config/constants';
+import { useToast } from '../../../core/components/ToastProvider';
+import { useConfirm } from '../../../core/components/ConfirmProvider';
 
 interface EditOrderModalProps {
   orderUuid: string;
@@ -23,6 +25,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
   orderNumber,
   onClose,
 }) => {
+  const toast = useToast();
+  const confirm = useConfirm();
   // Edit states
   const [items, setItems] = useState<any[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
@@ -107,7 +111,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
       await fetchItems();
     } catch (err: any) {
       console.error("Failed to update item quantity:", err);
-      alert(err.response?.data?.message || err.message || "Miqdorni yangilashda xatolik yuz berdi.");
+      toast.error(err.response?.data?.message || err.message || "Miqdorni yangilashda xatolik yuz berdi.");
     } finally {
       setActionLoading(null);
     }
@@ -115,7 +119,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
 
   // Remove/Delete item handler
   const handleRemoveItem = async (itemUuid: string, currentQuantity: number) => {
-    if (!window.confirm("Haqiqatan ham ushbu mahsulotni buyurtmadan o'chirmoqchimisiz?")) return;
+    const ok = await confirm("Haqiqatan ham ushbu mahsulotni buyurtmadan o'chirmoqchimisiz?", { danger: true, confirmText: "O'chirish" });
+    if (!ok) return;
     setActionLoading(itemUuid);
     try {
       await ordersApi.removeOrderItems(orderUuid, { items: [{ item_uuid: itemUuid, quantity: currentQuantity }] });
@@ -123,7 +128,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
       await fetchItems();
     } catch (err: any) {
       console.error("Failed to remove item:", err);
-      alert(err.response?.data?.message || err.message || "Mahsulotni o'chirishda xatolik yuz berdi.");
+      toast.error(err.response?.data?.message || err.message || "Mahsulotni o'chirishda xatolik yuz berdi.");
     } finally {
       setActionLoading(null);
     }
@@ -138,7 +143,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
       await fetchItems();
     } catch (err: any) {
       console.error("Failed to add product:", err);
-      alert(err.response?.data?.message || err.message || "Mahsulot qo'shishda xatolik yuz berdi.");
+      toast.error(err.response?.data?.message || err.message || "Mahsulot qo'shishda xatolik yuz berdi.");
     } finally {
       setActionLoading(null);
     }
@@ -178,17 +183,17 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
       <div 
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-3xl bg-darkCard border border-white/10 rounded-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden text-left animate-[slideUp_0.3s_ease-out]"
+        className="w-full max-w-3xl bg-darkCard border border-edge-strong rounded-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden text-left animate-[slideUp_0.3s_ease-out]"
       >
         {/* Header */}
-        <div className="p-5 border-b border-white/5 flex items-center justify-between">
+        <div className="p-5 border-b border-edge flex items-center justify-between">
           <div>
-            <h3 className="font-bold text-lg text-white">Buyurtmani Tahrirlash</h3>
+            <h3 className="font-bold text-lg text-ink">Buyurtmani Tahrirlash</h3>
             <p className="text-xs text-slate-400 mt-0.5">Buyurtma: {orderNumber}</p>
           </div>
           <button
             onClick={() => onClose(hasChanges)}
-            className="p-2 rounded-lg bg-white/5 text-slate-400 hover:text-white transition cursor-pointer"
+            className="p-2 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -198,7 +203,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         <div className="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-12 min-h-0">
           
           {/* Left side: Current items */}
-          <div className="md:col-span-7 p-5 flex flex-col min-h-0 overflow-hidden border-b md:border-b-0 border-white/5">
+          <div className="md:col-span-7 p-5 flex flex-col min-h-0 overflow-hidden border-b md:border-b-0 border-edge">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5 shrink-0">
               <ShoppingBag className="w-3.5 h-3.5 text-brand" />
               Buyurtma tarkibi
@@ -214,7 +219,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                 {itemsError}
               </div>
             ) : items.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center py-12 border border-dashed border-white/5 rounded-xl text-slate-500 text-xs">
+              <div className="flex-1 flex flex-col items-center justify-center py-12 border border-dashed border-edge rounded-xl text-slate-500 text-xs">
                 Savat bo'sh. Mahsulot qo'shing.
               </div>
             ) : (
@@ -229,10 +234,10 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                   return (
                     <div 
                       key={itemUuid || idx} 
-                      className="p-3 bg-slate-900 border border-white/5 rounded-xl flex items-center justify-between gap-3 text-sm transition-all"
+                      className="p-3 bg-slate-900 border border-edge rounded-xl flex items-center justify-between gap-3 text-sm transition-all"
                     >
                       <div className="min-w-0">
-                        <p className="font-semibold text-white truncate">{productName}</p>
+                        <p className="font-semibold text-ink truncate">{productName}</p>
                         <p className="text-xs text-slate-400 mt-0.5">
                           {formatUzS(productPrice)} x {quantity} = <span className="text-slate-200 font-medium">{formatUzS(productPrice * quantity)}</span>
                         </p>
@@ -249,12 +254,12 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                             }
                           }}
                           disabled={!!actionLoading}
-                          className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition disabled:opacity-50 cursor-pointer"
+                          className="p-1.5 rounded-lg bg-overlay hover:bg-overlay-strong text-slate-300 hover:text-ink transition disabled:opacity-50 cursor-pointer"
                         >
                           <Minus className="w-3.5 h-3.5" />
                         </button>
 
-                        <span className="w-6 text-center font-bold text-white text-xs">
+                        <span className="w-6 text-center font-bold text-ink text-xs">
                           {isModifying ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin mx-auto text-brand" />
                           ) : (
@@ -266,7 +271,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                         <button
                           onClick={() => handleUpdateQuantity(itemUuid, quantity + 1)}
                           disabled={!!actionLoading}
-                          className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition disabled:opacity-50 cursor-pointer"
+                          className="p-1.5 rounded-lg bg-overlay hover:bg-overlay-strong text-slate-300 hover:text-ink transition disabled:opacity-50 cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
                         </button>
@@ -288,7 +293,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
           </div>
 
           {/* Right side: Catalog addition */}
-          <div className="md:col-span-5 p-5 border-t md:border-t-0 md:border-l border-white/5 flex flex-col min-h-0 overflow-hidden">
+          <div className="md:col-span-5 p-5 border-t md:border-t-0 md:border-l border-edge flex flex-col min-h-0 overflow-hidden">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 shrink-0">Mahsulot qo'shish</h4>
             
             {/* Catalog Search */}
@@ -298,7 +303,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                 value={catalogSearch}
                 onChange={(e) => setCatalogSearch(e.target.value)}
                 placeholder="Taom qidirish..."
-                className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-900 border border-white/5 text-white placeholder-slate-500 text-xs focus:border-brand/40 focus:ring-1 focus:ring-brand/40 transition outline-none"
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-900 border border-edge text-ink placeholder-slate-500 text-xs focus:border-brand/40 focus:ring-1 focus:ring-brand/40 transition outline-none"
               />
               <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
             </div>
@@ -309,7 +314,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                 <span className="text-[10px]">Katalog yuklanmoqda...</span>
               </div>
             ) : filteredCatalog.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center py-8 border border-dashed border-white/5 rounded-xl text-slate-500 text-xs">
+              <div className="flex-1 flex flex-col items-center justify-center py-8 border border-dashed border-edge rounded-xl text-slate-500 text-xs">
                 Mahsulot topilmadi
               </div>
             ) : (
@@ -325,7 +330,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
                         return (
                           <div 
                             key={product.uuid} 
-                            className="p-2.5 bg-slate-900/60 hover:bg-slate-900 border border-white/5 hover:border-white/10 rounded-xl flex items-center justify-between gap-2 text-xs transition"
+                            className="p-2.5 bg-slate-900/60 hover:bg-slate-900 border border-edge hover:border-edge-strong rounded-xl flex items-center justify-between gap-2 text-xs transition"
                           >
                             <div className="min-w-0 pr-2">
                               <p className="font-medium text-slate-200 truncate">{product.name}</p>
@@ -356,7 +361,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-white/5 flex items-center justify-end bg-slate-900/40 shrink-0">
+        <div className="p-5 border-t border-edge flex items-center justify-end bg-slate-900/40 shrink-0">
           <button
             onClick={() => onClose(hasChanges)}
             className="px-5 py-2.5 rounded-xl bg-brand hover:bg-brand/90 text-slate-950 font-bold text-xs transition cursor-pointer shadow-lg shadow-brand/10"

@@ -6,13 +6,14 @@ const LoginPage: React.FC = () => {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('milliygo_theme') as 'light' | 'dark') || 'dark');
 
   useEffect(() => {
+    const root = document.documentElement;
     if (theme === 'light') {
-      document.body.classList.add('light-theme');
-      document.body.classList.remove('dark-theme');
+      root.classList.add('light');
+      root.classList.remove('dark');
       localStorage.setItem('milliygo_theme', 'light');
     } else {
-      document.body.classList.add('dark-theme');
-      document.body.classList.remove('light-theme');
+      root.classList.add('dark');
+      root.classList.remove('light');
       localStorage.setItem('milliygo_theme', 'dark');
     }
   }, [theme]);
@@ -23,7 +24,7 @@ const LoginPage: React.FC = () => {
       <div className="absolute top-6 right-6 z-20">
         <button
           onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-          className="p-3 rounded-xl bg-darkCard border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-all duration-300 cursor-pointer shadow-lg flex items-center justify-center"
+          className="p-3 rounded-xl bg-darkCard border border-edge-strong text-slate-400 hover:text-ink hover:bg-overlay transition-all duration-300 cursor-pointer shadow-lg flex items-center justify-center"
           aria-label="Toggle Theme"
         >
           {theme === 'light' ? (
@@ -49,4 +50,3 @@ const LoginPage: React.FC = () => {
 };
 
 export default LoginPage;
-

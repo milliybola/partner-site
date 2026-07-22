@@ -34,8 +34,12 @@ import { couriersApi } from '../services/couriersApi';
 import type { CourierModel } from '../services/couriersApi';
 import { filialApi } from '../../orders/services/filialApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
+import { useToast } from '../../../core/components/ToastProvider';
+import { useConfirm } from '../../../core/components/ConfirmProvider';
 
 const StaffPage: React.FC = () => {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -308,20 +312,21 @@ const StaffPage: React.FC = () => {
       );
     } catch (err) {
       console.error("Failed to toggle courier status:", err);
-      alert("Kuryer holatini o'zgartirib bo'lmadi.");
+      toast.error("Kuryer holatini o'zgartirib bo'lmadi.");
     }
   };
 
   // Delete courier
   const handleDeleteCourier = async (courier: CourierModel) => {
-    if (!window.confirm(`Haqiqatan ham "${courier.first_name} ${courier.last_name}" kuryerini o'chirishni xohlaysizmi?`)) return;
+    const ok = await confirm(`Haqiqatan ham "${courier.first_name} ${courier.last_name}" kuryerini o'chirishni xohlaysizmi?`, { danger: true, confirmText: "O'chirish" });
+    if (!ok) return;
 
     try {
       await couriersApi.deleteCourier(courier.uuid);
       setCouriersList(prev => prev.filter(item => item.uuid !== courier.uuid));
     } catch (err) {
       console.error("Failed to delete courier:", err);
-      alert("Kuryerni o'chirishda xatolik yuz berdi.");
+      toast.error("Kuryerni o'chirishda xatolik yuz berdi.");
     }
   };
 
@@ -502,21 +507,22 @@ const StaffPage: React.FC = () => {
       );
     } catch (err) {
       console.error("Failed to toggle status:", err);
-      alert("Xodim holatini o'zgartirib bo'lmadi.");
+      toast.error("Xodim holatini o'zgartirib bo'lmadi.");
     }
   };
 
   // Delete staff member
   const handleDeleteStaff = async (staff: StaffMember) => {
     if (userRole !== 'superadmin') return;
-    if (!window.confirm(`Haqiqatan ham "${staff.name}" xodimini o'chirishni xohlaysizmi?`)) return;
-    
+    const ok = await confirm(`Haqiqatan ham "${staff.name}" xodimini o'chirishni xohlaysizmi?`, { danger: true, confirmText: "O'chirish" });
+    if (!ok) return;
+
     try {
       await staffApi.deleteStaff(staff.uuid);
       setStaffList(prev => prev.filter(item => item.uuid !== staff.uuid));
     } catch (err) {
       console.error("Failed to delete staff:", err);
-      alert("Xodimni o'chirishda xatolik yuz berdi.");
+      toast.error("Xodimni o'chirishda xatolik yuz berdi.");
     }
   };
 
@@ -568,9 +574,9 @@ const StaffPage: React.FC = () => {
   return (
     <div className="space-y-8 font-Outfit">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-edge pb-4">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3 text-left">
+          <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-3 text-left">
             Xodimlar <span className="bg-brand/10 text-brand p-1.5 rounded-xl"><Users className="w-6 h-6" /></span>
           </h1>
           <p className="text-slate-400 text-left text-sm mt-1">Xizmat ko'rsatuvchi xodimlar, menejerlar va ofitsantlarni boshqaring</p>
@@ -587,7 +593,7 @@ const StaffPage: React.FC = () => {
                 fetchCouriers();
               }
             }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white transition text-slate-300 text-xs font-bold cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-overlay border border-edge-strong hover:bg-overlay-strong hover:text-ink transition text-slate-300 text-xs font-bold cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Yangilash</span>
@@ -616,7 +622,7 @@ const StaffPage: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex bg-slate-950/60 p-1 rounded-xl border border-white/5 max-w-xl">
+      <div className="flex bg-slate-950/60 p-1 rounded-xl border border-edge max-w-xl">
         <button
           onClick={() => setActiveTab('list')}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition duration-200 cursor-pointer ${
@@ -657,7 +663,7 @@ const StaffPage: React.FC = () => {
         <div className="flex items-start gap-3.5 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm text-left shadow-lg">
           <Shield className="w-5 h-5 shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <h4 className="font-bold text-white">Menejer hisobi</h4>
+            <h4 className="font-bold text-ink">Menejer hisobi</h4>
             <p className="text-xs text-slate-400 leading-relaxed">
               Menejer sifatida siz faqat ofitsantlar (waiter) ro'yxatini ko'ra olasiz. Xodimlarni yaratish, yangilash yoki o'chirish faqat Restoran Egasi (Superadmin) hisobi orqali amalga oshiriladi.
             </p>
@@ -671,7 +677,7 @@ const StaffPage: React.FC = () => {
           {error ? (
             <div className="flex flex-col items-center justify-center py-20 text-rose-400 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 text-center">
               <AlertCircle className="w-12 h-12 mb-3 animate-pulse" />
-              <h4 className="font-bold text-white text-base mb-1">Xatolik yuz berdi</h4>
+              <h4 className="font-bold text-ink text-base mb-1">Xatolik yuz berdi</h4>
               <p className="text-sm max-w-sm mb-4 text-slate-400">{error}</p>
               <button
                 onClick={fetchStaff}
@@ -687,11 +693,11 @@ const StaffPage: React.FC = () => {
               <p className="text-slate-400 text-sm font-semibold">Xodimlar yuklanmoqda...</p>
             </div>
           ) : staffList.length > 0 ? (
-            <div className="p-6 rounded-2xl bg-darkCard border border-white/5 shadow-xl">
+            <div className="p-6 rounded-2xl bg-darkCard border border-edge shadow-xl">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-sm">
                   <thead>
-                    <tr className="border-b border-white/5 text-slate-500 text-xs uppercase tracking-wider font-bold">
+                    <tr className="border-b border-edge text-slate-500 text-xs uppercase tracking-wider font-bold">
                       <th className="pb-3.5 pl-2">Ism</th>
                       <th className="pb-3.5">Telefon raqami</th>
                       <th className="pb-3.5">Roli</th>
@@ -701,11 +707,11 @@ const StaffPage: React.FC = () => {
                       <th className="pb-3.5 text-center pr-2">Amallar</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5 text-slate-300">
+                  <tbody className="divide-y divide-edge text-slate-300">
                     {staffList.map((staff) => (
-                      <tr key={staff.uuid} className="hover:bg-white/[0.01] transition-colors">
-                        <td className="py-4 pl-2 font-bold text-white flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-slate-900 border border-white/10 flex items-center justify-center text-slate-400 shrink-0 font-bold text-xs">
+                      <tr key={staff.uuid} className="hover:bg-overlay transition-colors">
+                        <td className="py-4 pl-2 font-bold text-ink flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-slate-900 border border-edge-strong flex items-center justify-center text-slate-400 shrink-0 font-bold text-xs">
                             {staff.name.charAt(0).toUpperCase()}
                           </div>
                           <span className="truncate">{staff.name}</span>
@@ -726,7 +732,7 @@ const StaffPage: React.FC = () => {
                         </td>
                         <td className="py-4 text-xs">
                           <div className="flex flex-col gap-0.5 text-left text-slate-300">
-                            <span className="font-semibold text-white">
+                            <span className="font-semibold text-ink">
                               {staff.home_filial?.filial_name || "-"}
                             </span>
                             <span className="text-[10px] text-brand">
@@ -738,7 +744,7 @@ const StaffPage: React.FC = () => {
                           {staff.today_stats ? (
                             <div className="flex flex-col gap-1 text-[11px] text-slate-400 text-left">
                               <div className="flex items-center gap-1 font-medium">
-                                <span className="text-white font-bold">{staff.today_stats.total_orders} ta</span> buyurtma
+                                <span className="text-ink font-bold">{staff.today_stats.total_orders} ta</span> buyurtma
                                 <span className="text-emerald-400 font-semibold">({staff.today_stats.completed_orders} yopilgan)</span>
                               </div>
                               <div className="text-brand font-mono font-bold">
@@ -787,7 +793,7 @@ const StaffPage: React.FC = () => {
                               <>
                                 <button
                                   onClick={() => handleOpenEditModal(staff)}
-                                  className="p-2 rounded-lg bg-white/5 border border-white/5 text-slate-300 hover:text-white hover:border-white/10 transition cursor-pointer"
+                                  className="p-2 rounded-lg bg-overlay border border-edge text-slate-300 hover:text-ink hover:border-edge-strong transition cursor-pointer"
                                   title="Tahrirlash"
                                 >
                                   <Edit className="w-3.5 h-3.5" />
@@ -810,9 +816,9 @@ const StaffPage: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-white/5 rounded-2xl">
+            <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-edge rounded-2xl">
               <Users className="w-16 h-16 stroke-[1.2] mb-3 text-slate-600 animate-pulse" />
-              <h3 className="font-bold text-white mb-1">Xodimlar mavjud emas</h3>
+              <h3 className="font-bold text-ink mb-1">Xodimlar mavjud emas</h3>
               <p className="text-xs px-6 text-center max-w-sm">Tizimda hali hech qanday xodim qo'shilmagan.</p>
               {userRole === 'superadmin' && (
                 <button
@@ -840,7 +846,7 @@ const StaffPage: React.FC = () => {
                 className={`px-4.5 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
                   ratingsPeriod === period
                     ? 'bg-brand text-white border-brand shadow-lg shadow-brand/10'
-                    : 'bg-white/5 border-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/10'
+                    : 'bg-overlay border-edge text-slate-400 hover:text-slate-200 hover:bg-overlay-strong'
                 }`}
               >
                 {period === 'today' && 'Bugungi'}
@@ -859,7 +865,7 @@ const StaffPage: React.FC = () => {
           ) : ratingsError ? (
             <div className="flex flex-col items-center justify-center py-20 text-rose-400 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 text-center">
               <AlertCircle className="w-12 h-12 mb-3 animate-pulse" />
-              <h4 className="font-bold text-white text-base mb-1">Xatolik yuz berdi</h4>
+              <h4 className="font-bold text-ink text-base mb-1">Xatolik yuz berdi</h4>
               <p className="text-sm max-w-sm mb-4 text-slate-400">{ratingsError}</p>
               <button
                 onClick={() => fetchRatings(ratingsPeriod)}
@@ -905,11 +911,11 @@ const StaffPage: React.FC = () => {
                               key={waiter.uuid} 
                               className={`p-6 rounded-2xl bg-darkCard border shadow-xl relative flex flex-col justify-between overflow-hidden transition-all duration-300 hover:scale-[1.01] ${cardHeight} ${cardBorder}`}
                             >
-                              <div className="absolute top-0 right-0 w-24 h-24 bg-white/[0.01] rounded-bl-full pointer-events-none" />
+                              <div className="absolute top-0 right-0 w-24 h-24 bg-overlay rounded-bl-full pointer-events-none" />
                               <div className="flex justify-between items-start">
                                 <div className="space-y-1 text-left">
                                   <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Ofitsant</span>
-                                  <h3 className="font-bold text-white text-lg truncate max-w-[150px]">{waiter.name}</h3>
+                                  <h3 className="font-bold text-ink text-lg truncate max-w-[150px]">{waiter.name}</h3>
                                 </div>
                                 <div className={`w-10 h-10 rounded-xl border flex items-center justify-center font-bold text-base shadow-lg shrink-0 ${medalColor}`}>
                                   {waiter.place === 1 && <Trophy className="w-5 h-5" />}
@@ -921,7 +927,7 @@ const StaffPage: React.FC = () => {
                               <div className="space-y-2 mt-4 text-left">
                                 <div className="flex justify-between items-center text-xs text-slate-400">
                                   <span>Buyurtmalar:</span>
-                                  <span className="font-bold text-white">{waiter.completed_orders} ta ({waiter.total_orders} ta jami)</span>
+                                  <span className="font-bold text-ink">{waiter.completed_orders} ta ({waiter.total_orders} ta jami)</span>
                                 </div>
                                 <div className="flex justify-between items-center text-xs text-slate-400">
                                   <span>Tushum summasi:</span>
@@ -935,14 +941,14 @@ const StaffPage: React.FC = () => {
                     )}
 
                     {/* Complete Leaderboard list */}
-                    <div className="p-6 rounded-2xl bg-darkCard border border-white/5 shadow-xl text-left">
-                      <h3 className="font-bold text-white text-base mb-4 flex items-center gap-2">
+                    <div className="p-6 rounded-2xl bg-darkCard border border-edge shadow-xl text-left">
+                      <h3 className="font-bold text-ink text-base mb-4 flex items-center gap-2">
                         <Award className="w-5 h-5 text-brand" /> Barcha Ofitsantlar Reytingi
                       </h3>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse text-sm">
                           <thead>
-                            <tr className="border-b border-white/5 text-slate-500 text-xs uppercase tracking-wider font-bold">
+                            <tr className="border-b border-edge text-slate-500 text-xs uppercase tracking-wider font-bold">
                               <th className="pb-3.5 pl-2 text-center w-12">O'rin</th>
                               <th className="pb-3.5 pl-2">Ism</th>
                               <th className="pb-3.5 text-center">Buyurtmalar (Yakunlangan / Jami)</th>
@@ -950,20 +956,20 @@ const StaffPage: React.FC = () => {
                               <th className="pb-3.5 pl-8 pr-2 w-1/3">Hissa bar</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-white/5 text-slate-300">
+                          <tbody className="divide-y divide-edge text-slate-300">
                             {sortedList.map((waiter, index) => {
                               const rank = index + 1;
                               const percentage = (waiter.total_revenue / maxRevenue) * 100;
                               return (
-                                <tr key={waiter.uuid} className="hover:bg-white/[0.01] transition-colors">
+                                <tr key={waiter.uuid} className="hover:bg-overlay transition-colors">
                                   <td className="py-4 pl-2 text-center font-bold">
                                     {rank === 1 && <span className="inline-flex w-6 h-6 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-400 items-center justify-center text-xs">1</span>}
                                     {rank === 2 && <span className="inline-flex w-6 h-6 rounded-full bg-slate-300/20 border border-slate-300/30 text-slate-300 items-center justify-center text-xs">2</span>}
                                     {rank === 3 && <span className="inline-flex w-6 h-6 rounded-full bg-amber-700/20 border border-amber-700/30 text-amber-600 items-center justify-center text-xs">3</span>}
                                     {rank > 3 && <span className="text-slate-500">{rank}</span>}
                                   </td>
-                                  <td className="py-4 pl-2 font-bold text-white flex items-center gap-2.5">
-                                    <div className="w-8 h-8 rounded-full bg-slate-900 border border-white/10 flex items-center justify-center text-slate-400 shrink-0 font-bold text-xs">
+                                  <td className="py-4 pl-2 font-bold text-ink flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-full bg-slate-900 border border-edge-strong flex items-center justify-center text-slate-400 shrink-0 font-bold text-xs">
                                       {waiter.name.charAt(0).toUpperCase()}
                                     </div>
                                     <span className="truncate">{waiter.name}</span>
@@ -994,9 +1000,9 @@ const StaffPage: React.FC = () => {
               })()}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-white/5 rounded-2xl">
+            <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-edge rounded-2xl">
               <Trophy className="w-16 h-16 stroke-[1.2] mb-3 text-slate-600" />
-              <h3 className="font-bold text-white mb-1">Reyting ma'lumotlari mavjud emas</h3>
+              <h3 className="font-bold text-ink mb-1">Reyting ma'lumotlari mavjud emas</h3>
               <p className="text-xs px-6 text-center max-w-sm">Tanlangan davr bo'yicha ofitsantlar reytingi topilmadi.</p>
             </div>
           )}
@@ -1007,7 +1013,7 @@ const StaffPage: React.FC = () => {
       {activeTab === 'couriers' && (
         <div className="space-y-6">
           {/* Filters toolbar */}
-          <div className="p-4 rounded-2xl bg-darkCard border border-white/5 shadow-md">
+          <div className="p-4 rounded-2xl bg-darkCard border border-edge shadow-md">
             <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
               {/* Search bar */}
               <div className="relative w-full lg:max-w-md">
@@ -1018,13 +1024,13 @@ const StaffPage: React.FC = () => {
                   value={courierSearch}
                   onChange={(e) => setCourierSearch(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') fetchCouriers(); }}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-white/5 focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none transition duration-150"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none transition duration-150"
                 />
               </div>
 
               <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end">
                 {/* Status filters */}
-                <div className="flex items-center gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-white/5 text-xs font-semibold">
+                <div className="flex items-center gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-edge text-xs font-semibold">
                   {(['ALL', 'online', 'offline'] as const).map((s) => (
                     <button
                       key={s}
@@ -1043,7 +1049,7 @@ const StaffPage: React.FC = () => {
                   <select
                     value={courierFilialFilter}
                     onChange={(e) => setCourierFilialFilter(e.target.value)}
-                    className="bg-slate-950/70 border border-white/5 focus:border-brand/40 text-slate-300 px-3 py-2 rounded-xl text-xs focus:outline-none transition cursor-pointer"
+                    className="bg-slate-950/70 border border-edge focus:border-brand/40 text-slate-300 px-3 py-2 rounded-xl text-xs focus:outline-none transition cursor-pointer"
                   >
                     <option value="">Barcha filiallar</option>
                     {filialList.map(f => (
@@ -1054,7 +1060,7 @@ const StaffPage: React.FC = () => {
 
                 <button
                   onClick={fetchCouriers}
-                  className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-white transition cursor-pointer"
+                  className="p-2.5 rounded-xl bg-overlay border border-edge-strong text-slate-400 hover:text-ink transition cursor-pointer"
                   title="Yangilash"
                 >
                   <RefreshCw className="w-4 h-4" />
@@ -1066,7 +1072,7 @@ const StaffPage: React.FC = () => {
           {couriersError ? (
             <div className="flex flex-col items-center justify-center py-20 text-rose-400 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 text-center">
               <AlertCircle className="w-12 h-12 mb-3 animate-pulse" />
-              <h4 className="font-bold text-white text-base mb-1">Xatolik yuz berdi</h4>
+              <h4 className="font-bold text-ink text-base mb-1">Xatolik yuz berdi</h4>
               <p className="text-sm max-w-sm mb-4 text-slate-400">{couriersError}</p>
               <button
                 onClick={fetchCouriers}
@@ -1082,11 +1088,11 @@ const StaffPage: React.FC = () => {
               <p className="text-slate-400 text-sm font-semibold">Kuryerlar yuklanmoqda...</p>
             </div>
           ) : couriersList.length > 0 ? (
-            <div className="p-6 rounded-2xl bg-darkCard border border-white/5 shadow-xl">
+            <div className="p-6 rounded-2xl bg-darkCard border border-edge shadow-xl">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-sm">
                   <thead>
-                    <tr className="border-b border-white/5 text-slate-500 text-xs uppercase tracking-wider font-bold">
+                    <tr className="border-b border-edge text-slate-500 text-xs uppercase tracking-wider font-bold">
                       <th className="pb-3.5 pl-2">Ism</th>
                       <th className="pb-3.5">Telefon raqami</th>
                       <th className="pb-3.5">Telegram ID</th>
@@ -1097,11 +1103,11 @@ const StaffPage: React.FC = () => {
                       {userRole === 'superadmin' && <th className="pb-3.5 text-center pr-2">Amallar</th>}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5 text-slate-300">
+                  <tbody className="divide-y divide-edge text-slate-300">
                     {couriersList.map((courier) => (
-                      <tr key={courier.uuid} className="hover:bg-white/[0.01] transition-colors">
-                        <td className="py-4 pl-2 font-bold text-white flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-slate-900 border border-white/10 flex items-center justify-center text-slate-400 shrink-0 font-bold text-xs">
+                      <tr key={courier.uuid} className="hover:bg-overlay transition-colors">
+                        <td className="py-4 pl-2 font-bold text-ink flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-slate-900 border border-edge-strong flex items-center justify-center text-slate-400 shrink-0 font-bold text-xs">
                             {courier.first_name?.charAt(0).toUpperCase()}
                           </div>
                           <span className="truncate">{courier.first_name} {courier.last_name}</span>
@@ -1121,7 +1127,7 @@ const StaffPage: React.FC = () => {
                         </td>
                         <td className="py-4 text-xs">
                           <div className="flex flex-col gap-0.5 text-left text-slate-300">
-                            <span className="font-semibold text-white">
+                            <span className="font-semibold text-ink">
                               {courier.vehicle_info?.brand || courier.vehicle_info?.transport_type || "-"}
                             </span>
                             {courier.vehicle_info?.license_plate && (
@@ -1165,7 +1171,7 @@ const StaffPage: React.FC = () => {
                             <div className="flex gap-2 justify-center">
                               <button
                                 onClick={() => handleOpenEditCourierModal(courier)}
-                                className="p-2 rounded-lg bg-white/5 border border-white/5 text-slate-300 hover:text-white hover:border-white/10 transition cursor-pointer"
+                                className="p-2 rounded-lg bg-overlay border border-edge text-slate-300 hover:text-ink hover:border-edge-strong transition cursor-pointer"
                                 title="Tahrirlash"
                               >
                                 <Edit className="w-3.5 h-3.5" />
@@ -1187,9 +1193,9 @@ const StaffPage: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-white/5 rounded-2xl">
+            <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-edge rounded-2xl">
               <Bike className="w-16 h-16 stroke-[1.2] mb-3 text-slate-600 animate-pulse" />
-              <h3 className="font-bold text-white mb-1">Kuryerlar mavjud emas</h3>
+              <h3 className="font-bold text-ink mb-1">Kuryerlar mavjud emas</h3>
               <p className="text-xs px-6 text-center max-w-sm">Tizimda hali hech qanday shaxsiy kuryer qo'shilmagan.</p>
               {userRole === 'superadmin' && (
                 <button
@@ -1208,15 +1214,15 @@ const StaffPage: React.FC = () => {
       {/* CRUD Entry Modal Dialog */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
-          <div className="w-full max-w-md bg-darkCard border border-white/10 rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-5 animate-[slideUp_0.3s_ease-out]">
+          <div className="w-full max-w-md bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-5 animate-[slideUp_0.3s_ease-out]">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-white/5 pb-3">
-              <h3 className="font-bold text-lg text-white">
+            <div className="flex items-center justify-between border-b border-edge pb-3">
+              <h3 className="font-bold text-lg text-ink">
                 {selectedStaff ? "Xodimni Tahrirlash" : "Yangi Xodim Yaratish"}
               </h3>
               <button
                 onClick={() => setModalOpen(false)}
-                className="p-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-white transition cursor-pointer"
+                className="p-1.5 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1243,7 +1249,7 @@ const StaffPage: React.FC = () => {
                   placeholder="Masalan: Bobur Karimov"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                 />
               </div>
 
@@ -1259,7 +1265,7 @@ const StaffPage: React.FC = () => {
                   placeholder="+998 (90) 123-45-67"
                   value={phone}
                   onChange={handlePhoneChange}
-                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                 />
               </div>
 
@@ -1272,7 +1278,7 @@ const StaffPage: React.FC = () => {
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value as any)}
-                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none transition cursor-pointer"
+                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-ink focus:outline-none transition cursor-pointer"
                 >
                   <option value="waiter">Ofitsant (Waiter)</option>
                   <option value="manager">Menejer (Manager)</option>
@@ -1292,7 +1298,7 @@ const StaffPage: React.FC = () => {
                     placeholder={selectedStaff ? "••••••••" : "Parolni kiriting"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl pl-4 pr-10 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl pl-4 pr-10 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                   />
                   <button
                     type="button"
@@ -1313,7 +1319,7 @@ const StaffPage: React.FC = () => {
                 <select
                   value={homeFilialUuid}
                   onChange={(e) => setHomeFilialUuid(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none transition cursor-pointer"
+                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-ink focus:outline-none transition cursor-pointer"
                 >
                   <option value="">-- Filial tanlang --</option>
                   {filialList.map(filial => (
@@ -1333,7 +1339,7 @@ const StaffPage: React.FC = () => {
                 <select
                   value={currentFilialUuid}
                   onChange={(e) => setCurrentFilialUuid(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none transition cursor-pointer"
+                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-ink focus:outline-none transition cursor-pointer"
                 >
                   <option value="">-- Filial tanlang --</option>
                   {filialList.map(filial => (
@@ -1345,7 +1351,7 @@ const StaffPage: React.FC = () => {
               </div>
 
               {/* Active Switch checkbox */}
-              <div className="flex items-center justify-between border-t border-white/5 pt-3 mt-1">
+              <div className="flex items-center justify-between border-t border-edge pt-3 mt-1">
                 <span className="text-xs text-slate-400 font-semibold font-Outfit">
                   Hisob holati (Faol / Bloklangan)
                 </span>
@@ -1366,7 +1372,7 @@ const StaffPage: React.FC = () => {
               </div>
 
               {/* Modal footer save button */}
-              <div className="flex gap-3 justify-end pt-4 border-t border-white/5 mt-4">
+              <div className="flex gap-3 justify-end pt-4 border-t border-edge mt-4">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
@@ -1382,7 +1388,7 @@ const StaffPage: React.FC = () => {
                 >
                   {submitting ? (
                     <>
-                      <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                      <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-white rounded-full animate-spin" />
                       <span>Saqlanmoqda...</span>
                     </>
                   ) : (
@@ -1401,11 +1407,11 @@ const StaffPage: React.FC = () => {
       {/* DETAILED STATISTICS MODAL */}
       {statsModalOpen && statsStaff && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
-          <div className="w-full max-w-xl bg-darkCard border border-white/10 rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-5 animate-[slideUp_0.3s_ease-out]">
+          <div className="w-full max-w-xl bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-5 animate-[slideUp_0.3s_ease-out]">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+            <div className="flex items-center justify-between border-b border-edge pb-3">
               <div>
-                <h3 className="font-bold text-lg text-white flex items-center gap-2">
+                <h3 className="font-bold text-lg text-ink flex items-center gap-2">
                   <BarChart2 className="w-5 h-5 text-brand" />
                   <span>Xodim Statistikasi</span>
                 </h3>
@@ -1417,7 +1423,7 @@ const StaffPage: React.FC = () => {
                   setStatsStaff(null);
                   setStatsData(null);
                 }}
-                className="p-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-white transition cursor-pointer"
+                className="p-1.5 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1432,14 +1438,14 @@ const StaffPage: React.FC = () => {
               <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex gap-2.5 items-start">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 animate-pulse" />
                 <div>
-                  <h4 className="font-bold text-white mb-0.5">Xatolik yuz berdi</h4>
+                  <h4 className="font-bold text-ink mb-0.5">Xatolik yuz berdi</h4>
                   <p className="leading-normal text-slate-400 font-semibold">{statsError}</p>
                 </div>
               </div>
             ) : statsData ? (
               <div className="space-y-5">
                 {/* Period Selector inside Modal */}
-                <div className="flex bg-slate-900 p-1 rounded-xl border border-white/5">
+                <div className="flex bg-slate-900 p-1 rounded-xl border border-edge">
                   {(['today', 'week', 'month', 'all'] as const).map((period) => (
                     <button
                       key={period}
@@ -1468,26 +1474,26 @@ const StaffPage: React.FC = () => {
                       {/* Overall Stats Cards */}
                       <div className="grid grid-cols-2 gap-4">
                         {/* Order stats card */}
-                        <div className="p-4 rounded-xl bg-slate-900 border border-white/5 relative overflow-hidden text-left">
+                        <div className="p-4 rounded-xl bg-slate-900 border border-edge relative overflow-hidden text-left">
                           <div className="absolute top-0 right-0 w-16 h-16 bg-violet-500/5 rounded-bl-full pointer-events-none" />
                           <div className="flex items-center gap-2 mb-2">
                             <span className="p-2 rounded-lg bg-violet-500/10 text-violet-400"><ShoppingBag className="w-4 h-4" /></span>
                             <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Buyurtmalar</span>
                           </div>
-                          <h4 className="text-xl font-bold text-white mt-1">{periodStats.completed_orders} ta</h4>
+                          <h4 className="text-xl font-bold text-ink mt-1">{periodStats.completed_orders} ta</h4>
                           <p className="text-[10px] text-slate-500 font-semibold mt-1">
                             Jami: {periodStats.total_orders} ta | Bekor qilingan: {periodStats.cancelled_orders} ta
                           </p>
                         </div>
 
                         {/* Revenue stats card */}
-                        <div className="p-4 rounded-xl bg-slate-900 border border-white/5 relative overflow-hidden text-left">
+                        <div className="p-4 rounded-xl bg-slate-900 border border-edge relative overflow-hidden text-left">
                           <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 rounded-bl-full pointer-events-none" />
                           <div className="flex items-center gap-2 mb-2">
                             <span className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400"><TrendingUp className="w-4 h-4" /></span>
                             <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Jami Tushum</span>
                           </div>
-                          <h4 className="text-xl font-bold text-white mt-1 font-mono truncate">{formatUzS(periodStats.total_revenue)}</h4>
+                          <h4 className="text-xl font-bold text-ink mt-1 font-mono truncate">{formatUzS(periodStats.total_revenue)}</h4>
                           <p className="text-[10px] text-slate-500 font-semibold mt-1">
                             Ajoyib natija!
                           </p>
@@ -1495,24 +1501,24 @@ const StaffPage: React.FC = () => {
                       </div>
 
                       {/* Payment Types Breakdown */}
-                      <div className="p-4.5 rounded-xl bg-slate-900 border border-white/5 space-y-3">
+                      <div className="p-4.5 rounded-xl bg-slate-900 border border-edge space-y-3">
                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                           <Coins className="w-3.5 h-3.5 text-brand" />
                           <span>To'lov turlari bo'yicha tushum</span>
                         </h4>
 
                         <div className="space-y-2.5 pt-1 text-xs">
-                          <div className="flex justify-between items-center py-1 border-b border-white/5">
+                          <div className="flex justify-between items-center py-1 border-b border-edge">
                             <span className="text-slate-400 font-semibold flex items-center gap-1.5">
                               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Naqd pul (Cash):
                             </span>
-                            <span className="font-bold text-white font-mono">{formatUzS(periodStats.cash_revenue)}</span>
+                            <span className="font-bold text-ink font-mono">{formatUzS(periodStats.cash_revenue)}</span>
                           </div>
                           <div className="flex justify-between items-center py-1">
                             <span className="text-slate-400 font-semibold flex items-center gap-1.5">
                               <span className="w-2.5 h-2.5 rounded-full bg-sky-400" /> Plastik karta (Card):
                             </span>
-                            <span className="font-bold text-white font-mono">{formatUzS(periodStats.card_revenue)}</span>
+                            <span className="font-bold text-ink font-mono">{formatUzS(periodStats.card_revenue)}</span>
                           </div>
                         </div>
                       </div>
@@ -1523,7 +1529,7 @@ const StaffPage: React.FC = () => {
             ) : null}
 
             {/* Modal Footer */}
-            <div className="flex gap-3 justify-end pt-4 border-t border-white/5 mt-4">
+            <div className="flex gap-3 justify-end pt-4 border-t border-edge mt-4">
               <button
                 type="button"
                 onClick={() => {
@@ -1543,15 +1549,15 @@ const StaffPage: React.FC = () => {
       {/* Courier CRUD Entry Modal Dialog */}
       {courierModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
-          <div className="w-full max-w-md bg-darkCard border border-white/10 rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-5 animate-[slideUp_0.3s_ease-out]">
+          <div className="w-full max-w-md bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-5 animate-[slideUp_0.3s_ease-out]">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-white/5 pb-3">
-              <h3 className="font-bold text-lg text-white">
+            <div className="flex items-center justify-between border-b border-edge pb-3">
+              <h3 className="font-bold text-lg text-ink">
                 {selectedCourier ? "Kuryerni Tahrirlash" : "Yangi Kuryer Yaratish"}
               </h3>
               <button
                 onClick={() => setCourierModalOpen(false)}
-                className="p-1.5 rounded-lg bg-white/5 text-slate-400 hover:text-white transition cursor-pointer"
+                className="p-1.5 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1579,7 +1585,7 @@ const StaffPage: React.FC = () => {
                     placeholder="Elbek"
                     value={courierFirstName}
                     onChange={(e) => setCourierFirstName(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1592,7 +1598,7 @@ const StaffPage: React.FC = () => {
                     placeholder="Narzullayev"
                     value={courierLastName}
                     onChange={(e) => setCourierLastName(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                   />
                 </div>
               </div>
@@ -1609,7 +1615,7 @@ const StaffPage: React.FC = () => {
                   placeholder="+998 (90) 123-45-67"
                   value={courierPhone}
                   onChange={handleCourierPhoneChange}
-                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                 />
               </div>
 
@@ -1624,7 +1630,7 @@ const StaffPage: React.FC = () => {
                   placeholder="Masalan: 987654321"
                   value={courierTelegramId}
                   onChange={(e) => setCourierTelegramId(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                 />
               </div>
 
@@ -1641,7 +1647,7 @@ const StaffPage: React.FC = () => {
                     placeholder={selectedCourier ? "••••••••" : "Parolni kiriting"}
                     value={courierPassword}
                     onChange={(e) => setCourierPassword(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl pl-4 pr-10 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl pl-4 pr-10 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                   />
                   <button
                     type="button"
@@ -1663,7 +1669,7 @@ const StaffPage: React.FC = () => {
                   <select
                     value={courierTransportType}
                     onChange={(e) => setCourierTransportType(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none transition cursor-pointer"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-ink focus:outline-none transition cursor-pointer"
                   >
                     <option value="car">Avtomobil</option>
                     <option value="motorcycle">Mototsikl</option>
@@ -1680,7 +1686,7 @@ const StaffPage: React.FC = () => {
                     placeholder="food_delivery"
                     value={courierServiceTypes}
                     onChange={(e) => setCourierServiceTypes(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                   />
                 </div>
               </div>
@@ -1695,7 +1701,7 @@ const StaffPage: React.FC = () => {
                     placeholder="Chevrolet Spark"
                     value={courierVehicleBrand}
                     onChange={(e) => setCourierVehicleBrand(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1707,7 +1713,7 @@ const StaffPage: React.FC = () => {
                     placeholder="01 A 777 AA"
                     value={courierLicensePlate}
                     onChange={(e) => setCourierLicensePlate(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                   />
                 </div>
               </div>
@@ -1721,7 +1727,7 @@ const StaffPage: React.FC = () => {
                 <select
                   value={courierFilialUuid}
                   onChange={(e) => setCourierFilialUuid(e.target.value)}
-                  className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none transition cursor-pointer"
+                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-ink focus:outline-none transition cursor-pointer"
                 >
                   <option value="">-- Filial tanlang --</option>
                   {filialList.map(filial => (
@@ -1733,7 +1739,7 @@ const StaffPage: React.FC = () => {
               </div>
 
               {/* Active Switch checkbox */}
-              <div className="flex items-center justify-between border-t border-white/5 pt-3 mt-1">
+              <div className="flex items-center justify-between border-t border-edge pt-3 mt-1">
                 <span className="text-xs text-slate-400 font-semibold font-Outfit">
                   Hisob holati (Faol / Bloklangan)
                 </span>
@@ -1754,7 +1760,7 @@ const StaffPage: React.FC = () => {
               </div>
 
               {/* Modal footer save button */}
-              <div className="flex gap-3 justify-end pt-4 border-t border-white/5 mt-4">
+              <div className="flex gap-3 justify-end pt-4 border-t border-edge mt-4">
                 <button
                   type="button"
                   onClick={() => setCourierModalOpen(false)}
@@ -1770,7 +1776,7 @@ const StaffPage: React.FC = () => {
                 >
                   {courierSubmitting ? (
                     <>
-                      <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                      <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-white rounded-full animate-spin" />
                       <span>Saqlanmoqda...</span>
                     </>
                   ) : (

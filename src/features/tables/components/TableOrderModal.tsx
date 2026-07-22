@@ -20,6 +20,8 @@ import { ordersApi } from '../../orders/services/ordersApi';
 import { printReceipt as printReceiptUtil, printPreCheck as printPreCheckUtil } from '../../orders/utils/printing';
 import apiClient from '../../../core/api/client';
 import { STORAGE_KEYS } from '../../../core/config/constants';
+import { useToast } from '../../../core/components/ToastProvider';
+import { useConfirm } from '../../../core/components/ConfirmProvider';
 import type { TableModel } from '../services/tablesApi';
 
 interface Product {
@@ -58,6 +60,8 @@ const PAYMENT_METHODS = [
 ] as const;
 
 export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose }) => {
+  const toast = useToast();
+  const confirm = useConfirm();
   const isEditMode = !!table.current_order;
   const orderUuid = table.current_order?.uuid;
 
@@ -285,7 +289,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
       await fetchOrderItems();
     } catch (err: any) {
       console.error("Failed to add product to order:", err);
-      alert(err.response?.data?.message || err.message || "Mahsulot qo'shishda xatolik yuz berdi.");
+      toast.error(err.response?.data?.message || err.message || "Mahsulot qo'shishda xatolik yuz berdi.");
     } finally {
       setActionLoading(null);
     }
@@ -299,7 +303,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
       await fetchOrderItems();
     } catch (err: any) {
       console.error("Failed to update item quantity:", err);
-      alert(err.response?.data?.message || err.message || "Miqdorni yangilashda xatolik yuz berdi.");
+      toast.error(err.response?.data?.message || err.message || "Miqdorni yangilashda xatolik yuz berdi.");
     } finally {
       setActionLoading(null);
     }
@@ -307,14 +311,15 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
 
   const handleRemoveOrderItem = async (itemUuid: string, currentQuantity: number) => {
     if (!orderUuid) return;
-    if (!window.confirm("Haqiqatan ham ushbu mahsulotni buyurtmadan o'chirmoqchimisiz?")) return;
+    const ok = await confirm("Haqiqatan ham ushbu mahsulotni buyurtmadan o'chirmoqchimisiz?", { danger: true, confirmText: "O'chirish" });
+    if (!ok) return;
     setActionLoading(itemUuid);
     try {
       await ordersApi.removeOrderItems(orderUuid, { items: [{ item_uuid: itemUuid, quantity: currentQuantity }] });
       await fetchOrderItems();
     } catch (err: any) {
       console.error("Failed to remove item:", err);
-      alert(err.response?.data?.message || err.message || "Mahsulotni o'chirishda xatolik yuz berdi.");
+      toast.error(err.response?.data?.message || err.message || "Mahsulotni o'chirishda xatolik yuz berdi.");
     } finally {
       setActionLoading(null);
     }
@@ -344,7 +349,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
       onClose(true);
     } catch (err: any) {
       console.error("Payment confirmation failed:", err);
-      alert(err.response?.data?.message || err.message || "To'lovni yakunlashda xatolik yuz berdi.");
+      toast.error(err.response?.data?.message || err.message || "To'lovni yakunlashda xatolik yuz berdi.");
     } finally {
       setPaymentSaving(false);
     }
@@ -361,12 +366,12 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-6xl bg-darkCard border border-white/10 rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-left animate-[slideUp_0.3s_ease-out]"
+        className="w-full max-w-6xl bg-darkCard border border-edge-strong rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-left animate-[slideUp_0.3s_ease-out]"
       >
         {/* Header */}
-        <div className="p-5 border-b border-white/5 flex items-center justify-between shrink-0">
+        <div className="p-5 border-b border-edge flex items-center justify-between shrink-0">
           <div>
-            <h3 className="font-bold text-lg text-white flex items-center gap-2">
+            <h3 className="font-bold text-lg text-ink flex items-center gap-2">
               Stol {table.table_number}
               {isEditMode && (
                 <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase bg-rose-500/10 text-rose-400 border border-rose-500/20">
@@ -378,7 +383,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
           </div>
           <button
             onClick={() => onClose(false)}
-            className="p-2 rounded-lg bg-white/5 text-slate-400 hover:text-white transition cursor-pointer"
+            className="p-2 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -387,7 +392,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         {/* Content */}
         <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-0">
           {/* Left: Catalog / Menu */}
-          <div className="lg:col-span-7 p-5 flex flex-col min-h-0 overflow-hidden border-b lg:border-b-0 lg:border-r border-white/5">
+          <div className="lg:col-span-7 p-5 flex flex-col min-h-0 overflow-hidden border-b lg:border-b-0 lg:border-r border-edge">
             <div className="space-y-3 shrink-0">
               <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -396,7 +401,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                   placeholder="Taom nomini yozing..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-900/50 border border-white/5 hover:border-white/10 focus:border-brand rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                  className="w-full bg-slate-900/50 border border-edge hover:border-edge-strong focus:border-brand rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                 />
               </div>
 
@@ -406,7 +411,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
                     activeCategoryUuid === 'all'
                       ? 'bg-brand text-white'
-                      : 'bg-slate-900 text-slate-400 border border-white/5 hover:border-white/10 hover:text-slate-200'
+                      : 'bg-slate-900 text-slate-400 border border-edge hover:border-edge-strong hover:text-slate-200'
                   }`}
                 >
                   Barcha taomlar
@@ -418,7 +423,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                     className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
                       activeCategoryUuid === cat.uuid
                         ? 'bg-brand text-white'
-                        : 'bg-slate-900 text-slate-400 border border-white/5 hover:border-white/10 hover:text-slate-200'
+                        : 'bg-slate-900 text-slate-400 border border-edge hover:border-edge-strong hover:text-slate-200'
                     }`}
                   >
                     {cat.name}
@@ -456,8 +461,8 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                         key={prod.uuid}
                         className={`rounded-2xl border bg-darkCard overflow-hidden transition-all duration-200 flex flex-col justify-between ${
                           !prod.is_available
-                            ? 'opacity-50 border-white/5'
-                            : 'border-white/5 hover:border-white/10 hover:shadow-lg'
+                            ? 'opacity-50 border-edge'
+                            : 'border-edge hover:border-edge-strong hover:shadow-lg'
                         }`}
                       >
                         <div>
@@ -474,14 +479,14 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                             )}
                           </div>
                           <div className="p-3 space-y-1">
-                            <h4 className="font-bold text-white text-xs truncate" title={prod.name}>
+                            <h4 className="font-bold text-ink text-xs truncate" title={prod.name}>
                               {prod.name}
                             </h4>
                             <h5 className="font-bold text-brand text-xs">{formatUzS(prod.price)}</h5>
                           </div>
                         </div>
 
-                        <div className="p-2.5 border-t border-white/5 bg-slate-900/20">
+                        <div className="p-2.5 border-t border-edge bg-slate-900/20">
                           {isEditMode ? (
                             <button
                               onClick={() => handleAddProductToOrder(prod.uuid)}
@@ -496,17 +501,17 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                               <span>Qo'shish</span>
                             </button>
                           ) : cartQty > 0 ? (
-                            <div className="flex items-center justify-between bg-slate-900 rounded-lg p-1 border border-white/5">
+                            <div className="flex items-center justify-between bg-slate-900 rounded-lg p-1 border border-edge">
                               <button
                                 onClick={() => decreaseCartQuantity(prod.uuid)}
-                                className="p-1 rounded bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                                className="p-1 rounded bg-overlay text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
                               >
                                 <Minus className="w-3.5 h-3.5" />
                               </button>
-                              <span className="text-xs font-bold text-white px-2">{cartQty} ta</span>
+                              <span className="text-xs font-bold text-ink px-2">{cartQty} ta</span>
                               <button
                                 onClick={() => addToCart(prod)}
-                                className="p-1 rounded bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                                className="p-1 rounded bg-overlay text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
                               >
                                 <Plus className="w-3.5 h-3.5" />
                               </button>
@@ -531,7 +536,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                   })}
                 </div>
               ) : (
-                <div className="p-10 rounded-2xl bg-darkCard/50 border border-dashed border-white/5 text-center space-y-2">
+                <div className="p-10 rounded-2xl bg-darkCard/50 border border-dashed border-edge text-center space-y-2">
                   <FolderOpen className="w-10 h-10 text-slate-600 mx-auto" />
                   <p className="text-xs text-slate-400">Mos keladigan taomlar topilmadi</p>
                 </div>
@@ -558,7 +563,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                   {itemsError}
                 </div>
               ) : orderItems.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center py-12 border border-dashed border-white/5 rounded-xl text-slate-500 text-xs">
+                <div className="flex-1 flex flex-col items-center justify-center py-12 border border-dashed border-edge rounded-xl text-slate-500 text-xs">
                   Savat bo'sh. Chapdan mahsulot qo'shing.
                 </div>
               ) : (
@@ -573,10 +578,10 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                     return (
                       <div
                         key={itemUuid || idx}
-                        className="p-3 bg-slate-900 border border-white/5 rounded-xl flex items-center justify-between gap-3 text-sm transition-all"
+                        className="p-3 bg-slate-900 border border-edge rounded-xl flex items-center justify-between gap-3 text-sm transition-all"
                       >
                         <div className="min-w-0">
-                          <p className="font-semibold text-white truncate">{productName}</p>
+                          <p className="font-semibold text-ink truncate">{productName}</p>
                           <p className="text-xs text-slate-400 mt-0.5">
                             {formatUzS(productPrice)} x {quantity} = <span className="text-slate-200 font-medium">{formatUzS(productPrice * quantity)}</span>
                           </p>
@@ -592,19 +597,19 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                               }
                             }}
                             disabled={!!actionLoading}
-                            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition disabled:opacity-50 cursor-pointer"
+                            className="p-1.5 rounded-lg bg-overlay hover:bg-overlay-strong text-slate-300 hover:text-ink transition disabled:opacity-50 cursor-pointer"
                           >
                             <Minus className="w-3.5 h-3.5" />
                           </button>
 
-                          <span className="w-6 text-center font-bold text-white text-xs">
+                          <span className="w-6 text-center font-bold text-ink text-xs">
                             {isModifying ? <Loader2 className="w-3.5 h-3.5 animate-spin mx-auto text-brand" /> : quantity}
                           </span>
 
                           <button
                             onClick={() => handleUpdateItemQuantity(itemUuid, quantity + 1)}
                             disabled={!!actionLoading}
-                            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition disabled:opacity-50 cursor-pointer"
+                            className="p-1.5 rounded-lg bg-overlay hover:bg-overlay-strong text-slate-300 hover:text-ink transition disabled:opacity-50 cursor-pointer"
                           >
                             <Plus className="w-3.5 h-3.5" />
                           </button>
@@ -625,27 +630,27 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
             ) : (
               /* --- CREATE MODE: local cart list --- */
               cart.length > 0 ? (
-                <div className="flex-1 overflow-y-auto divide-y divide-white/5 pr-1 scrollbar-thin">
+                <div className="flex-1 overflow-y-auto divide-y divide-edge pr-1 scrollbar-thin">
                   {cart.map((item) => (
                     <div key={item.product.uuid} className="py-2.5 flex items-center justify-between gap-3 text-xs">
                       <div className="min-w-0 flex-1">
-                        <p className="font-bold text-white truncate" title={item.product.name}>{item.product.name}</p>
+                        <p className="font-bold text-ink truncate" title={item.product.name}>{item.product.name}</p>
                         <p className="text-slate-400 font-medium mt-0.5">
                           {formatUzS(item.product.price)} x {item.quantity}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <div className="flex items-center bg-slate-900 rounded-lg p-0.5 border border-white/5">
+                        <div className="flex items-center bg-slate-900 rounded-lg p-0.5 border border-edge">
                           <button
                             onClick={() => decreaseCartQuantity(item.product.uuid)}
-                            className="p-1 rounded text-slate-400 hover:text-white transition cursor-pointer"
+                            className="p-1 rounded text-slate-400 hover:text-ink transition cursor-pointer"
                           >
                             <Minus className="w-3 h-3" />
                           </button>
-                          <span className="font-bold text-white px-1.5 text-xs">{item.quantity}</span>
+                          <span className="font-bold text-ink px-1.5 text-xs">{item.quantity}</span>
                           <button
                             onClick={() => addToCart(item.product)}
-                            className="p-1 rounded text-slate-400 hover:text-white transition cursor-pointer"
+                            className="p-1 rounded text-slate-400 hover:text-ink transition cursor-pointer"
                           >
                             <Plus className="w-3 h-3" />
                           </button>
@@ -661,7 +666,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                   ))}
                 </div>
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center py-8 text-center text-slate-500 bg-slate-900/30 rounded-xl border border-dashed border-white/5 space-y-1">
+                <div className="flex-1 flex flex-col items-center justify-center py-8 text-center text-slate-500 bg-slate-900/30 rounded-xl border border-dashed border-edge space-y-1">
                   <ShoppingBag className="w-8 h-8 text-slate-600 mx-auto" />
                   <p className="text-xs font-semibold text-slate-400">Savatcha bo'sh</p>
                   <p className="text-[10px]">Chap tomondan menyudan taom qo'shing</p>
@@ -670,7 +675,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
             )}
 
             {/* Footer: form + totals + actions */}
-            <div className="shrink-0 mt-4 pt-4 border-t border-white/5 space-y-4">
+            <div className="shrink-0 mt-4 pt-4 border-t border-edge space-y-4">
               {!isEditMode && (
                 <>
                   <div className="grid grid-cols-2 gap-3">
@@ -684,7 +689,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                         placeholder="Masalan: Anvar"
                         value={contactName}
                         onChange={(e) => setContactName(e.target.value)}
-                        className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-3 py-2 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                        className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                       />
                     </div>
                     <div className="space-y-1">
@@ -697,7 +702,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                         placeholder="+998901234567"
                         value={contactPhone}
                         onChange={(e) => setContactPhone(e.target.value)}
-                        className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-3 py-2 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition"
+                        className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                       />
                     </div>
                   </div>
@@ -712,7 +717,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                       placeholder="Buyurtma uchun maxsus izohlar..."
                       value={comment}
                       onChange={(e) => setComment(e.target.value)}
-                      className="w-full bg-slate-900 border border-white/5 focus:border-brand rounded-xl px-3 py-2 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none transition resize-none"
+                      className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition resize-none"
                     />
                   </div>
 
@@ -729,7 +734,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                           className={`py-2 rounded-lg border font-bold text-[10px] transition cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
                             paymentMethod === opt.value
                               ? 'border-brand bg-brand/10 text-brand'
-                              : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20'
+                              : 'border-edge-strong bg-overlay text-slate-400 hover:border-edge-strong'
                           }`}
                         >
                           <span className="text-sm">{opt.icon}</span>
@@ -753,7 +758,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                         className={`py-2 rounded-lg border font-bold text-[10px] transition cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
                           editPaymentMethod === opt.value
                             ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                            : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20'
+                            : 'border-edge-strong bg-overlay text-slate-400 hover:border-edge-strong'
                         }`}
                       >
                         <span className="text-sm">{opt.icon}</span>
@@ -765,7 +770,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                     <button
                       onClick={() => setShowPaymentPanel(false)}
                       disabled={paymentSaving}
-                      className="py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-[11px] transition cursor-pointer disabled:opacity-40"
+                      className="py-2 rounded-lg bg-overlay hover:bg-overlay-strong text-slate-300 font-bold text-[11px] transition cursor-pointer disabled:opacity-40"
                     >
                       Bekor qilish
                     </button>
@@ -782,7 +787,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
               )}
 
               {/* Totals */}
-              <div className="flex justify-between font-bold text-white text-sm pt-1 border-t border-white/5">
+              <div className="flex justify-between font-bold text-ink text-sm pt-1 border-t border-edge">
                 <span>Jami:</span>
                 <span className="text-emerald-400 text-base">
                   {formatUzS(isEditMode ? editItemsTotal : cartSubtotal)}
@@ -802,7 +807,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                   <button
                     onClick={handlePrintPreCheck}
                     disabled={printingPreCheck || orderItems.length === 0}
-                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50"
+                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50"
                   >
                     <FileText className="w-3.5 h-3.5 text-slate-300" />
                     Pre-chek
@@ -830,7 +835,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                   className={`w-full py-3 rounded-xl font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 ${
                     cart.length > 0 && !submitting
                       ? 'bg-brand hover:bg-brand-dark text-white shadow-lg shadow-brand/10'
-                      : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5'
+                      : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-edge'
                   }`}
                 >
                   {submitting ? (

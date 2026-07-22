@@ -144,7 +144,7 @@ const DashboardPage: React.FC = () => {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 font-Outfit">
         <AlertCircle className="w-12 h-12 text-rose-500 animate-pulse" />
-        <h3 className="text-xl font-bold text-white">Xatolik yuz berdi</h3>
+        <h3 className="text-xl font-bold text-ink">Xatolik yuz berdi</h3>
         <p className="text-slate-400 text-sm max-w-md text-center">{error}</p>
         <button
           onClick={fetchStats}
@@ -174,7 +174,7 @@ const DashboardPage: React.FC = () => {
       {/* Top Banner and title */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-2">
             Panel <Sparkles className="w-6 h-6 text-brand" />
           </h1>
           <p className="text-slate-400">Restoraningiz bo'yicha bugungi ko'rsatkichlar va hisobotlar</p>
@@ -182,7 +182,7 @@ const DashboardPage: React.FC = () => {
 
         <button
           onClick={fetchStats}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white transition text-slate-300 text-sm cursor-pointer self-start"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-overlay border border-edge-strong hover:bg-overlay-strong hover:text-ink transition text-slate-300 text-sm cursor-pointer self-start"
         >
           <RefreshCw className="w-4 h-4" />
           <span>Yangilash</span>
@@ -192,7 +192,7 @@ const DashboardPage: React.FC = () => {
       {/* Grid of Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Card 1: Today's Revenue */}
-        <div className="p-6 rounded-2xl bg-darkCard border border-white/5 relative overflow-hidden group hover:border-brand/20 transition-all duration-300">
+        <div className="p-6 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-brand/20 transition-all duration-300">
           <div className="absolute top-0 right-0 w-24 h-24 bg-brand/5 rounded-bl-full pointer-events-none group-hover:bg-brand/10 transition-colors" />
           <div className="flex items-center justify-between mb-4">
             <span className="p-3 rounded-xl bg-brand/10 text-brand"><DollarSign className="w-6 h-6" /></span>
@@ -201,60 +201,60 @@ const DashboardPage: React.FC = () => {
             </span>
           </div>
           <p className="text-sm font-medium text-slate-400">Bugungi tushum</p>
-          <h3 className="text-2xl font-bold text-white mt-1.5 truncate">{formatUzS(today?.revenue || 0)}</h3>
+          <h3 className="text-2xl font-bold text-ink mt-1.5 truncate">{formatUzS(today?.revenue || 0)}</h3>
         </div>
 
         {/* Card 2: Today's Orders */}
-        <div className="p-6 rounded-2xl bg-darkCard border border-white/5 relative overflow-hidden group hover:border-violet-500/20 transition-all duration-300">
+        <div className="p-6 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-violet-500/20 transition-all duration-300">
           <div className="absolute top-0 right-0 w-24 h-24 bg-violet-500/5 rounded-bl-full pointer-events-none group-hover:bg-violet-500/10 transition-colors" />
           <div className="flex items-center justify-between mb-4">
             <span className="p-3 rounded-xl bg-violet-500/10 text-violet-400"><ShoppingBag className="w-6 h-6" /></span>
             <span className="text-xs text-slate-400 font-medium">Bugun</span>
           </div>
           <p className="text-sm font-medium text-slate-400">Bugungi buyurtmalar</p>
-          <h3 className="text-2xl font-bold text-white mt-1.5">{today?.orders_count || 0} ta</h3>
+          <h3 className="text-2xl font-bold text-ink mt-1.5">{today?.orders_count || 0} ta</h3>
         </div>
 
         {/* Card 3: Completed Orders */}
-        <div className="p-6 rounded-2xl bg-darkCard border border-white/5 relative overflow-hidden group hover:border-emerald-500/20 transition-all duration-300">
+        <div className="p-6 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-emerald-500/20 transition-all duration-300">
           <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-bl-full pointer-events-none group-hover:bg-emerald-500/10 transition-colors" />
           <div className="flex items-center justify-between mb-4">
             <span className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400"><CheckCircle className="w-6 h-6" /></span>
             <span className="text-xs text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded">Jami: {overall?.delivered}</span>
           </div>
           <p className="text-sm font-medium text-slate-400">Yakunlanganlar</p>
-          <h3 className="text-2xl font-bold text-white mt-1.5">{overall?.delivered || 0} ta</h3>
+          <h3 className="text-2xl font-bold text-ink mt-1.5">{overall?.delivered || 0} ta</h3>
         </div>
 
         {/* Card 4: Cancelled Orders */}
-        <div className="p-6 rounded-2xl bg-darkCard border border-white/5 relative overflow-hidden group hover:border-rose-500/20 transition-all duration-300">
+        <div className="p-6 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-rose-500/20 transition-all duration-300">
           <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-bl-full pointer-events-none group-hover:bg-rose-500/10 transition-colors" />
           <div className="flex items-center justify-between mb-4">
             <span className="p-3 rounded-xl bg-rose-500/10 text-rose-400"><XCircle className="w-6 h-6" /></span>
             <span className="text-xs text-rose-400 font-bold bg-rose-500/10 px-2 py-0.5 rounded">Canceled</span>
           </div>
           <p className="text-sm font-medium text-slate-400">Bekor qilinganlar</p>
-          <h3 className="text-2xl font-bold text-white mt-1.5">{overall?.cancelled || 0} ta</h3>
+          <h3 className="text-2xl font-bold text-ink mt-1.5">{overall?.cancelled || 0} ta</h3>
         </div>
       </div>
 
       {/* Grid: Charts/Top Products and Overall Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Overall stats list */}
-        <div className="p-6 rounded-2xl bg-darkCard border border-white/5 space-y-6">
-          <h3 className="text-lg font-bold text-white">Umumiy ko'rsatkichlar</h3>
+        <div className="p-6 rounded-2xl bg-darkCard border border-edge space-y-6">
+          <h3 className="text-lg font-bold text-ink">Umumiy ko'rsatkichlar</h3>
           <div className="space-y-4">
-            <div className="flex justify-between items-center py-3 border-b border-white/5">
+            <div className="flex justify-between items-center py-3 border-b border-edge">
               <span className="text-slate-400 text-sm">Jami daromad</span>
-              <span className="font-bold text-white">{formatUzS(overall?.total_revenue || 0)}</span>
+              <span className="font-bold text-ink">{formatUzS(overall?.total_revenue || 0)}</span>
             </div>
-            <div className="flex justify-between items-center py-3 border-b border-white/5">
+            <div className="flex justify-between items-center py-3 border-b border-edge">
               <span className="text-slate-400 text-sm">O'rtacha chek</span>
-              <span className="font-bold text-white">{formatUzS(today?.average_check || 0)}</span>
+              <span className="font-bold text-ink">{formatUzS(today?.average_check || 0)}</span>
             </div>
-            <div className="flex justify-between items-center py-3 border-b border-white/5">
+            <div className="flex justify-between items-center py-3 border-b border-edge">
               <span className="text-slate-400 text-sm">Bugun sotilgan tovarlar</span>
-              <span className="font-bold text-white">{itemsSoldToday} ta</span>
+              <span className="font-bold text-ink">{itemsSoldToday} ta</span>
             </div>
             <div className="flex justify-between items-center py-3">
               <span className="text-slate-400 text-sm">Bekor qilingan tushum</span>
@@ -264,9 +264,9 @@ const DashboardPage: React.FC = () => {
         </div>
 
         {/* Top selling products */}
-        <div className="lg:col-span-2 p-6 rounded-2xl bg-darkCard border border-white/5 flex flex-col">
+        <div className="lg:col-span-2 p-6 rounded-2xl bg-darkCard border border-edge flex flex-col">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-white">Ko'p sotilgan taomlar</h3>
+            <h3 className="text-lg font-bold text-ink">Ko'p sotilgan taomlar</h3>
             <span className="text-xs font-semibold text-brand bg-brand/10 px-2.5 py-1 rounded-lg flex items-center gap-1">
               Top Mahsulotlar <ArrowUpRight className="w-3.5 h-3.5" />
             </span>
@@ -276,16 +276,16 @@ const DashboardPage: React.FC = () => {
             {today?.top_products && today.top_products.length > 0 ? (
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-white/5 text-slate-400 text-xs uppercase tracking-wider font-semibold">
+                  <tr className="border-b border-edge text-slate-400 text-xs uppercase tracking-wider font-semibold">
                     <th className="pb-3">Mahsulot</th>
                     <th className="pb-3 text-center">Soni</th>
                     <th className="pb-3 text-right">Summa</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5 text-sm text-slate-300">
+                <tbody className="divide-y divide-edge text-sm text-slate-300">
                   {today.top_products.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-white/[0.01] transition-colors">
-                      <td className="py-3.5 font-medium text-white">{item.name}</td>
+                    <tr key={idx} className="hover:bg-overlay transition-colors">
+                      <td className="py-3.5 font-medium text-ink">{item.name}</td>
                       <td className="py-3.5 text-center font-bold text-slate-400">{item.qty} ta</td>
                       <td className="py-3.5 text-right font-semibold text-emerald-400">{formatUzS(item.revenue)}</td>
                     </tr>

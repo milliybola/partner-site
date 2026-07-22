@@ -32,6 +32,7 @@ import type { TableModel } from '../../tables/services/tablesApi';
 import { STORAGE_KEYS } from '../../../core/config/constants';
 import confetti from 'canvas-confetti';
 import { EditOrderModal } from '../components/EditOrderModal';
+import { useToast } from '../../../core/components/ToastProvider';
 
 // Kanban Board Column Configurations (explicit class names for Tailwind compilation safety)
 const KANBAN_COLUMNS: {
@@ -149,7 +150,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
         : 'cursor-default'
         } ${isSelected
           ? 'bg-brand/10 border-brand shadow-md shadow-brand/5'
-          : 'bg-darkCard border-white/5 hover:border-white/10'
+          : 'bg-darkCard border-edge hover:border-edge-strong'
         }`}
     >
       <div className="flex items-center justify-between mb-2">
@@ -178,7 +179,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
         )}
       </div>
 
-      <h4 className="font-bold text-white text-sm tracking-tight">{formatUzS(order.total_price)}</h4>
+      <h4 className="font-bold text-ink text-sm tracking-tight">{formatUzS(order.total_price)}</h4>
 
       <div className="mt-2.5 space-y-1 text-[11px] text-slate-400">
         <p className="flex items-center gap-1 truncate">
@@ -191,7 +192,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
         </p>
       </div>
 
-      <div className="mt-3 pt-2 border-t border-white/5 space-y-2">
+      <div className="mt-3 pt-2 border-t border-edge space-y-2">
         {/* Row: item count + Batafsil */}
         <div className="flex items-center justify-between">
           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
@@ -226,6 +227,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
 };
 
 const OrdersPage: React.FC = () => {
+  const toast = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -350,7 +352,7 @@ const OrdersPage: React.FC = () => {
       await printReceiptUtil(orderUuid);
     } catch (err: any) {
       console.error("Chek chop etishda xatolik:", err);
-      alert("Chek ma'lumotlarini yuklashda xatolik yuz berdi.");
+      toast.error("Chek ma'lumotlarini yuklashda xatolik yuz berdi.");
     } finally {
       setPrintingUuid(null);
     }
@@ -430,7 +432,7 @@ const OrdersPage: React.FC = () => {
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
       }
     } catch (err) {
-      alert("Buyurtma holatini yangilashda xatolik yuz berdi.");
+      toast.error("Buyurtma holatini yangilashda xatolik yuz berdi.");
     }
   };
 
@@ -453,7 +455,7 @@ const OrdersPage: React.FC = () => {
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
     } catch (err: any) {
       console.error("Failed to complete order:", err);
-      alert(err.response?.data?.message || err.message || "Buyurtmani yakunlashda xatolik yuz berdi.");
+      toast.error(err.response?.data?.message || err.message || "Buyurtmani yakunlashda xatolik yuz berdi.");
     }
   };
 
@@ -488,7 +490,7 @@ const OrdersPage: React.FC = () => {
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
     } catch (err: any) {
       console.error('Payment submit failed:', err);
-      alert(err.response?.data?.message || err.message || "To'lov ma'lumotlarini saqlashda xatolik yuz berdi.");
+      toast.error(err.response?.data?.message || err.message || "To'lov ma'lumotlarini saqlashda xatolik yuz berdi.");
     } finally {
       setPaymentSaving(false);
     }
@@ -557,8 +559,8 @@ const OrdersPage: React.FC = () => {
     <div className="space-y-3 font-Outfit relative min-h-[80vh]">
       {/* Toast Alert popup*/}
       {newOrderToast && (
-        <div className="fixed top-24 right-6 z-50 w-full max-w-sm p-4 rounded-xl bg-brand text-white shadow-2xl border border-white/20 flex gap-3 animate-[slide-in_0.3s_ease-out]">
-          <span className="p-2.5 rounded-lg bg-white/20 text-white shrink-0 self-start">
+        <div className="fixed top-24 right-6 z-50 w-full max-w-sm p-4 rounded-xl bg-brand text-white shadow-2xl border border-edge-strong flex gap-3 animate-[slide-in_0.3s_ease-out]">
+          <span className="p-2.5 rounded-lg bg-overlay-strong text-ink shrink-0 self-start">
             <Bell className="w-6 h-6 animate-bounce" />
           </span>
           <div className="flex-1">
@@ -577,7 +579,7 @@ const OrdersPage: React.FC = () => {
               </button>
               <button
                 onClick={() => setNewOrderToast(null)}
-                className="px-3 py-1.5 rounded-lg bg-transparent hover:bg-white/10 text-white font-semibold text-xs transition cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-transparent hover:bg-overlay-strong text-ink font-semibold text-xs transition cursor-pointer"
               >
                 Yopish
               </button>
@@ -588,7 +590,7 @@ const OrdersPage: React.FC = () => {
 
       {/* Status Update Toast popup */}
       {statusUpdateToast && (
-        <div className="fixed top-24 right-6 z-50 w-full max-w-sm p-4 rounded-xl bg-slate-800 text-white shadow-2xl border border-white/10 flex gap-3 animate-[slide-in_0.3s_ease-out]">
+        <div className="fixed top-24 right-6 z-50 w-full max-w-sm p-4 rounded-xl bg-slate-800 text-ink shadow-2xl border border-edge-strong flex gap-3 animate-[slide-in_0.3s_ease-out]">
           <span className="p-2.5 rounded-lg bg-blue-500/20 text-blue-400 shrink-0 self-start">
             <RefreshCw className="w-6 h-6 animate-spin" />
           </span>
@@ -608,7 +610,7 @@ const OrdersPage: React.FC = () => {
               </button>
               <button
                 onClick={() => setStatusUpdateToast(null)}
-                className="px-3 py-1.5 rounded-lg bg-transparent hover:bg-white/10 text-white font-semibold text-xs transition cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-transparent hover:bg-overlay-strong text-ink font-semibold text-xs transition cursor-pointer"
               >
                 Yopish
               </button>
@@ -623,12 +625,12 @@ const OrdersPage: React.FC = () => {
       {/* Order Type Filter Tabs */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
 
-        <div className="flex flex-wrap items-center gap-2 p-1 bg-white/5 rounded-2xl border border-white/10 w-fit">
+        <div className="flex flex-wrap items-center gap-2 p-1 bg-overlay rounded-2xl border border-edge-strong w-fit">
           <button
             onClick={() => setOrderTypeFilter('ALL')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${orderTypeFilter === 'ALL'
                 ? 'bg-brand text-white border-brand shadow-lg shadow-brand/15'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-overlay border-transparent'
               }`}
           >
             <ShoppingBag className="w-4 h-4" />
@@ -638,7 +640,7 @@ const OrdersPage: React.FC = () => {
             onClick={() => setOrderTypeFilter('DELIVERY')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${orderTypeFilter === 'DELIVERY'
                 ? 'bg-blue-500/20 text-blue-400 border-blue-500/30 shadow-lg shadow-blue-500/5'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-overlay border-transparent'
               }`}
           >
             <Truck className="w-4 h-4" />
@@ -648,7 +650,7 @@ const OrdersPage: React.FC = () => {
             onClick={() => setOrderTypeFilter('PICKUP')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${orderTypeFilter === 'PICKUP'
                 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30 shadow-lg shadow-amber-500/5'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-overlay border-transparent'
               }`}
           >
             <Clock className="w-4 h-4" />
@@ -658,7 +660,7 @@ const OrdersPage: React.FC = () => {
             onClick={() => setOrderTypeFilter('DINE_IN')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition duration-200 cursor-pointer border ${orderTypeFilter === 'DINE_IN'
                 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 shadow-lg shadow-emerald-500/5'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border-transparent'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-overlay border-transparent'
               }`}
           >
             <Utensils className="w-4 h-4" />
@@ -667,14 +669,14 @@ const OrdersPage: React.FC = () => {
         </div>
          <div className="flex flex-wrap items-center gap-3">
           {/* WebSocket indicator */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-overlay border border-edge-strong text-xs font-semibold">
             <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
             <span className="text-slate-300">{isConnected ? 'WS Bog\'langan' : 'WS Ajralgan'}</span>
           </div>
 
           {/* Branch filter (Superadmin only) */}
           {userRole === 'superadmin' && filials.length > 0 && (
-            <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl px-2 shrink-0">
+            <div className="flex items-center gap-1 bg-overlay border border-edge-strong rounded-xl px-2 shrink-0">
               <span className="text-[10px] uppercase font-bold text-slate-500 pl-1">Filial:</span>
               <select
                 value={selectedFilialUuid}
@@ -687,7 +689,7 @@ const OrdersPage: React.FC = () => {
               >
                 <option value="" className="bg-darkCard text-slate-300">Barchasi</option>
                 {filials.map(filial => (
-                  <option key={filial.uuid} value={filial.uuid} className="bg-darkCard text-white">
+                  <option key={filial.uuid} value={filial.uuid} className="bg-darkCard text-ink">
                     {filial.filial_name}
                   </option>
                 ))}
@@ -696,7 +698,7 @@ const OrdersPage: React.FC = () => {
           )}
 
           {/* View Toggle */}
-          <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 shrink-0">
+          <div className="flex bg-overlay p-1 rounded-xl border border-edge-strong shrink-0">
             <button
               onClick={() => setViewMode('kanban')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${viewMode === 'kanban'
@@ -727,7 +729,7 @@ const OrdersPage: React.FC = () => {
         {viewMode === 'list' ? (
           <>
             {/* Filter Tabs (Only shown in List view) */}
-            <div className="flex items-center border-b border-white/5 gap-2 overflow-x-auto pb-1">
+            <div className="flex items-center border-b border-edge gap-2 overflow-x-auto pb-1">
               <button
                 onClick={() => setActiveTab('pending')}
                 className={`px-5 py-3 font-semibold text-sm transition relative whitespace-nowrap cursor-pointer ${activeTab === 'pending' ? 'text-brand' : 'text-slate-400 hover:text-slate-200'
@@ -783,7 +785,7 @@ const OrdersPage: React.FC = () => {
             ) : error ? (
               <div className="flex flex-col items-center justify-center py-16 text-rose-400 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 text-center">
                 <AlertCircle className="w-12 h-12 mb-3 animate-pulse" />
-                <h4 className="font-bold text-white text-base mb-1">Xatolik yuz berdi</h4>
+                <h4 className="font-bold text-ink text-base mb-1">Xatolik yuz berdi</h4>
                 <p className="text-sm max-w-sm mb-4 text-slate-400">{error}</p>
                 <button
                   onClick={() => fetchOrders()}
@@ -801,7 +803,7 @@ const OrdersPage: React.FC = () => {
                     onClick={() => setSelectedOrder(order)}
                     className={`p-5 rounded-2xl border text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5 ${selectedOrder?.uuid === order.uuid
                       ? 'bg-brand/5 border-brand'
-                      : 'bg-darkCard border-white/5 hover:border-white/10'
+                      : 'bg-darkCard border-edge hover:border-edge-strong'
                       }`}
                   >
                     <div className="flex items-center justify-between mb-3.5">
@@ -826,7 +828,7 @@ const OrdersPage: React.FC = () => {
                       {getStatusBadge(order.status)}
                     </div>
 
-                    <h4 className="font-bold text-white text-lg">{formatUzS(order.total_price)}</h4>
+                    <h4 className="font-bold text-ink text-lg">{formatUzS(order.total_price)}</h4>
 
                     <div className="mt-3 space-y-1.5 text-xs text-slate-400">
                       <p className="flex items-center gap-1.5 truncate">
@@ -839,7 +841,7 @@ const OrdersPage: React.FC = () => {
                       </p>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between">
+                    <div className="mt-4 pt-3 border-t border-edge flex items-center justify-between">
                       <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-slate-900 text-slate-300">
                         {(order.items || []).length} ta xil taom
                       </span>
@@ -861,9 +863,9 @@ const OrdersPage: React.FC = () => {
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-20 text-slate-500 bg-darkCard/50 border border-dashed border-white/5 rounded-2xl">
+              <div className="flex flex-col items-center justify-center py-20 text-slate-500 bg-darkCard/50 border border-dashed border-edge rounded-2xl">
                 <ShoppingBag className="w-16 h-16 stroke-[1.2] mb-3 text-slate-600" />
-                <h3 className="font-bold text-white mb-1">Buyurtmalar mavjud emas</h3>
+                <h3 className="font-bold text-ink mb-1">Buyurtmalar mavjud emas</h3>
                 <p className="text-sm px-6 text-center">Ushbu filtr bo'yicha hech qanday buyurtma topilmadi</p>
               </div>
             )}
@@ -878,7 +880,7 @@ const OrdersPage: React.FC = () => {
             ) : error ? (
               <div className="flex-1 flex flex-col items-center justify-center py-16 text-rose-400 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 text-center">
                 <AlertCircle className="w-12 h-12 mb-3 animate-pulse" />
-                <h4 className="font-bold text-white text-base mb-1">Xatolik yuz berdi</h4>
+                <h4 className="font-bold text-ink text-base mb-1">Xatolik yuz berdi</h4>
                 <p className="text-sm max-w-sm mb-4 text-slate-400">{error}</p>
                 <button
                   onClick={() => fetchOrders()}
@@ -933,8 +935,8 @@ const OrdersPage: React.FC = () => {
                         ? `${col.hoverStyle} scale-[1.01] shadow-lg`
                         : `bg-slate-900/40 ${col.validBorder} animate-pulse`
                       : draggedOrder
-                        ? 'opacity-30 border-white/5 bg-slate-900/10'
-                        : 'border-white/5 bg-darkCard/50'
+                        ? 'opacity-30 border-edge bg-slate-900/10'
+                        : 'border-edge bg-darkCard/50'
                       }`}
                   >
                     {/* Column Header */}
@@ -989,11 +991,11 @@ const OrdersPage: React.FC = () => {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg bg-darkCard border border-white/10 rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-6 animate-[slideUp_0.3s_ease-out]"
+            className="w-full max-w-lg bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-6 animate-[slideUp_0.3s_ease-out]"
           >
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-lg text-white">Buyurtma {selectedOrder.order_number || `#${selectedOrder.id}`}</h3>
+                <h3 className="font-bold text-lg text-ink">Buyurtma {selectedOrder.order_number || `#${selectedOrder.id}`}</h3>
                 <p className="text-xs text-slate-400 mt-0.5">{selectedOrder.created_at}</p>
               </div>
               <div className="flex items-center gap-2">
@@ -1006,7 +1008,7 @@ const OrdersPage: React.FC = () => {
                 </button>
                 <button
                   onClick={() => setSelectedOrder(null)}
-                  className="p-2 rounded-lg bg-white/5 text-slate-400 hover:text-white transition cursor-pointer text-xs font-bold"
+                  className="p-2 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer text-xs font-bold"
                 >
                   Yopish
                 </button>
@@ -1021,7 +1023,7 @@ const OrdersPage: React.FC = () => {
             {/* Items List */}
             <div className="space-y-3.5">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Taomlar ro'yxati</h4>
-              <div className="divide-y divide-white/5 max-h-60 overflow-y-auto pr-1">
+              <div className="divide-y divide-edge max-h-60 overflow-y-auto pr-1">
                 {(selectedOrder.items || []).map((item, idx) => {
                   const productName = item?.product_name || item?.name || item?.product?.name || "Noma'lum taom";
                   const productPrice = Number(item?.price_at_time_of_order || item?.product?.price || 0);
@@ -1029,7 +1031,7 @@ const OrdersPage: React.FC = () => {
                   return (
                     <div key={idx} className="py-2.5 flex items-center justify-between gap-3 text-sm">
                       <div>
-                        <p className="font-medium text-white">{productName}</p>
+                        <p className="font-medium text-ink">{productName}</p>
                         <p className="text-xs text-slate-500">{formatUzS(productPrice)} x {quantity}</p>
                       </div>
                       <span className="font-semibold text-slate-300 shrink-0">
@@ -1042,19 +1044,19 @@ const OrdersPage: React.FC = () => {
             </div>
 
             {/* Price Breakdown */}
-            <div className="pt-4 border-t border-white/5 space-y-2 text-sm">
+            <div className="pt-4 border-t border-edge space-y-2 text-sm">
               <div className="flex justify-between text-slate-400">
                 <span>Yetkazib berish</span>
                 <span>{formatUzS(selectedOrder.delivery_fee)}</span>
               </div>
-              <div className="flex justify-between font-bold text-white text-base pt-1">
+              <div className="flex justify-between font-bold text-ink text-base pt-1">
                 <span>Jami summa</span>
                 <span className="text-emerald-400">{formatUzS(selectedOrder.total_price)}</span>
               </div>
             </div>
 
             {/* Delivery and Customer details */}
-            <div className="p-4 rounded-xl bg-slate-900 border border-white/5 space-y-3 text-xs">
+            <div className="p-4 rounded-xl bg-slate-900 border border-edge space-y-3 text-xs">
               {selectedOrder.contact_name && (
                 <p className="flex items-center gap-2 text-slate-300">
                   <User className="w-4 h-4 text-brand shrink-0" />
@@ -1097,7 +1099,7 @@ const OrdersPage: React.FC = () => {
                   </span>
                 </p>
               )}
-              <div className="flex items-center justify-between text-slate-300 border-t border-white/5 pt-2">
+              <div className="flex items-center justify-between text-slate-300 border-t border-edge pt-2">
                 <p className="flex items-center gap-2">
                   <CreditCard className="w-4 h-4 text-brand shrink-0" />
                   <span>
@@ -1114,7 +1116,7 @@ const OrdersPage: React.FC = () => {
                 </div>
               </div>
               {selectedOrder.description && selectedOrder.description !== "Izoh yo'q" && (
-                <div className="border-t border-white/5 pt-2 text-slate-400 italic">
+                <div className="border-t border-edge pt-2 text-slate-400 italic">
                   <strong>Izoh:</strong> {selectedOrder.description}
                 </div>
               )}
@@ -1125,7 +1127,7 @@ const OrdersPage: React.FC = () => {
               {/* Pre-chek button */}
               <button
                 onClick={() => handlePrintPreCheck(selectedOrder)}
-                className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
+                className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
               >
                 <FileText className="w-4 h-4 text-slate-300" />
                 <span>Pre-chek</span>
@@ -1149,7 +1151,7 @@ const OrdersPage: React.FC = () => {
             {/* Context Actions based on status */}
             <div className="space-y-2.5">
               {(selectedOrder.status === 'PENDING' || selectedOrder.status === 'SEARCHING_COURIER') && (
-                <div className="p-3 text-center rounded-xl bg-white/5 border border-white/5 text-slate-400 text-xs">
+                <div className="p-3 text-center rounded-xl bg-overlay border border-edge text-slate-400 text-xs">
                   Yangi buyurtmalarni faqat o'qish mumkin
                 </div>
               )}
@@ -1196,7 +1198,7 @@ const OrdersPage: React.FC = () => {
                       handleUpdateStatus(selectedOrder.uuid, 'ACCEPTED');
                       setSelectedOrder(null);
                     }}
-                    className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs border border-white/10 transition cursor-pointer flex justify-center items-center gap-1.5"
+                    className="w-full py-2.5 rounded-xl bg-overlay hover:bg-overlay-strong text-slate-300 font-bold text-xs border border-edge-strong transition cursor-pointer flex justify-center items-center gap-1.5"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     Orqaga qaytarish (Qabul qilindi)
@@ -1223,7 +1225,7 @@ const OrdersPage: React.FC = () => {
                       handleUpdateStatus(selectedOrder.uuid, 'PREPARING');
                       setSelectedOrder(null);
                     }}
-                    className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs border border-white/10 transition cursor-pointer flex justify-center items-center gap-1.5"
+                    className="w-full py-3 rounded-xl bg-overlay hover:bg-overlay-strong text-slate-300 font-bold text-xs border border-edge-strong transition cursor-pointer flex justify-center items-center gap-1.5"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     Orqaga qaytarish (Tayyorlanmoqda)
@@ -1247,7 +1249,7 @@ const OrdersPage: React.FC = () => {
                       handleUpdateStatus(selectedOrder.uuid, 'READY_FOR_PICKUP');
                       setSelectedOrder(null);
                     }}
-                    className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs border border-white/10 transition cursor-pointer flex justify-center items-center gap-1.5"
+                    className="w-full py-3 rounded-xl bg-overlay hover:bg-overlay-strong text-slate-300 font-bold text-xs border border-edge-strong transition cursor-pointer flex justify-center items-center gap-1.5"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     Orqaga qaytarish (Tayyor)
@@ -1256,7 +1258,7 @@ const OrdersPage: React.FC = () => {
               )}
 
               {['COMPLETED', 'DELIVERED', 'REJECTED', 'CANCELLED'].includes(selectedOrder.status) && (
-                <div className="p-3 text-center rounded-xl bg-white/5 border border-white/5 text-slate-400 text-xs">
+                <div className="p-3 text-center rounded-xl bg-overlay border border-edge text-slate-400 text-xs">
                   Buyurtma faoliyati yakunlangan
                 </div>
               )}
@@ -1273,12 +1275,12 @@ const OrdersPage: React.FC = () => {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg bg-darkCard border border-white/10 rounded-2xl shadow-2xl flex flex-col animate-[slideUp_0.25s_ease-out] overflow-hidden"
+            className="w-full max-w-lg bg-darkCard border border-edge-strong rounded-2xl shadow-2xl flex flex-col animate-[slideUp_0.25s_ease-out] overflow-hidden"
           >
             {/* Header */}
-            <div className="p-5 border-b border-white/5 flex items-center justify-between">
+            <div className="p-5 border-b border-edge flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-lg text-white flex items-center gap-2">
+                <h3 className="font-bold text-lg text-ink flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-emerald-400" />
                   To'lov
                 </h3>
@@ -1290,7 +1292,7 @@ const OrdersPage: React.FC = () => {
               <button
                 onClick={() => !paymentSaving && setPaymentModalOrder(null)}
                 disabled={paymentSaving}
-                className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer disabled:opacity-40"
+                className="p-2 rounded-lg bg-overlay hover:bg-overlay-strong text-slate-400 hover:text-ink transition cursor-pointer disabled:opacity-40"
               >
                 <XCircle className="w-4 h-4" />
               </button>
@@ -1323,7 +1325,7 @@ const OrdersPage: React.FC = () => {
                       onClick={() => setPaymentMethod(opt.value)}
                       className={`py-5 px-4 rounded-xl border-2 font-bold text-base transition-all cursor-pointer flex flex-col items-center justify-center gap-2 ${paymentMethod === opt.value
                           ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400 shadow-lg shadow-emerald-500/10 scale-[1.02]'
-                          : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200'
+                          : 'border-edge-strong bg-overlay text-slate-400 hover:border-edge-strong hover:text-slate-200'
                         }`}
                     >
                       <span className="text-2xl">{opt.icon}</span>
@@ -1335,11 +1337,11 @@ const OrdersPage: React.FC = () => {
             </div>
 
             {/* Footer actions */}
-            <div className="p-5 border-t border-white/5 grid grid-cols-2 gap-3">
+            <div className="p-5 border-t border-edge grid grid-cols-2 gap-3">
               <button
                 onClick={() => !paymentSaving && setPaymentModalOrder(null)}
                 disabled={paymentSaving}
-                className="py-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-sm transition cursor-pointer border border-white/10 disabled:opacity-40"
+                className="py-3 rounded-xl bg-overlay hover:bg-overlay-strong text-slate-300 font-bold text-sm transition cursor-pointer border border-edge-strong disabled:opacity-40"
               >
                 Bekor qilish
               </button>
@@ -1404,7 +1406,7 @@ const OrdersPage: React.FC = () => {
               }`}
           >
             <XCircle className="w-6 h-6 text-rose-400 animate-pulse" />
-            <span className="text-xs font-bold text-white">
+            <span className="text-xs font-bold text-ink">
               {(draggedOrder.status === 'PENDING' || draggedOrder.status === 'SEARCHING_COURIER') ? "Rad etish" : "Bekor qilish"}
             </span>
             <span className="text-[10px] text-slate-400">Bu yerga tashlang</span>

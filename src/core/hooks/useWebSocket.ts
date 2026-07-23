@@ -179,8 +179,12 @@ export const useWebSocket = (
 
         if (data.type === 'new_order_alert') {
           playAlertSound();
-          onNewOrderRef.current(data);
-        } else if (data.type === 'order_status_update') {
+        }
+
+        // Forward every typed event (new_order_alert, order_status_update,
+        // table_status_update, staff_update, category_update, product_update, ...)
+        // so any page using this hook can react to the events it cares about.
+        if (data.type) {
           onNewOrderRef.current(data);
         }
       } catch (e) {

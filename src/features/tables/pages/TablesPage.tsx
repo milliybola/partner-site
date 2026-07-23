@@ -26,6 +26,7 @@ import type { PartnerFilial } from '../../orders/services/filialApi';
 import { TableOrderModal } from '../components/TableOrderModal';
 import { useToast } from '../../../core/components/ToastProvider';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
+import { useWebSocket } from '../../../core/hooks/useWebSocket';
 
 const TablesPage: React.FC = () => {
   const toast = useToast();
@@ -115,6 +116,45 @@ const TablesPage: React.FC = () => {
         .catch(err => console.error("Failed to load filials in TablesPage:", err));
     }
   }, [fetchTables]);
+
+  // Live table status updates over WebSocket (table_status_update events),
+  // so the floor map reflects AVAILABLE/OCCUPIED/RESERVED changes made by
+  // other staff/devices without needing a manual refresh.
+  const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+  const wsFilialUuid = partnerData?.current_filial?.uuid ||
+    partnerData?.home_filial?.uuid ||
+    partnerData?.current_filial_uuid ||
+    partnerData?.home_filial_uuid;
+
+  const handleWsEvent = useCallback((event: any) => {
+    if (event?.type !== 'table_status_update') return;
+    const tableData = event.table_data;
+    if (!tableData?.uuid) return;
+
+    setTables(prev => {
+      const exists = prev.some(t => t.uuid === tableData.uuid);
+      if (!exists) return prev;
+      return prev.map(t => t.uuid === tableData.uuid
+        ? {
+            ...t,
+            status: tableData.status ?? t.status,
+            status_display: tableData.status_display ?? t.status_display,
+            capacity: tableData.capacity ?? t.capacity,
+            notes: tableData.notes ?? t.notes,
+            is_active: tableData.is_active ?? t.is_active,
+            display_order: tableData.display_order ?? t.display_order,
+          }
+        : t
+      );
+    });
+  }, []);
+
+  const { isConnected: isWsConnected } = useWebSocket(
+    partnerData?.uuid,
+    token,
+    handleWsEvent,
+    wsFilialUuid
+  );
 
   // Open Form modal for editing or creating
   const openCrudModal = (table: TableModel | null = null) => {
@@ -515,6 +555,14 @@ const TablesPage: React.FC = () => {
             >
               <RefreshCw className="w-4 h-4" />
             </button>
+
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-overlay border border-edge-strong text-[11px] font-semibold"
+              title={isWsConnected ? "Jonli yangilanishlar faol" : "Jonli ulanish yo'q, avtomatik qayta urinilmoqda..."}
+            >
+              <span className={`w-2 h-2 rounded-full ${isWsConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span className="text-slate-300 hidden sm:inline">{isWsConnected ? 'Jonli' : 'Ajralgan'}</span>
+            </div>
           </div>
         </div>
       </div>

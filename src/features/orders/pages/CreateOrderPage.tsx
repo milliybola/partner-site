@@ -14,6 +14,7 @@ import {
   FolderOpen,
   ArrowLeft,
   FileText,
+  Printer,
   User,
   X
 } from 'lucide-react';
@@ -24,6 +25,8 @@ import { tablesApi } from '../../tables/services/tablesApi';
 import type { TableModel } from '../../tables/services/tablesApi';
 import confetti from 'canvas-confetti';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
+import { printPreCheck as printPreCheckUtil, printReceiptPreview as printReceiptPreviewUtil } from '../utils/printing';
+import { useToast } from '../../../core/components/ToastProvider';
 
 interface Product {
   uuid: string;
@@ -66,6 +69,7 @@ interface CartTab {
 const CreateOrderPage: React.FC = () => {
   const navigate = useNavigate();
   const confirm = useConfirm();
+  const toast = useToast();
 
   // Catalog State
   const [categories, setCategories] = useState<Category[]>([]);
@@ -120,6 +124,10 @@ const CreateOrderPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+
+  // Printing States
+  const [printingPreCheck, setPrintingPreCheck] = useState(false);
+  const [printingReceipt, setPrintingReceipt] = useState(false);
 
   // Load static resources on mount
   useEffect(() => {
@@ -442,6 +450,79 @@ const CreateOrderPage: React.FC = () => {
     });
   };
 
+  // Print a preliminary (not-yet-paid) receipt for the current cart, before the order is submitted
+  const handlePrintPreCheck = () => {
+    if (cart.length === 0 || printingPreCheck) return;
+    setPrintingPreCheck(true);
+    try {
+      const tableObj = serviceType === 'DINE_IN' ? tables.find(t => t.uuid === selectedTableUuid) : undefined;
+      printPreCheckUtil({
+        table_number: tableObj?.table_number || null,
+        total_price: total,
+        items: cart.map((item) => ({
+          product_name: item.product.name,
+          price_at_time_of_order: item.product.price,
+          quantity: item.quantity,
+        })),
+      });
+    } catch (err) {
+      console.error("Pre-chek chop etishda xatolik:", err);
+      toast.error("Pre-chekni chop etishda xatolik yuz berdi.");
+    } finally {
+      setPrintingPreCheck(false);
+    }
+  };
+
+  const paymentMethodLabels: Record<string, string> = {
+    CASH: "Naqd",
+    CLICK: "CLICK",
+    PAYME: "Payme",
+    UZCARD: "Uzcard",
+  };
+
+  const serviceTypeLabels: Record<CartTab['serviceType'], string> = {
+    DELIVERY: "Yetkazib berish",
+    PICKUP: "Olib ketish",
+    DINE_IN: "Stol uchun",
+  };
+
+  // Print the official receipt layout using the current cart — built entirely from
+  // local data, so it's available before the order is actually submitted/created.
+  const handlePrintReceipt = () => {
+    if (cart.length === 0 || printingReceipt) return;
+    setPrintingReceipt(true);
+    try {
+      const tableObj = serviceType === 'DINE_IN' ? tables.find(t => t.uuid === selectedTableUuid) : undefined;
+      printReceiptPreviewUtil({
+        created_at: new Date().toLocaleString('uz-UZ'),
+        contact_name: contactName.trim() || undefined,
+        contact_phone: contactPhone.trim() || undefined,
+        address: serviceType === 'DELIVERY' ? address.trim() : undefined,
+        delivery_type_display: serviceTypeLabels[serviceType],
+        table_number: tableObj?.table_number || null,
+        items: cart.map((item) => ({
+          product_name: item.product.name,
+          unit_price: item.product.price,
+          quantity: item.quantity,
+          line_total: item.product.price * item.quantity,
+        })),
+        subtotal,
+        delivery_fee: deliveryFee,
+        total_price: total,
+        payment_method_display: paymentMethodLabels[paymentMethod] || paymentMethod,
+        description: comment.trim() || undefined,
+        partner_name: partnerDetails?.name || partnerDetails?.partner_name,
+        partner_address: partnerDetails?.address,
+        partner_phone: partnerDetails?.phone,
+      });
+    } catch (err) {
+      console.error("Chek chop etishda xatolik:", err);
+      toast.error("Chekni chop etishda xatolik yuz berdi.");
+    } finally {
+      setPrintingReceipt(false);
+    }
+  };
+
   // Handle Order Submit
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -505,7 +586,7 @@ const CreateOrderPage: React.FC = () => {
 
       setSubmitSuccess(true);
       confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
-      
+
       // Close completed tab and choose another, or clear it if it was the only tab
       if (activeCarts.length > 1) {
         const filtered = activeCarts.filter((c) => c.id !== activeCartId);
@@ -1124,6 +1205,36 @@ const CreateOrderPage: React.FC = () => {
                 </div>
               )}
 
+              {/* Pre-chek & Chek: print previews of the current cart before submitting */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={handlePrintPreCheck}
+                  disabled={cart.length === 0 || printingPreCheck}
+                  className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {printingPreCheck ? (
+                    <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-ink rounded-full animate-spin" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5 text-slate-300" />
+                  )}
+                  <span>Pre-chek</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrintReceipt}
+                  disabled={cart.length === 0 || printingReceipt}
+                  className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {printingReceipt ? (
+                    <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-ink rounded-full animate-spin" />
+                  ) : (
+                    <Printer className="w-3.5 h-3.5 text-slate-300" />
+                  )}
+                  <span>Chek</span>
+                </button>
+              </div>
+
               {/* Submit Action Button */}
               <button
                 type="button"
@@ -1167,6 +1278,7 @@ const CreateOrderPage: React.FC = () => {
             <p className="text-sm text-slate-400 leading-relaxed">
               Telefon orqali tushgan buyurtma tizimga muvaffaqiyatli kiritildi.
             </p>
+
             <div className="text-xs text-brand bg-brand/10 py-1.5 px-3 rounded-lg inline-block font-semibold">
               Kanalga/Karta bo'limiga o'tilmoqda...
             </div>

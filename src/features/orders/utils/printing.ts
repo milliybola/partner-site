@@ -1,10 +1,58 @@
 import { ordersApi } from '../services/ordersApi';
 
-// Print the full backend-generated receipt for a completed/paid order
-export const printReceipt = async (orderUuid: string): Promise<void> => {
-  const responseData = await ordersApi.getOrderReceipt(orderUuid);
-  const receiptData = responseData.data || responseData;
+export interface ReceiptData {
+  order_number?: string;
+  created_at?: string;
+  contact_name?: string;
+  contact_phone?: string;
+  address?: string;
+  delivery_type_display?: string;
+  table_number?: string | null;
+  items: Array<{
+    product_name?: string;
+    name?: string;
+    product?: { name?: string } | null;
+    unit_price?: number | string;
+    line_total?: number | string;
+    quantity: number;
+  }>;
+  subtotal: number | string;
+  delivery_fee?: number | string;
+  total_price: number | string;
+  payment_method_display?: string;
+  payment_method?: string;
+  description?: string;
+  partner_name?: string;
+  partner_address?: string;
+  partner_phone?: string;
+}
 
+// Send an HTML document to the printer via a set of hidden iframes (one per copy)
+const printHtmlCopies = (html: string): void => {
+  const printCopies = parseInt(localStorage.getItem('milliygo_print_copies') || '1', 10) || 1;
+
+  for (let i = 0; i < printCopies; i++) {
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(html);
+      doc.close();
+    }
+  }
+};
+
+// Build the official receipt HTML markup from receipt data — shared between the
+// backend-fetched (post-order) receipt and the locally-built (pre-order) preview.
+const buildReceiptHtml = (receiptData: ReceiptData): string => {
   const itemsHtml = (receiptData.items || []).map((item: any) => {
     const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
     const unitPrice = Number(item.unit_price || 0).toLocaleString('uz-UZ');
@@ -125,11 +173,15 @@ export const printReceipt = async (orderUuid: string): Promise<void> => {
       </head>
       <body>
         <div class="header text-center" style="display: flex; flex-direction: column; align-items: center; margin-bottom: 6px;">
-          <div style="display: flex; flex-direction: row; align-items: center; gap: 6px; margin-bottom: 2px;">
-            <img src="${window.location.origin}/logo_bw.png" alt="MilliyGo Logo" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover;" />
-            <div style="font-size: 14px; font-weight: 700; letter-spacing: 1px; color: #000;">MILLIYGO</div>
+          <div style="display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 8px; margin-bottom: 2px;">
+            <div style="display: flex; flex-direction: row; align-items: center; gap: 4px; flex-shrink: 0;">
+              <img src="${window.location.origin}/logo_bw.png" alt="MilliyGo Logo" style="width: 45px; height: 45px; border-radius: 50%; object-fit: cover;" />
+              
+              <span style="font-size: 15px; font-weight: 700; letter-spacing: 0.5px; color: #000;">MilliyGo</span>
+            </div>
+            |
+            <h2 style="margin: 0; font-size: 16px; font-weight: 700; color: #000; text-transform: uppercase; text-align: left;">${receiptData.partner_name || ''}</h2>
           </div>
-          <h2 style="margin: 0; font-size: 16px; font-weight: 700; color: #000; text-transform: uppercase;">${receiptData.partner_name || ''}</h2>
           <div style="font-size: 10px; color: #000; font-weight: 500; margin-top: 2px; line-height: 1.2; text-align: center;">
             <p style="margin: 1px 0;">${[receiptData.partner_address, receiptData.partner_phone].filter(Boolean).join(' | ')}</p>
           </div>
@@ -137,10 +189,11 @@ export const printReceipt = async (orderUuid: string): Promise<void> => {
 
         <div class="divider"></div>
 
+        ${receiptData.order_number ? `
         <div class="info-row">
           <span class="info-label">Buyurtma:</span>
           <span class="info-value bold">${receiptData.order_number}</span>
-        </div>
+        </div>` : ''}
         <div class="info-row">
           <span class="info-label">Sana:</span>
           <span class="info-value">${formattedDate}</span>
@@ -155,11 +208,7 @@ export const printReceipt = async (orderUuid: string): Promise<void> => {
           <span class="info-label">Tel:</span>
           <span class="info-value">${receiptData.contact_phone}</span>
         </div>` : ''}
-        ${receiptData.address ? `
-        <div class="info-row">
-          <span class="info-label">Manzil:</span>
-          <span class="info-value">${receiptData.address}</span>
-        </div>` : ''}
+        
         ${receiptData.delivery_type_display ? `
         <div class="info-row">
           <span class="info-label">Turi:</span>
@@ -228,25 +277,20 @@ export const printReceipt = async (orderUuid: string): Promise<void> => {
     </html>
   `;
 
-  const printCopies = parseInt(localStorage.getItem('milliygo_print_copies') || '1', 10) || 1;
+  return receiptHtml;
+};
 
-  for (let i = 0; i < printCopies; i++) {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
+// Print the full backend-generated receipt for an existing (already created) order
+export const printReceipt = async (orderUuid: string): Promise<void> => {
+  const responseData = await ordersApi.getOrderReceipt(orderUuid);
+  const receiptData = responseData.data || responseData;
+  printHtmlCopies(buildReceiptHtml(receiptData));
+};
 
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (doc) {
-      doc.open();
-      doc.write(receiptHtml);
-      doc.close();
-    }
-  }
+// Print the same official receipt layout, but built purely from local data —
+// used before the order actually exists on the backend (e.g. reviewing before submit).
+export const printReceiptPreview = (receiptData: ReceiptData): void => {
+  printHtmlCopies(buildReceiptHtml(receiptData));
 };
 
 export interface PreCheckOrderInput {
@@ -330,9 +374,5 @@ export const printPreCheck = (order: PreCheckOrderInput): void => {
     </html>
   `;
 
-  const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
-  document.body.appendChild(iframe);
-  const doc = iframe.contentDocument || iframe.contentWindow?.document;
-  if (doc) { doc.open(); doc.write(preCheckHtml); doc.close(); }
+  printHtmlCopies(preCheckHtml);
 };

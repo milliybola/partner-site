@@ -29,10 +29,15 @@ import { filialApi } from '../services/filialApi';
 import type { PartnerFilial } from '../services/filialApi';
 import { tablesApi } from '../../tables/services/tablesApi';
 import type { TableModel } from '../../tables/services/tablesApi';
-import { STORAGE_KEYS } from '../../../core/config/constants';
+import { STORAGE_KEYS, ENDPOINTS } from '../../../core/config/constants';
+import apiClient from '../../../core/api/client';
 import confetti from 'canvas-confetti';
 import { EditOrderModal } from '../components/EditOrderModal';
 import { useToast } from '../../../core/components/ToastProvider';
+
+// Partners identified by this opening-hours UUID skip the "Tayyorlanmoqda" (Preparing)
+// and "Yo'lda" (Delivering) kanban stages entirely — Accepted orders go straight to Ready.
+const QUICK_READY_OPENING_HOURS_UUID = 'ff187cf7-21b8-430e-ab3d-41603c0f44a0';
 
 // Kanban Board Column Configurations (explicit class names for Tailwind compilation safety)
 const KANBAN_COLUMNS: {
@@ -100,17 +105,17 @@ const KANBAN_COLUMNS: {
     }
   ];
 
-const getValidTargets = (status: Order['status']): Order['status'][] => {
+const getValidTargets = (status: Order['status'], skipIntermediateStages: boolean = false): Order['status'][] => {
   switch (status) {
     case 'PENDING':
     case 'SEARCHING_COURIER':
       return [];
     case 'ACCEPTED':
-      return ['PREPARING', 'CANCELLED'];
+      return skipIntermediateStages ? ['READY_FOR_PICKUP', 'CANCELLED'] : ['PREPARING', 'CANCELLED'];
     case 'PREPARING':
       return ['ACCEPTED', 'READY_FOR_PICKUP'];
     case 'READY_FOR_PICKUP':
-      return ['PREPARING'];
+      return skipIntermediateStages ? ['ACCEPTED'] : ['PREPARING'];
     case 'DELIVERING':
       return ['READY_FOR_PICKUP', 'COMPLETED'];
     default:
@@ -125,6 +130,8 @@ interface KanbanCardProps {
   onDragEnd: () => void;
   onClick: () => void;
   onOpenPayment?: (order: Order) => void;
+  onMarkReady?: (order: Order) => void;
+  skipIntermediateStages?: boolean;
   isSelected: boolean;
   formatUzS: (amount: number | string | null | undefined) => string;
 }
@@ -135,6 +142,8 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
   onDragEnd,
   onClick,
   onOpenPayment,
+  onMarkReady,
+  skipIntermediateStages,
   isSelected,
   formatUzS
 }) => {
@@ -221,6 +230,19 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
             To'lov qilish
           </button>
         )}
+        {/* Quick "Tayyor" button — skips the Preparing stage for partners with that flag on */}
+        {order.status === 'ACCEPTED' && skipIntermediateStages && onMarkReady && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onMarkReady(order);
+            }}
+            className="w-full py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-[11px] transition cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <CheckCircle className="w-3 h-3" />
+            Tayyor
+          </button>
+        )}
       </div>
     </div>
   );
@@ -277,6 +299,19 @@ const OrdersPage: React.FC = () => {
 
   // Tables (used to free up a table's status once its dine-in order is paid)
   const [tables, setTables] = useState<TableModel[]>([]);
+
+  // Some partners (identified by their opening-hours record uuid) skip the
+  // Preparing/Delivering kanban stages — Accepted orders go straight to Ready.
+  const [skipIntermediateStages, setSkipIntermediateStages] = useState(false);
+
+  useEffect(() => {
+    apiClient.get(ENDPOINTS.PROFILE.ME)
+      .then((res) => {
+        const data = res.data?.data || res.data;
+        setSkipIntermediateStages(data?.opening_hours?.uuid === QUICK_READY_OPENING_HOURS_UUID);
+      })
+      .catch((err) => console.error("Failed to fetch partner profile for kanban flag check:", err));
+  }, []);
 
   useEffect(() => {
     tablesApi.getTables()
@@ -409,19 +444,22 @@ const OrdersPage: React.FC = () => {
   );
 
   const handleUpdateStatus = async (orderUuid: string, nextStatus: string) => {
+    const previousOrders = orders;
+    const targetOrder = previousOrders.find((o) => o.uuid === orderUuid);
+
+    // Optimistic update: reflect the new status immediately so the card doesn't
+    // vanish behind a loading spinner while we wait on the network.
+    setOrders((prev) => prev.map((o) => (o.uuid === orderUuid ? { ...o, status: nextStatus as any } : o)));
+    if (selectedOrder && selectedOrder.uuid === orderUuid) {
+      setSelectedOrder((prev) => (prev ? { ...prev, status: nextStatus as any } : prev));
+    }
+
     try {
       await ordersApi.updateOrderStatus(orderUuid, nextStatus);
-      // Refresh list
-      fetchOrders();
-      // Update drawer if open
-      if (selectedOrder && selectedOrder.uuid === orderUuid) {
-        const updatedOrd = orders.find((o) => o.uuid === orderUuid);
-        if (updatedOrd) {
-          setSelectedOrder({ ...updatedOrd, status: nextStatus as any });
-        }
-      }
+      // Silent background refresh to reconcile with the server (no loading spinner)
+      fetchOrders(false);
+
       if (nextStatus === 'READY_FOR_PICKUP') {
-        const targetOrder = orders.find((o) => o.uuid === orderUuid);
         if (targetOrder && targetOrder.delivery_type === 'DELIVERY') {
           if (localStorage.getItem('milliygo_auto_print') === 'true') {
             handlePrintReceipt(orderUuid);
@@ -432,6 +470,11 @@ const OrdersPage: React.FC = () => {
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
       }
     } catch (err) {
+      // Roll back the optimistic update on failure
+      setOrders(previousOrders);
+      if (selectedOrder && selectedOrder.uuid === orderUuid && targetOrder) {
+        setSelectedOrder(targetOrder);
+      }
       toast.error("Buyurtma holatini yangilashda xatolik yuz berdi.");
     }
   };
@@ -891,7 +934,9 @@ const OrdersPage: React.FC = () => {
                 </button>
               </div>
             ) : (
-              KANBAN_COLUMNS.map((col) => {
+              KANBAN_COLUMNS.filter((col) =>
+                !skipIntermediateStages || (col.status !== 'PREPARING' && col.status !== 'DELIVERING')
+              ).map((col) => {
                 const colOrders = getFilteredOrdersByDeliveryType(orders).filter(o =>
                   col.status === 'PENDING'
                     ? (o.status === 'PENDING' || o.status === 'SEARCHING_COURIER')
@@ -899,7 +944,7 @@ const OrdersPage: React.FC = () => {
                       ? (o.status === 'COMPLETED' || o.status === 'DELIVERED')
                       : o.status === col.status
                 );
-                const isValidDropTarget = draggedOrder && getValidTargets(draggedOrder.status).includes(col.status);
+                const isValidDropTarget = draggedOrder && getValidTargets(draggedOrder.status, skipIntermediateStages).includes(col.status);
                 const isHovered = dragOverCol === col.status;
 
                 return (
@@ -965,6 +1010,8 @@ const OrdersPage: React.FC = () => {
                             }}
                             onClick={() => setSelectedOrder(order)}
                             onOpenPayment={handleOpenPaymentModal}
+                            onMarkReady={(o) => handleUpdateStatus(o.uuid, 'READY_FOR_PICKUP')}
+                            skipIntermediateStages={skipIntermediateStages}
                             isSelected={selectedOrder?.uuid === order.uuid}
                           />
                         ))
@@ -1158,16 +1205,29 @@ const OrdersPage: React.FC = () => {
 
               {selectedOrder.status === 'ACCEPTED' && (
                 <div className="space-y-2">
-                  <button
-                    onClick={() => {
-                      handleUpdateStatus(selectedOrder.uuid, 'PREPARING');
-                      setSelectedOrder(null);
-                    }}
-                    className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
-                  >
-                    <Play className="w-4 h-4 fill-current" />
-                    Tayyorlashni boshlash
-                  </button>
+                  {skipIntermediateStages ? (
+                    <button
+                      onClick={() => {
+                        handleUpdateStatus(selectedOrder.uuid, 'READY_FOR_PICKUP');
+                        setSelectedOrder(null);
+                      }}
+                      className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      Tayyor deb belgilash
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        handleUpdateStatus(selectedOrder.uuid, 'PREPARING');
+                        setSelectedOrder(null);
+                      }}
+                      className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      Tayyorlashni boshlash
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       handleUpdateStatus(selectedOrder.uuid, 'CANCELLED');
@@ -1222,13 +1282,13 @@ const OrdersPage: React.FC = () => {
                   )}
                   <button
                     onClick={() => {
-                      handleUpdateStatus(selectedOrder.uuid, 'PREPARING');
+                      handleUpdateStatus(selectedOrder.uuid, skipIntermediateStages ? 'ACCEPTED' : 'PREPARING');
                       setSelectedOrder(null);
                     }}
                     className="w-full py-3 rounded-xl bg-overlay hover:bg-overlay-strong text-slate-300 font-bold text-xs border border-edge-strong transition cursor-pointer flex justify-center items-center gap-1.5"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    Orqaga qaytarish (Tayyorlanmoqda)
+                    {skipIntermediateStages ? "Orqaga qaytarish (Qabul qilindi)" : "Orqaga qaytarish (Tayyorlanmoqda)"}
                   </button>
                 </div>
               )}

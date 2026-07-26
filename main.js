@@ -7,6 +7,10 @@ const __dirname = path.dirname(__filename);
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+// Skip the print preview dialog and send window.print() straight to the OS default printer
+// (matches the "Kiosk printing" behavior previously documented for running this app in a browser)
+app.commandLine.appendSwitch('kiosk-printing');
+
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1280,

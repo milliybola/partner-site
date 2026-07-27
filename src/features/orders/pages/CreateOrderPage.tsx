@@ -139,7 +139,16 @@ const CreateOrderPage: React.FC = () => {
     const fetchTables = async () => {
       try {
         const response = await tablesApi.getTables();
-        setTables(response.filter(t => t.is_active !== false));
+        const activeTables = response.filter(t => t.is_active !== false);
+        // Sort by display_order first, then a natural (numeric-aware) sort of the
+        // table name — otherwise "ZAL | 10" sorts right after "ZAL | 1" as plain text.
+        const sorted = [...activeTables].sort((a, b) => {
+          const orderA = a.display_order ?? 0;
+          const orderB = b.display_order ?? 0;
+          if (orderA !== orderB) return orderA - orderB;
+          return String(a.table_number).localeCompare(String(b.table_number), undefined, { numeric: true, sensitivity: 'base' });
+        });
+        setTables(sorted);
       } catch (err) {
         console.error("Failed to fetch tables:", err);
       }
@@ -726,49 +735,32 @@ const CreateOrderPage: React.FC = () => {
         {tables.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {tables.map((table) => {
-              const isAvailable = table.status === 'AVAILABLE';
-              const isOccupied = table.status === 'OCCUPIED';
-              const isReserved = table.status === 'RESERVED';
-
-              let cardStyles = '';
-              let iconStyles = '';
-              let badgeStyles = '';
-              let badgeText = '';
-
-              if (isAvailable) {
-                cardStyles = 'border-edge bg-darkCard hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/5';
-                iconStyles = 'text-emerald-400 bg-emerald-500/10';
-                badgeStyles = 'bg-emerald-500/10 text-emerald-400';
-                badgeText = "Bo'sh";
-              } else if (isOccupied) {
-                cardStyles = 'border-rose-500/20 bg-rose-500/5 hover:border-rose-500/40';
-                iconStyles = 'text-rose-400 bg-rose-500/10';
-                badgeStyles = 'bg-rose-500/10 text-rose-400';
-                badgeText = 'Band';
-              } else if (isReserved) {
-                cardStyles = 'border-amber-500/20 bg-amber-500/5 hover:border-amber-500/40';
-                iconStyles = 'text-amber-400 bg-amber-500/10';
-                badgeStyles = 'bg-amber-500/10 text-amber-400';
-                badgeText = 'Bron';
-              }
+              const statusTheme = ({
+                AVAILABLE: { bg: 'bg-gradient-to-br from-emerald-400 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500', text: 'text-white', chip: 'bg-black/15 text-white', shadow: 'shadow-emerald-900/20 hover:shadow-emerald-500/30', label: "Bo'sh" },
+                OCCUPIED: { bg: 'bg-gradient-to-br from-rose-400 to-rose-600 hover:from-rose-400 hover:to-rose-500', text: 'text-white', chip: 'bg-black/15 text-white', shadow: 'shadow-rose-900/20 hover:shadow-rose-500/30', label: 'Band' },
+                RESERVED: { bg: 'bg-gradient-to-br from-amber-300 to-amber-500 hover:from-amber-300 hover:to-amber-400', text: 'text-slate-900', chip: 'bg-black/10 text-slate-900', shadow: 'shadow-amber-900/10 hover:shadow-amber-500/30', label: 'Rezerv' }
+              } as Record<string, { bg: string; text: string; chip: string; shadow: string; label: string }>)[table.status || 'AVAILABLE']
+                || { bg: 'bg-slate-700', text: 'text-slate-200', chip: 'bg-black/15 text-slate-200', shadow: 'shadow-black/20', label: table.status };
 
               return (
                 <button
                   key={table.uuid}
                   type="button"
                   onClick={() => handleTableSelect(table)}
-                  className={`p-5 rounded-2xl border text-center transition-all duration-200 cursor-pointer flex flex-col items-center justify-center space-y-3 group hover:-translate-y-0.5 ${cardStyles}`}
+                  className={`relative rounded-2xl border border-white/10 shadow-lg text-center transition-all duration-300 cursor-pointer flex flex-col items-center justify-center gap-2 min-h-[150px] p-4 group hover:-translate-y-1 hover:scale-[1.02] ${statusTheme.shadow} ${statusTheme.bg} ${statusTheme.text}`}
                 >
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 ${iconStyles}`}>
-                    <Utensils className="w-6 h-6" />
+                  <div className={`inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide px-2 py-1 rounded-lg ${statusTheme.chip}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 bg-current ${table.status === 'OCCUPIED' ? 'animate-pulse' : ''}`} />
+                    <span>{statusTheme.label}</span>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-lg text-ink font-Outfit">Stol {table.table_number}</h3>
-                    <p className="text-[10px] text-slate-400 mt-0.5">{table.capacity} kishilik</p>
+
+                  <div className="font-black text-xl tracking-tight leading-tight break-words drop-shadow-sm font-Outfit">
+                    {table.table_number}
                   </div>
-                  <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md ${badgeStyles}`}>
-                    {badgeText}
-                  </span>
+
+                  <div className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md ${statusTheme.chip}`}>
+                    <span>{table.capacity} kishilik</span>
+                  </div>
                 </button>
               );
             })}

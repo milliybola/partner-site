@@ -233,7 +233,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
           </button>
         )}
         {/* Full-width To'lov button */}
-        {order.status === 'READY_FOR_PICKUP' && (order.delivery_type === 'PICKUP' || order.delivery_type === 'DINE_IN') && onOpenPayment && (
+        {order.status === 'READY_FOR_PICKUP' && onOpenPayment && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -913,15 +913,15 @@ const OrdersPage: React.FC = () => {
                       <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-slate-900 text-slate-300">
                         {(order.items || []).length} ta xil taom
                       </span>
-                      {order.status === 'READY_FOR_PICKUP' && (order.delivery_type === 'PICKUP' || order.delivery_type === 'DINE_IN') ? (
+                      {order.status === 'READY_FOR_PICKUP' ? (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleCompleteOrder(order.uuid);
+                            handleOpenPaymentModal(order);
                           }}
                           className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 transition cursor-pointer"
                         >
-                          Mijozga berish
+                          To'lov qilish
                         </button>
                       ) : (
                         <span className="text-xs font-semibold text-brand">Batafsil →</span>
@@ -1303,18 +1303,16 @@ const OrdersPage: React.FC = () => {
 
               {selectedOrder.status === 'READY_FOR_PICKUP' && (
                 <div className="space-y-2">
-                  {(selectedOrder.delivery_type === 'PICKUP' || selectedOrder.delivery_type === 'DINE_IN') && (
-                    <button
-                      onClick={() => {
-                        handleOpenPaymentModal(selectedOrder);
-                        setSelectedOrder(null);
-                      }}
-                      className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 shadow-lg shadow-emerald-600/10"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      Mijozga berish
-                    </button>
-                  )}
+                  <button
+                    onClick={() => {
+                      handleOpenPaymentModal(selectedOrder);
+                      setSelectedOrder(null);
+                    }}
+                    className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 shadow-lg shadow-emerald-600/10"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    {selectedOrder.delivery_type === 'DELIVERY' ? "To'lov qilish" : "Mijozga berish"}
+                  </button>
                   <button
                     onClick={() => {
                       handleUpdateStatus(selectedOrder.uuid, skipIntermediateStages ? 'ACCEPTED' : 'PREPARING');

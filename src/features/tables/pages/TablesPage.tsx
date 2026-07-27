@@ -48,7 +48,7 @@ const TablesPage: React.FC = () => {
   const [tables, setTables] = useState<TableModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // UI Display Preference
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
@@ -88,6 +88,18 @@ const TablesPage: React.FC = () => {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkSuccessMsg, setBulkSuccessMsg] = useState<string | null>(null);
 
+  // Sort by display_order first, then a natural (numeric-aware) sort of the table
+  // name/number — the backend returns rows in insertion order, so "ZAL | 10" would
+  // otherwise sort right after "ZAL | 1" as plain text instead of after "ZAL | 9".
+  const sortTables = (list: TableModel[]): TableModel[] => {
+    return [...list].sort((a, b) => {
+      const orderA = a.display_order ?? 0;
+      const orderB = b.display_order ?? 0;
+      if (orderA !== orderB) return orderA - orderB;
+      return String(a.table_number).localeCompare(String(b.table_number), undefined, { numeric: true, sensitivity: 'base' });
+    });
+  };
+
   // Fetch Tables (full data, including active order info, for all roles —
   // waiters need to see occupied tables too in order to manage their live orders)
   const fetchTables = useCallback(async () => {
@@ -95,7 +107,7 @@ const TablesPage: React.FC = () => {
     setError(null);
     try {
       const data = await tablesApi.getTables();
-      setTables(data);
+      setTables(sortTables(data));
     } catch (err: any) {
       console.error("Failed to fetch tables:", err);
       setError(
@@ -136,14 +148,14 @@ const TablesPage: React.FC = () => {
       if (!exists) return prev;
       return prev.map(t => t.uuid === tableData.uuid
         ? {
-            ...t,
-            status: tableData.status ?? t.status,
-            status_display: tableData.status_display ?? t.status_display,
-            capacity: tableData.capacity ?? t.capacity,
-            notes: tableData.notes ?? t.notes,
-            is_active: tableData.is_active ?? t.is_active,
-            display_order: tableData.display_order ?? t.display_order,
-          }
+          ...t,
+          status: tableData.status ?? t.status,
+          status_display: tableData.status_display ?? t.status_display,
+          capacity: tableData.capacity ?? t.capacity,
+          notes: tableData.notes ?? t.notes,
+          is_active: tableData.is_active ?? t.is_active,
+          display_order: tableData.display_order ?? t.display_order,
+        }
         : t
       );
     });
@@ -220,9 +232,9 @@ const TablesPage: React.FC = () => {
     } catch (err: any) {
       console.error("CRUD Submit Error:", err);
       setFormError(
-        err.response?.data?.message || 
+        err.response?.data?.message ||
         err.response?.data?.table_number?.[0] ||
-        err.message || 
+        err.message ||
         "Stol ma'lumotlarini saqlashda xatolik."
       );
     } finally {
@@ -249,7 +261,7 @@ const TablesPage: React.FC = () => {
   const handleToggleActive = async (table: TableModel) => {
     if (!isManagerOrOwner) return;
     const updatedState = !(table.is_active ?? true);
-    
+
     // Optimistic UI update
     setTables(prev => prev.map(t => t.uuid === table.uuid ? { ...t, is_active: updatedState } : t));
 
@@ -332,7 +344,7 @@ const TablesPage: React.FC = () => {
       }
 
       const res = await tablesApi.bulkImportTables({ tables: tablesPayload });
-      
+
       if (res.success) {
         setBulkSuccessMsg(`${res.created} ta stol muvaffaqiyatli import qilindi!`);
         setTimeout(() => {
@@ -354,11 +366,11 @@ const TablesPage: React.FC = () => {
   // Filtered and Searched Tables List
   const filteredTables = (Array.isArray(tables) ? tables : []).filter(t => {
     const tableNumStr = String(t?.table_number || '');
-    const matchesSearch = tableNumStr.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchesSearch = tableNumStr.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (t?.notes && String(t.notes).toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesStatus = statusFilter === 'ALL' || t?.status === statusFilter;
-    
+
     let matchesActive = true;
     if (activeFilter === 'ACTIVE') {
       matchesActive = t?.is_active !== false;
@@ -437,7 +449,7 @@ const TablesPage: React.FC = () => {
       </div>
 
       {/* Stats summary */}
-      {!loading && !error && tables.length > 0 && (
+      {/* {!loading && !error && tables.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {tableStats.map((stat) => (
             <div key={stat.label} className="flex items-center gap-3 p-4 rounded-2xl bg-darkCard border border-edge">
@@ -451,7 +463,7 @@ const TablesPage: React.FC = () => {
             </div>
           ))}
         </div>
-      )}
+      )} */}
 
       {/* Info Warning banner for waiters */}
       {isWaiter && (
@@ -464,7 +476,7 @@ const TablesPage: React.FC = () => {
       )}
 
       {/* Filtering and Toolbar */}
-      <div className="p-4 rounded-2xl bg-darkCard border border-edge shadow-md space-y-4">
+      {/* <div className="p-4 rounded-2xl bg-darkCard border border-edge shadow-md space-y-4">
         <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
 
           <div className="relative w-full lg:max-w-md">
@@ -483,33 +495,29 @@ const TablesPage: React.FC = () => {
             <div className="flex items-center gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-edge text-xs font-semibold">
               <button
                 onClick={() => setStatusFilter('ALL')}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                  statusFilter === 'ALL' ? 'bg-brand text-white' : 'text-slate-400 hover:text-slate-200'
-                }`}
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${statusFilter === 'ALL' ? 'bg-brand text-white' : 'text-slate-400 hover:text-slate-200'
+                  }`}
               >
                 Barchasi
               </button>
               <button
                 onClick={() => setStatusFilter('AVAILABLE')}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                  statusFilter === 'AVAILABLE' ? 'bg-emerald-500/10 text-emerald-400' : 'text-slate-400 hover:text-slate-200'
-                }`}
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${statusFilter === 'AVAILABLE' ? 'bg-emerald-500/10 text-emerald-400' : 'text-slate-400 hover:text-slate-200'
+                  }`}
               >
                 Bo'sh
               </button>
               <button
                 onClick={() => setStatusFilter('OCCUPIED')}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                  statusFilter === 'OCCUPIED' ? 'bg-rose-500/10 text-rose-400' : 'text-slate-400 hover:text-slate-200'
-                }`}
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${statusFilter === 'OCCUPIED' ? 'bg-rose-500/10 text-rose-400' : 'text-slate-400 hover:text-slate-200'
+                  }`}
               >
                 Band
               </button>
               <button
                 onClick={() => setStatusFilter('RESERVED')}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                  statusFilter === 'RESERVED' ? 'bg-amber-500/10 text-amber-400' : 'text-slate-400 hover:text-slate-200'
-                }`}
+                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${statusFilter === 'RESERVED' ? 'bg-amber-500/10 text-amber-400' : 'text-slate-400 hover:text-slate-200'
+                  }`}
               >
                 Rezerv
               </button>
@@ -530,18 +538,16 @@ const TablesPage: React.FC = () => {
             <div className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-edge">
               <button
                 onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-lg transition cursor-pointer ${
-                  viewMode === 'grid' ? 'bg-overlay-strong text-ink' : 'text-slate-400 hover:text-slate-200'
-                }`}
+                className={`p-1.5 rounded-lg transition cursor-pointer ${viewMode === 'grid' ? 'bg-overlay-strong text-ink' : 'text-slate-400 hover:text-slate-200'
+                  }`}
                 title="Grid ko'rinishi"
               >
                 <LayoutGrid className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-lg transition cursor-pointer ${
-                  viewMode === 'list' ? 'bg-overlay-strong text-ink' : 'text-slate-400 hover:text-slate-200'
-                }`}
+                className={`p-1.5 rounded-lg transition cursor-pointer ${viewMode === 'list' ? 'bg-overlay-strong text-ink' : 'text-slate-400 hover:text-slate-200'
+                  }`}
                 title="Ro'yxat ko'rinishi"
               >
                 <List className="w-4 h-4" />
@@ -565,7 +571,7 @@ const TablesPage: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Main Content Area */}
       {loading ? (
@@ -588,15 +594,16 @@ const TablesPage: React.FC = () => {
         </div>
       ) : filteredTables.length > 0 ? (
         viewMode === 'grid' ? (
-          
+
           /* Visual GRID View Layout */
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {filteredTables.map((table) => {
-              const ring = ({
-                AVAILABLE: 'ring-emerald-500/50 group-hover:ring-emerald-500',
-                OCCUPIED: 'ring-rose-500/50 group-hover:ring-rose-500',
-                RESERVED: 'ring-amber-500/50 group-hover:ring-amber-500'
-              } as Record<string, string>)[table.status || 'AVAILABLE'] || 'ring-slate-600/50';
+              const statusTheme = ({
+                AVAILABLE: { bg: 'bg-gradient-to-br from-emerald-400 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500', text: 'text-white', chip: 'bg-black/15 text-white', shadow: 'shadow-emerald-900/20 hover:shadow-emerald-500/30', label: "Bo'sh" },
+                OCCUPIED: { bg: 'bg-gradient-to-br from-rose-400 to-rose-600 hover:from-rose-400 hover:to-rose-500', text: 'text-white', chip: 'bg-black/15 text-white', shadow: 'shadow-rose-900/20 hover:shadow-rose-500/30', label: 'Band' },
+                RESERVED: { bg: 'bg-gradient-to-br from-amber-300 to-amber-500 hover:from-amber-300 hover:to-amber-400', text: 'text-slate-900', chip: 'bg-black/10 text-slate-900', shadow: 'shadow-amber-900/10 hover:shadow-amber-500/30', label: 'Rezerv' }
+              } as Record<string, { bg: string; text: string; chip: string; shadow: string; label: string }>)[table.status || 'AVAILABLE']
+                || { bg: 'bg-slate-700', text: 'text-slate-200', chip: 'bg-black/15 text-slate-200', shadow: 'shadow-black/20', label: table.status };
 
               const isInactive = table.is_active === false;
 
@@ -604,23 +611,25 @@ const TablesPage: React.FC = () => {
                 <div
                   key={table.uuid}
                   onClick={() => setOrderingTable(table)}
-                  className={`relative p-4 pt-5 rounded-2xl border cursor-pointer transition-all duration-300 group hover:-translate-y-1 hover:shadow-lg flex flex-col items-center text-center gap-3 min-h-[195px] justify-between ${
-                    isInactive ? 'border-dashed border-edge bg-darkCard/50 opacity-55' : 'border-edge bg-darkCard hover:border-edge-strong'
+                  className={`relative rounded-2xl border overflow-hidden cursor-pointer transition-all duration-300 group hover:-translate-y-1 hover:scale-[1.02] flex flex-col min-h-[200px] p-5 gap-2 ${
+                    isInactive
+                      ? 'border-dashed border-edge bg-darkCard/50 opacity-55 justify-center items-center text-center'
+                      : `border-white/10 shadow-lg ${statusTheme.shadow} ${statusTheme.bg} ${statusTheme.text} justify-between`
                   }`}
                 >
-                  {/* Manager quick actions (top-right, on hover) */}
+                  {/* Manager quick actions (on hover) */}
                   {isManagerOrOwner && (
                     <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                       <button
                         onClick={(e) => { e.stopPropagation(); openCrudModal(table); }}
-                        className="p-1.5 rounded-lg bg-overlay border border-edge text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
+                        className="p-1.5 rounded-lg bg-black/15 hover:bg-black/25 backdrop-blur-sm transition cursor-pointer"
                         title="Tahrirlash"
                       >
                         <Edit className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDeleteTable(table.uuid, table.table_number); }}
-                        className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/10 text-rose-400 hover:text-white hover:bg-rose-500 transition cursor-pointer"
+                        className="p-1.5 rounded-lg bg-black/15 hover:bg-black/25 backdrop-blur-sm transition cursor-pointer"
                         title="O'chirish (Deaktiv)"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -628,55 +637,52 @@ const TablesPage: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Table "surface" — circular motif carrying the number */}
-                  <div className="relative shrink-0">
-                    <div
-                      className={`w-16 h-16 rounded-full flex items-center justify-center bg-slate-900 ring-4 transition-all duration-300 ${
-                        isInactive ? 'ring-slate-700/40' : ring
-                      } ${table.status === 'OCCUPIED' && !isInactive ? 'animate-pulse' : ''}`}
-                    >
-                      <span className="font-black text-lg text-ink tracking-tight leading-none px-1 truncate max-w-[3.5rem]">
-                        {table.table_number}
-                      </span>
+                  {/* Status label */}
+                  <div className={`inline-flex self-start items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide px-2 py-1 rounded-lg ${isInactive ? 'text-slate-500' : statusTheme.chip}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isInactive ? 'bg-slate-500' : 'bg-current'} ${table.status === 'OCCUPIED' && !isInactive ? 'animate-pulse' : ''}`} />
+                    <span>{isInactive ? 'Nofaol' : statusTheme.label}</span>
+                  </div>
+
+                  {/* Body */}
+                  <div className="flex-1 flex flex-col items-center justify-center text-center gap-2">
+                    <div className={`font-black text-2xl tracking-tight leading-tight break-words drop-shadow-sm ${isInactive ? 'text-ink' : statusTheme.text}`}>
+                      {table.table_number}
                     </div>
 
-                    {isManagerOrOwner && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleToggleActive(table); }}
-                        className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-darkCard ${
-                          table.is_active !== false
-                            ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]'
-                            : 'bg-slate-700'
-                        }`}
-                        title={table.is_active !== false ? "Faol (Deaktiv qilish)" : "Nofaol (Faollashtirish)"}
-                      />
-                    )}
-                  </div>
+                    <div className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md ${isInactive ? 'bg-overlay text-slate-400' : statusTheme.chip}`}>
+                      <Users className="w-3 h-3 shrink-0" />
+                      <span>{table.capacity} kishi</span>
+                    </div>
 
-                  <div className="inline-flex items-center gap-1 text-slate-400 text-[11px] font-bold bg-overlay px-2 py-0.5 rounded-md">
-                    <Users className="w-3 h-3 shrink-0" />
-                    <span>{table.capacity} kishi</span>
-                  </div>
-
-                  {/* Bottom block: order/notes + status */}
-                  <div className="w-full flex flex-col items-center gap-1.5">
                     {table.current_order ? (
-                      <p className="text-[11px] text-slate-400 leading-relaxed font-medium truncate max-w-full">
+                      <p className={`text-[11px] leading-relaxed font-medium truncate max-w-full ${isInactive ? 'text-slate-400' : 'opacity-90'}`}>
                         {table.current_order.order_number} · {Number(table.current_order.total_price).toLocaleString('uz-UZ')} UZS
                       </p>
                     ) : table.notes && (
-                      <p className="text-[11px] text-slate-500 line-clamp-1 leading-relaxed font-medium max-w-full">
+                      <p className={`text-[11px] line-clamp-1 leading-relaxed font-medium max-w-full ${isInactive ? 'text-slate-500' : 'opacity-80'}`}>
                         {table.notes}
                       </p>
                     )}
-                    {getStatusBadge(table.status)}
                   </div>
+
+                  {/* Active toggle (manager) */}
+                  {isManagerOrOwner && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleToggleActive(table); }}
+                      className={`absolute bottom-2.5 right-2.5 w-3 h-3 rounded-full border-2 ${
+                        isInactive ? 'border-edge-strong' : 'border-white/40'
+                      } ${
+                        table.is_active !== false ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-600'
+                      }`}
+                      title={table.is_active !== false ? "Faol (Deaktiv qilish)" : "Nofaol (Faollashtirish)"}
+                    />
+                  )}
                 </div>
               );
             })}
           </div>
         ) : (
-          
+
           /* Visual TABLE List Layout */
           <div className="p-6 rounded-2xl bg-darkCard border border-edge shadow-xl">
             <div className="overflow-x-auto">
@@ -697,9 +703,8 @@ const TablesPage: React.FC = () => {
                     <tr
                       key={table.uuid}
                       onClick={() => setOrderingTable(table)}
-                      className={`hover:bg-overlay transition-colors cursor-pointer ${
-                        table.is_active === false ? 'opacity-55 border-dashed' : ''
-                      }`}
+                      className={`hover:bg-overlay transition-colors cursor-pointer ${table.is_active === false ? 'opacity-55 border-dashed' : ''
+                        }`}
                     >
                       <td className="py-3.5 pl-2">
                         <div className="font-bold text-ink text-base">{table.table_number}</div>
@@ -723,11 +728,10 @@ const TablesPage: React.FC = () => {
                         <td className="py-3.5 text-center">
                           <button
                             onClick={(e) => { e.stopPropagation(); handleToggleActive(table); }}
-                            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border transition ${
-                              table.is_active !== false
-                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                : 'bg-slate-700/25 text-slate-500 border-slate-700/30'
-                            }`}
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border transition ${table.is_active !== false
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              : 'bg-slate-700/25 text-slate-500 border-slate-700/30'
+                              }`}
                           >
                             {table.is_active !== false ? "FAOL" : "NOFAOL"}
                           </button>
@@ -761,7 +765,7 @@ const TablesPage: React.FC = () => {
           </div>
         )
       ) : (
-        
+
         /* Empty State */
         <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-edge rounded-2xl text-center">
           <HelpCircle className="w-14 h-14 stroke-[1] mb-3 text-slate-600" />
@@ -795,7 +799,7 @@ const TablesPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="absolute top-0 right-0 w-32 h-32 bg-brand/5 rounded-bl-full pointer-events-none filter blur-xl" />
-            
+
             <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
               {selectedTable ? "Stol Ma'lumotlarini Tahrirlash" : "Yangi Stol Qo'shish"}
             </h3>
@@ -808,7 +812,7 @@ const TablesPage: React.FC = () => {
             )}
 
             <form onSubmit={handleCrudSubmit} className="space-y-4">
-              
+
               <div>
                 <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Stol Nomi / Raqami *</label>
                 <input
@@ -835,7 +839,7 @@ const TablesPage: React.FC = () => {
                     className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150"
                   />
                 </div>
-                
+
                 <div>
                   <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Tartib raqami</label>
                   <input
@@ -932,7 +936,7 @@ const TablesPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-bl-full pointer-events-none filter blur-xl" />
-            
+
             <h3 className="text-lg font-bold text-ink mb-2 flex items-center gap-2">
               <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
               Ko'p miqdorda stol import qilish
@@ -957,31 +961,29 @@ const TablesPage: React.FC = () => {
             <div className="flex border-b border-edge mb-4 text-xs font-bold">
               <button
                 onClick={() => setBulkMethod('generator')}
-                className={`pb-2.5 px-4 border-b-2 transition ${
-                  bulkMethod === 'generator' ? 'border-brand text-brand' : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
+                className={`pb-2.5 px-4 border-b-2 transition ${bulkMethod === 'generator' ? 'border-brand text-brand' : 'border-transparent text-slate-400 hover:text-slate-200'
+                  }`}
               >
                 Stollar generatori
               </button>
               <button
                 onClick={() => setBulkMethod('raw')}
-                className={`pb-2.5 px-4 border-b-2 transition ${
-                  bulkMethod === 'raw' ? 'border-brand text-brand' : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
+                className={`pb-2.5 px-4 border-b-2 transition ${bulkMethod === 'raw' ? 'border-brand text-brand' : 'border-transparent text-slate-400 hover:text-slate-200'
+                  }`}
               >
                 Matn yordamida (CSV format)
               </button>
             </div>
 
             <form onSubmit={handleBulkSubmit} className="space-y-4">
-              
+
               {bulkMethod === 'generator' ? (
                 /* Method A: Generator */
                 <div className="space-y-4">
                   <div className="p-3 bg-overlay border border-edge rounded-xl text-[11px] text-slate-400 leading-relaxed">
                     <span className="font-bold text-ink">Generator qanday ishlaydi:</span> Boshlang'ich sondan yakuniy songacha stollar ketma-ket yaratiladi. Masalan, Prefiks: <code className="text-brand">VIP-</code>, Boshlanishi: <code className="text-brand">1</code>, Yakuni: <code className="text-brand">3</code> bo'lsa, zaldagi stollar: <code className="text-slate-300">VIP-1, VIP-2, VIP-3</code> ko'rinishida qo'shiladi.
                   </div>
-                  
+
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Stol Prefiksi</label>

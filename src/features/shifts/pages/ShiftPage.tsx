@@ -403,7 +403,7 @@ const ShiftPage: React.FC = () => {
                     <span className="p-3 rounded-xl bg-brand/10 text-brand"><Coins className="w-5 h-5" /></span>
                     <span className="text-[10px] text-brand bg-brand/10 border border-brand/20 px-2 py-0.5 rounded-md font-bold uppercase">Kassa qoldig'i</span>
                   </div>
-                  <p className="text-xs font-semibold text-slate-400">Kutilayotgan yakuniy balans</p>
+                  <p className="text-xs font-semibold text-slate-400">Kassa balansi</p>
                   <h3 className="text-2xl font-bold text-ink mt-1 truncate">{formatUzS(currentShift.expected_closing_balance)}</h3>
                 </div>
 
@@ -425,7 +425,7 @@ const ShiftPage: React.FC = () => {
                     <span className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400"><TrendingUp className="w-5 h-5" /></span>
                     <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md font-bold uppercase">Umumiy Tushum</span>
                   </div>
-                  <p className="text-xs font-semibold text-slate-400">Jami tushum summasi</p>
+                  <p className="text-xs font-semibold text-slate-400">Umumiy tushum summasi</p>
                   <h3 className="text-2xl font-bold text-ink mt-1 truncate">{formatUzS(currentShift.total_revenue)}</h3>
                 </div>
               </div>
@@ -457,7 +457,7 @@ const ShiftPage: React.FC = () => {
                     </div>
                     
                     <div className="pt-2 border-t border-edge flex justify-between items-center text-xs font-bold text-slate-400">
-                      <span>Boshlang'ich kassa qoldig'i:</span>
+                      <span>Boshlang'ich pul miqdori:</span>
                       <span className="text-ink">{formatUzS(currentShift.opening_balance)}</span>
                     </div>
                   </div>
@@ -513,7 +513,7 @@ const ShiftPage: React.FC = () => {
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                     <Coins className="w-3.5 h-3.5 text-brand" />
-                    <span>Boshlang'ich Kassa Qoldig'i</span>
+                    <span>Boshlang'ich pul miqdori</span>
                   </label>
                   <div className="relative">
                     <input

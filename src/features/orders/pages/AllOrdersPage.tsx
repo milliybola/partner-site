@@ -367,7 +367,7 @@ const AllOrdersPage: React.FC = () => {
         return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20">Tayyorlanmoqda</span>;
       case 'READY_FOR_PICKUP':
         return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Tayyor (Kuryerga)</span>;
-      case 'DELIVERING':
+      case 'ON_THE_WAY':
         return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">Yo'lda</span>;
       case 'COMPLETED':
       case 'DELIVERED':
@@ -417,7 +417,7 @@ const AllOrdersPage: React.FC = () => {
         orderStatus === filterStatus ||
         (statusFilter === 'COMPLETED' && orderStatus === 'DELIVERED') ||
         (statusFilter === 'PENDING_GROUP' && (orderStatus === 'PENDING' || orderStatus === 'SEARCHING_COURIER')) ||
-        (statusFilter === 'ACTIVE_GROUP' && ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'DELIVERING'].includes(orderStatus)) ||
+        (statusFilter === 'ACTIVE_GROUP' && ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'ON_THE_WAY'].includes(orderStatus)) ||
         (statusFilter === 'HISTORY_GROUP' && ['COMPLETED', 'DELIVERED', 'REJECTED', 'CANCELLED'].includes(orderStatus));
 
       // Payment matches filter
@@ -451,7 +451,7 @@ const AllOrdersPage: React.FC = () => {
   }).length;
   const activeCount = orders.filter((o) => {
     const s = o.status?.toUpperCase();
-    return ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'DELIVERING'].includes(s);
+    return ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'ON_THE_WAY'].includes(s);
   }).length;
   const cancelledCount = orders.filter((o) => {
     const s = o.status?.toUpperCase();

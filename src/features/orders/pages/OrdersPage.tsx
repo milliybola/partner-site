@@ -86,7 +86,7 @@ const KANBAN_COLUMNS: {
       validBorder: "border-emerald-500/40 border-dashed"
     },
     {
-      status: 'DELIVERING',
+      status: 'ON_THE_WAY',
       label: "Yo'lda",
       headerText: "text-sky-400 border-sky-500/20",
       badgeBg: "bg-sky-500/10",
@@ -109,14 +109,14 @@ const getValidTargets = (status: Order['status'], skipIntermediateStages: boolea
   switch (status) {
     case 'PENDING':
     case 'SEARCHING_COURIER':
-      return [];
+      return ['ACCEPTED'];
     case 'ACCEPTED':
       return skipIntermediateStages ? ['READY_FOR_PICKUP', 'CANCELLED'] : ['PREPARING', 'CANCELLED'];
     case 'PREPARING':
       return ['ACCEPTED', 'READY_FOR_PICKUP'];
     case 'READY_FOR_PICKUP':
       return skipIntermediateStages ? ['ACCEPTED'] : ['PREPARING'];
-    case 'DELIVERING':
+    case 'ON_THE_WAY':
       return ['READY_FOR_PICKUP', 'COMPLETED'];
     default:
       return [];
@@ -131,6 +131,7 @@ interface KanbanCardProps {
   onClick: () => void;
   onOpenPayment?: (order: Order) => void;
   onMarkReady?: (order: Order) => void;
+  onAccept?: (order: Order) => void;
   skipIntermediateStages?: boolean;
   isSelected: boolean;
   formatUzS: (amount: number | string | null | undefined) => string;
@@ -143,11 +144,12 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
   onClick,
   onOpenPayment,
   onMarkReady,
+  onAccept,
   skipIntermediateStages,
   isSelected,
   formatUzS
 }) => {
-  const isDraggable = order.status !== 'PENDING' && order.status !== 'SEARCHING_COURIER' && order.status !== 'COMPLETED' && order.status !== 'DELIVERED';
+  const isDraggable = order.status !== 'COMPLETED' && order.status !== 'DELIVERED';
 
   return (
     <div
@@ -217,6 +219,19 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
             Batafsil →
           </button>
         </div>
+        {/* Accept button — moves the order from Milliy Go (Kuryer) straight to Qabul qilindi */}
+        {(order.status === 'PENDING' || order.status === 'SEARCHING_COURIER') && onAccept && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAccept(order);
+            }}
+            className="w-full py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-bold text-[11px] transition cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <CheckCircle className="w-3 h-3" />
+            Qabul qilish
+          </button>
+        )}
         {/* Full-width To'lov button */}
         {order.status === 'READY_FOR_PICKUP' && (order.delivery_type === 'PICKUP' || order.delivery_type === 'DINE_IN') && onOpenPayment && (
           <button
@@ -479,6 +494,16 @@ const OrdersPage: React.FC = () => {
     }
   };
 
+  // Accept a PENDING/SEARCHING_COURIER order — guard against accepting an order that
+  // (for whatever reason) doesn't actually belong to this restaurant before moving it.
+  const handleAcceptOrder = (order: Order) => {
+    if (order.partner_uuid && partnerUuid && order.partner_uuid !== partnerUuid) {
+      toast.error("Bu buyurtma sizning muassasangizga tegishli emas.");
+      return;
+    }
+    handleUpdateStatus(order.uuid, 'ACCEPTED');
+  };
+
   const handleCompleteOrder = async (orderUuid: string) => {
     try {
       await ordersApi.completeOrder(orderUuid);
@@ -550,7 +575,7 @@ const OrdersPage: React.FC = () => {
       case 'pending':
         return typeFiltered.filter((o) => o.status === 'PENDING' || o.status === 'SEARCHING_COURIER');
       case 'active':
-        return typeFiltered.filter((o) => ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'DELIVERING'].includes(o.status));
+        return typeFiltered.filter((o) => ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'ON_THE_WAY'].includes(o.status));
       case 'history':
         return typeFiltered.filter((o) => ['COMPLETED', 'DELIVERED', 'REJECTED', 'CANCELLED'].includes(o.status));
       case 'all':
@@ -571,7 +596,7 @@ const OrdersPage: React.FC = () => {
         return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20">Tayyorlanmoqda</span>;
       case 'READY_FOR_PICKUP':
         return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Tayyor (Kuryerga)</span>;
-      case 'DELIVERING':
+      case 'ON_THE_WAY':
         return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">Yo'lda</span>;
       case 'COMPLETED':
       case 'DELIVERED':
@@ -596,7 +621,7 @@ const OrdersPage: React.FC = () => {
   const typeFilteredOrders = getFilteredOrdersByDeliveryType(orders);
   const filteredOrders = getFilteredOrders();
   const pendingCount = typeFilteredOrders.filter((o) => o.status === 'PENDING' || o.status === 'SEARCHING_COURIER').length;
-  const activeCount = typeFilteredOrders.filter((o) => ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'DELIVERING'].includes(o.status)).length;
+  const activeCount = typeFilteredOrders.filter((o) => ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'ON_THE_WAY'].includes(o.status)).length;
 
   return (
     <div className="space-y-3 font-Outfit relative min-h-[80vh]">
@@ -935,7 +960,7 @@ const OrdersPage: React.FC = () => {
               </div>
             ) : (
               KANBAN_COLUMNS.filter((col) =>
-                !skipIntermediateStages || (col.status !== 'PREPARING' && col.status !== 'DELIVERING')
+                !skipIntermediateStages || (col.status !== 'PREPARING' && col.status !== 'ON_THE_WAY')
               ).map((col) => {
                 const colOrders = getFilteredOrdersByDeliveryType(orders).filter(o =>
                   col.status === 'PENDING'
@@ -969,6 +994,8 @@ const OrdersPage: React.FC = () => {
                       if (draggedOrder && isValidDropTarget) {
                         if (col.status === 'COMPLETED') {
                           handleCompleteOrder(draggedOrder.uuid);
+                        } else if (col.status === 'ACCEPTED' && (draggedOrder.status === 'PENDING' || draggedOrder.status === 'SEARCHING_COURIER')) {
+                          handleAcceptOrder(draggedOrder);
                         } else {
                           handleUpdateStatus(draggedOrder.uuid, col.status);
                         }
@@ -1011,6 +1038,7 @@ const OrdersPage: React.FC = () => {
                             onClick={() => setSelectedOrder(order)}
                             onOpenPayment={handleOpenPaymentModal}
                             onMarkReady={(o) => handleUpdateStatus(o.uuid, 'READY_FOR_PICKUP')}
+                            onAccept={handleAcceptOrder}
                             skipIntermediateStages={skipIntermediateStages}
                             isSelected={selectedOrder?.uuid === order.uuid}
                           />
@@ -1198,9 +1226,16 @@ const OrdersPage: React.FC = () => {
             {/* Context Actions based on status */}
             <div className="space-y-2.5">
               {(selectedOrder.status === 'PENDING' || selectedOrder.status === 'SEARCHING_COURIER') && (
-                <div className="p-3 text-center rounded-xl bg-overlay border border-edge text-slate-400 text-xs">
-                  Yangi buyurtmalarni faqat o'qish mumkin
-                </div>
+                <button
+                  onClick={() => {
+                    handleAcceptOrder(selectedOrder);
+                    setSelectedOrder(null);
+                  }}
+                  className="w-full py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Qabul qilish
+                </button>
               )}
 
               {selectedOrder.status === 'ACCEPTED' && (
@@ -1293,7 +1328,7 @@ const OrdersPage: React.FC = () => {
                 </div>
               )}
 
-              {selectedOrder.status === 'DELIVERING' && (
+              {selectedOrder.status === 'ON_THE_WAY' && (
                 <div className="space-y-2">
                   <button
                     onClick={() => {

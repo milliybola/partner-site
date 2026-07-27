@@ -23,7 +23,8 @@ export interface Order {
   id: number;
   uuid: string;
   order_number?: string;
-  status: 'PENDING' | 'SEARCHING_COURIER' | 'ACCEPTED' | 'REJECTED' | 'PREPARING' | 'READY_FOR_PICKUP' | 'DELIVERING' | 'COMPLETED' | 'DELIVERED' | 'CANCELLED';
+  status: 'PENDING' | 'SEARCHING_COURIER' | 'ACCEPTED' | 'REJECTED' | 'PREPARING' | 'READY_FOR_PICKUP' | 'ON_THE_WAY' | 'COMPLETED' | 'DELIVERED' | 'CANCELLED';
+  partner_uuid?: string;
   contact_phone: string;
   contact_name?: string;
   address: string;

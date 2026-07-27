@@ -12,10 +12,6 @@ import {
   ShieldAlert,
   Loader2,
   FileSpreadsheet,
-  Search,
-  LayoutGrid,
-  List,
-  Clock,
   Table2
 } from 'lucide-react';
 import { STORAGE_KEYS } from '../../../core/config/constants';
@@ -51,6 +47,7 @@ const TablesPage: React.FC = () => {
 
   // UI Display Preference
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  console.log(setViewMode);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [activeFilter, setActiveFilter] = useState<string>('ALL');
@@ -167,6 +164,7 @@ const TablesPage: React.FC = () => {
     handleWsEvent,
     wsFilialUuid
   );
+  console.log(isWsConnected);
 
   // Open Form modal for editing or creating
   const openCrudModal = (table: TableModel | null = null) => {
@@ -409,12 +407,12 @@ const TablesPage: React.FC = () => {
     }
   };
 
-  const tableStats = [
-    { label: 'Jami stollar', value: tables.length, icon: LayoutGrid, color: 'text-brand', bg: 'bg-brand/10' },
-    { label: 'Bo\'sh', value: tables.filter(t => t.status === 'AVAILABLE').length, icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-    { label: 'Band', value: tables.filter(t => t.status === 'OCCUPIED').length, icon: Users, color: 'text-rose-400', bg: 'bg-rose-500/10' },
-    { label: 'Rezerv', value: tables.filter(t => t.status === 'RESERVED').length, icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-  ];
+  // const tableStats = [
+  //   { label: 'Jami stollar', value: tables.length, icon: LayoutGrid, color: 'text-brand', bg: 'bg-brand/10' },
+  //   { label: 'Bo\'sh', value: tables.filter(t => t.status === 'AVAILABLE').length, icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+  //   { label: 'Band', value: tables.filter(t => t.status === 'OCCUPIED').length, icon: Users, color: 'text-rose-400', bg: 'bg-rose-500/10' },
+  //   { label: 'Rezerv', value: tables.filter(t => t.status === 'RESERVED').length, icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+  // ];
 
   return (
     <div className="space-y-6 font-Outfit text-slate-200">
@@ -611,11 +609,10 @@ const TablesPage: React.FC = () => {
                 <div
                   key={table.uuid}
                   onClick={() => setOrderingTable(table)}
-                  className={`relative rounded-2xl border overflow-hidden cursor-pointer transition-all duration-300 group hover:-translate-y-1 hover:scale-[1.02] flex flex-col min-h-[200px] p-5 gap-2 ${
-                    isInactive
+                  className={`relative rounded-2xl border overflow-hidden cursor-pointer transition-all duration-300 group hover:-translate-y-1 hover:scale-[1.02] flex flex-col min-h-[200px] p-5 gap-2 ${isInactive
                       ? 'border-dashed border-edge bg-darkCard/50 opacity-55 justify-center items-center text-center'
                       : `border-white/10 shadow-lg ${statusTheme.shadow} ${statusTheme.bg} ${statusTheme.text} justify-between`
-                  }`}
+                    }`}
                 >
                   {/* Manager quick actions (on hover) */}
                   {isManagerOrOwner && (
@@ -669,11 +666,9 @@ const TablesPage: React.FC = () => {
                   {isManagerOrOwner && (
                     <button
                       onClick={(e) => { e.stopPropagation(); handleToggleActive(table); }}
-                      className={`absolute bottom-2.5 right-2.5 w-3 h-3 rounded-full border-2 ${
-                        isInactive ? 'border-edge-strong' : 'border-white/40'
-                      } ${
-                        table.is_active !== false ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-600'
-                      }`}
+                      className={`absolute bottom-2.5 right-2.5 w-3 h-3 rounded-full border-2 ${isInactive ? 'border-edge-strong' : 'border-white/40'
+                        } ${table.is_active !== false ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-600'
+                        }`}
                       title={table.is_active !== false ? "Faol (Deaktiv qilish)" : "Nofaol (Faollashtirish)"}
                     />
                   )}

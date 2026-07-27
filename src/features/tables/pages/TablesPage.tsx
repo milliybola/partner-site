@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus,
   Trash2,
@@ -12,8 +12,12 @@ import {
   ShieldAlert,
   Loader2,
   FileSpreadsheet,
-  Table2
+  Table2,
+  QrCode,
+  Download,
+  X
 } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { STORAGE_KEYS } from '../../../core/config/constants';
 import { tablesApi } from '../services/tablesApi';
 import type { TableModel, TableStatus } from '../services/tablesApi';
@@ -55,6 +59,8 @@ const TablesPage: React.FC = () => {
   // Modals state
   const [isCrudModalOpen, setIsCrudModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [qrDownloading, setQrDownloading] = useState(false);
   const [selectedTable, setSelectedTable] = useState<TableModel | null>(null);
   const [orderingTable, setOrderingTable] = useState<TableModel | null>(null);
 
@@ -273,6 +279,31 @@ const TablesPage: React.FC = () => {
     }
   };
 
+  // The link encoded into the QR code — scanning it takes the customer to this restaurant's menu.
+  const qrCodeUrl = partnerData?.uuid ? `https://qr-code.milliyapp.uz/${partnerData.uuid}` : null;
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Export the client-side-generated QR canvas as a downloadable PNG.
+  const handleDownloadQrCode = () => {
+    const canvas = qrCanvasRef.current;
+    if (!canvas) return;
+    setQrDownloading(true);
+    try {
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `${partnerData?.name || partnerData?.partner_name || 'restaurant'}-qr-code.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      console.error("Failed to download QR code:", err);
+      toast.error("QR-kodni yuklab olishda xatolik yuz berdi.");
+    } finally {
+      setQrDownloading(false);
+    }
+  };
+
   // Submit Bulk Import
   const handleBulkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -428,6 +459,15 @@ const TablesPage: React.FC = () => {
 
         {isManagerOrOwner && (
           <div className="flex items-center gap-2.5">
+            {qrCodeUrl && (
+              <button
+                onClick={() => setIsQrModalOpen(true)}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 border border-edge-strong hover:bg-slate-800 text-slate-300 font-bold text-xs transition duration-200 cursor-pointer"
+              >
+                <QrCode className="w-4 h-4 text-brand" />
+                <span>QR-kod</span>
+              </button>
+            )}
             <button
               onClick={() => setIsBulkModalOpen(true)}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 border border-edge-strong hover:bg-slate-800 text-slate-300 font-bold text-xs transition duration-200 cursor-pointer"
@@ -1066,6 +1106,53 @@ const TablesPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* QR CODE MODAL */}
+      {isQrModalOpen && qrCodeUrl && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative overflow-hidden animate-in fade-in zoom-in duration-200 text-center">
+            <button
+              onClick={() => setIsQrModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg bg-overlay border border-edge text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
+              title="Yopish"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <h3 className="text-lg font-bold text-ink mb-1 flex items-center justify-center gap-2">
+              <QrCode className="w-5 h-5 text-brand" />
+              Muassasa QR-kodi
+            </h3>
+            <p className="text-slate-400 text-xs mb-5">Mijozlar shu QR-kodni skanerlab menyuga o'tishlari mumkin</p>
+
+            <div className="p-4 bg-white rounded-2xl inline-block mx-auto">
+              <QRCodeCanvas
+                ref={qrCanvasRef}
+                value={qrCodeUrl}
+                size={224}
+                level="M"
+                marginSize={0}
+                bgColor="#ffffff"
+                fgColor="#0f172a"
+                title="Muassasa QR-kodi"
+              />
+            </div>
+
+            <button
+              onClick={handleDownloadQrCode}
+              disabled={qrDownloading}
+              className="mt-5 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs shadow-lg shadow-brand/20 transition duration-150 disabled:opacity-50 cursor-pointer"
+            >
+              {qrDownloading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5" />
+              )}
+              <span>Rasm qilib yuklab olish</span>
+            </button>
           </div>
         </div>
       )}

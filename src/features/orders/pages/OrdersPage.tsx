@@ -19,7 +19,9 @@ import {
   User,
   Truck,
   Utensils,
-  Pencil
+  Pencil,
+  Bike,
+  Globe2
 } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
 import type { Order } from '../services/ordersApi';
@@ -29,6 +31,8 @@ import { filialApi } from '../services/filialApi';
 import type { PartnerFilial } from '../services/filialApi';
 import { tablesApi } from '../../tables/services/tablesApi';
 import type { TableModel } from '../../tables/services/tablesApi';
+import { couriersApi } from '../../staff/services/couriersApi';
+import type { CourierModel } from '../../staff/services/couriersApi';
 import { STORAGE_KEYS, ENDPOINTS } from '../../../core/config/constants';
 import apiClient from '../../../core/api/client';
 import confetti from 'canvas-confetti';
@@ -132,6 +136,8 @@ interface KanbanCardProps {
   onOpenPayment?: (order: Order) => void;
   onMarkReady?: (order: Order) => void;
   onAccept?: (order: Order) => void;
+  onAssignCourier?: (order: Order) => void;
+  onDispatchGlobally?: (order: Order) => void;
   skipIntermediateStages?: boolean;
   isSelected: boolean;
   formatUzS: (amount: number | string | null | undefined) => string;
@@ -145,6 +151,8 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
   onOpenPayment,
   onMarkReady,
   onAccept,
+  onAssignCourier,
+  onDispatchGlobally,
   skipIntermediateStages,
   isSelected,
   formatUzS
@@ -219,8 +227,9 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
             Batafsil →
           </button>
         </div>
-        {/* Accept button — moves the order from Milliy Go (Kuryer) straight to Qabul qilindi */}
-        {(order.status === 'PENDING' || order.status === 'SEARCHING_COURIER') && onAccept && (
+        {/* Accept button — moves the order from Milliy Go straight to Qabul qilindi.
+            Not shown for courier (DELIVERY) orders — those accept via courier assignment instead. */}
+        {(order.status === 'PENDING' || order.status === 'SEARCHING_COURIER') && order.delivery_type !== 'DELIVERY' && onAccept && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -230,6 +239,32 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
           >
             <CheckCircle className="w-3 h-3" />
             Qabul qilish
+          </button>
+        )}
+        {/* Assign own courier — for delivery orders, lets the partner skip the global search entirely */}
+        {(order.status === 'PENDING' || order.status === 'SEARCHING_COURIER') && order.delivery_type === 'DELIVERY' && onAssignCourier && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAssignCourier(order);
+            }}
+            className="w-full py-1.5 rounded-lg bg-overlay hover:bg-overlay-strong border border-edge-strong text-slate-300 font-bold text-[11px] transition cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <Bike className="w-3 h-3" />
+            O'z kuryeringiz
+          </button>
+        )}
+        {/* Dispatch to the global courier pool — for when the partner's own couriers are busy */}
+        {order.status === 'ACCEPTED' && order.delivery_type === 'DELIVERY' && onDispatchGlobally && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDispatchGlobally(order);
+            }}
+            className="w-full py-1.5 rounded-lg bg-overlay hover:bg-overlay-strong border border-edge-strong text-slate-300 font-bold text-[11px] transition cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <Globe2 className="w-3 h-3" />
+            Global kuryerlarga yuborish
           </button>
         )}
         {/* Full-width To'lov button */}
@@ -302,6 +337,13 @@ const OrdersPage: React.FC = () => {
   const [paymentModalOrder, setPaymentModalOrder] = useState<Order | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CLICK' | 'PAYME' | 'UZCARD'>('CASH');
   const [paymentSaving, setPaymentSaving] = useState(false);
+
+  // Own-Courier Assignment State
+  const [courierPickerOrder, setCourierPickerOrder] = useState<Order | null>(null);
+  const [couriers, setCouriers] = useState<CourierModel[]>([]);
+  const [loadingCouriers, setLoadingCouriers] = useState(false);
+  const [assigningCourierUuid, setAssigningCourierUuid] = useState<string | null>(null);
+  const [dispatchingGloballyUuid, setDispatchingGloballyUuid] = useState<string | null>(null);
 
   const [partnerUuid, setPartnerUuid] = useState<string | undefined>(undefined);
   const [userFilialUuid, setUserFilialUuid] = useState<string | undefined>(undefined);
@@ -416,6 +458,16 @@ const OrdersPage: React.FC = () => {
   // Handle incoming Websocket order alerts
   const handleNewOrderAlert = useCallback((event: any) => {
     const orderData = event.order_data;
+
+    // Generic notifications without a specific order payload — e.g. the global-dispatch
+    // 5-minute timeout warning, or a global courier accepting an order. We don't know the
+    // exact event.type the backend uses for these yet, so surface anything with a message.
+    if (!orderData && event.type && event.type !== 'new_order_alert' && event.type !== 'order_status_update' && event.message) {
+      toast.info(event.message);
+      fetchOrders(false);
+      return;
+    }
+
     if (!orderData) return;
 
     if (event.type === 'new_order_alert') {
@@ -502,6 +554,52 @@ const OrdersPage: React.FC = () => {
       return;
     }
     handleUpdateStatus(order.uuid, 'ACCEPTED');
+  };
+
+  // Open the own-courier picker for a delivery order and load the partner's courier list
+  const handleOpenCourierPicker = (order: Order) => {
+    setCourierPickerOrder(order);
+    setLoadingCouriers(true);
+    couriersApi.getCouriers()
+      .then((data) => setCouriers(data))
+      .catch((err) => {
+        console.error("Failed to load couriers:", err);
+        toast.error("Kuryerlar ro'yxatini yuklashda xatolik yuz berdi.");
+      })
+      .finally(() => setLoadingCouriers(false));
+  };
+
+  // Assign a specific own courier — the order becomes ACCEPTED immediately, no
+  // confirmation from the courier is awaited.
+  const handleAssignCourier = async (courierUuid: string) => {
+    if (!courierPickerOrder) return;
+    setAssigningCourierUuid(courierUuid);
+    try {
+      await ordersApi.assignOwnCourier(courierPickerOrder.uuid, courierUuid);
+      setOrders((prev) => prev.map((o) => (o.uuid === courierPickerOrder.uuid ? { ...o, status: 'ACCEPTED' } : o)));
+      toast.success("Kuryer buyurtmaga muvaffaqiyatli biriktirildi.");
+      setCourierPickerOrder(null);
+      fetchOrders(false);
+    } catch (err: any) {
+      console.error("Failed to assign courier:", err);
+      toast.error(err.response?.data?.message || "Kuryerni biriktirishda xatolik yuz berdi.");
+    } finally {
+      setAssigningCourierUuid(null);
+    }
+  };
+
+  // Push a delivery order out to the global courier pool (own couriers busy/unavailable)
+  const handleDispatchGlobally = async (order: Order) => {
+    setDispatchingGloballyUuid(order.uuid);
+    try {
+      await ordersApi.dispatchGlobally(order.uuid);
+      toast.success("Buyurtma global kuryerlarga yuborildi.");
+    } catch (err: any) {
+      console.error("Failed to dispatch order globally:", err);
+      toast.error(err.response?.data?.message || "Buyurtmani global kuryerlarga yuborishda xatolik yuz berdi.");
+    } finally {
+      setDispatchingGloballyUuid(null);
+    }
   };
 
   const handleCompleteOrder = async (orderUuid: string) => {
@@ -992,9 +1090,13 @@ const OrdersPage: React.FC = () => {
                     }}
                     onDrop={() => {
                       if (draggedOrder && isValidDropTarget) {
+                        const isPendingLike = draggedOrder.status === 'PENDING' || draggedOrder.status === 'SEARCHING_COURIER';
                         if (col.status === 'COMPLETED') {
                           handleCompleteOrder(draggedOrder.uuid);
-                        } else if (col.status === 'ACCEPTED' && (draggedOrder.status === 'PENDING' || draggedOrder.status === 'SEARCHING_COURIER')) {
+                        } else if (col.status === 'ACCEPTED' && isPendingLike && draggedOrder.delivery_type === 'DELIVERY') {
+                          // Courier orders accept via courier assignment, not a plain status change
+                          handleOpenCourierPicker(draggedOrder);
+                        } else if (col.status === 'ACCEPTED' && isPendingLike) {
                           handleAcceptOrder(draggedOrder);
                         } else {
                           handleUpdateStatus(draggedOrder.uuid, col.status);
@@ -1039,6 +1141,8 @@ const OrdersPage: React.FC = () => {
                             onOpenPayment={handleOpenPaymentModal}
                             onMarkReady={(o) => handleUpdateStatus(o.uuid, 'READY_FOR_PICKUP')}
                             onAccept={handleAcceptOrder}
+                            onAssignCourier={handleOpenCourierPicker}
+                            onDispatchGlobally={handleDispatchGlobally}
                             skipIntermediateStages={skipIntermediateStages}
                             isSelected={selectedOrder?.uuid === order.uuid}
                           />
@@ -1226,20 +1330,47 @@ const OrdersPage: React.FC = () => {
             {/* Context Actions based on status */}
             <div className="space-y-2.5">
               {(selectedOrder.status === 'PENDING' || selectedOrder.status === 'SEARCHING_COURIER') && (
-                <button
-                  onClick={() => {
-                    handleAcceptOrder(selectedOrder);
-                    setSelectedOrder(null);
-                  }}
-                  className="w-full py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  Qabul qilish
-                </button>
+                <div className="space-y-2">
+                  {/* Courier (DELIVERY) orders accept via courier assignment instead of a plain Accept button */}
+                  {selectedOrder.delivery_type === 'DELIVERY' ? (
+                    <button
+                      onClick={() => handleOpenCourierPicker(selectedOrder)}
+                      className="w-full py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
+                    >
+                      <Bike className="w-4 h-4" />
+                      O'z kuryeringizni biriktirish
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        handleAcceptOrder(selectedOrder);
+                        setSelectedOrder(null);
+                      }}
+                      className="w-full py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      Qabul qilish
+                    </button>
+                  )}
+                </div>
               )}
 
               {selectedOrder.status === 'ACCEPTED' && (
                 <div className="space-y-2">
+                  {selectedOrder.delivery_type === 'DELIVERY' && (
+                    <button
+                      onClick={() => handleDispatchGlobally(selectedOrder)}
+                      disabled={dispatchingGloballyUuid === selectedOrder.uuid}
+                      className="w-full py-2.5 rounded-xl bg-overlay hover:bg-overlay-strong text-slate-300 font-bold text-xs border border-edge-strong transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {dispatchingGloballyUuid === selectedOrder.uuid ? (
+                        <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-ink rounded-full animate-spin" />
+                      ) : (
+                        <Globe2 className="w-3.5 h-3.5" />
+                      )}
+                      Global kuryerlarga yuborish
+                    </button>
+                  )}
                   {skipIntermediateStages ? (
                     <button
                       onClick={() => {
@@ -1450,6 +1581,84 @@ const OrdersPage: React.FC = () => {
                 )}
                 {paymentSaving ? 'Saqlanmoqda...' : 'Tasdiqlash'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Own Courier Picker Modal ────────────────────────────── */}
+      {courierPickerOrder && (
+        <div
+          onClick={() => !assigningCourierUuid && setCourierPickerOrder(null)}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-darkCard border border-edge-strong rounded-2xl shadow-2xl flex flex-col max-h-[80vh] animate-[slideUp_0.25s_ease-out] overflow-hidden"
+          >
+            <div className="p-5 border-b border-edge flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="font-bold text-lg text-ink flex items-center gap-2">
+                  <Bike className="w-5 h-5 text-brand" />
+                  Kuryer tanlash
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {courierPickerOrder.order_number || `#${courierPickerOrder.id}`} buyurtmasi uchun
+                </p>
+              </div>
+              <button
+                onClick={() => !assigningCourierUuid && setCourierPickerOrder(null)}
+                disabled={!!assigningCourierUuid}
+                className="p-2 rounded-lg bg-overlay hover:bg-overlay-strong text-slate-400 hover:text-ink transition cursor-pointer disabled:opacity-40"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+              {loadingCouriers ? (
+                <div className="flex justify-center items-center py-16">
+                  <div className="w-7 h-7 border-3 border-brand/20 border-t-brand rounded-full animate-spin" />
+                </div>
+              ) : couriers.length > 0 ? (
+                couriers.map((courier) => {
+                  const isOnline = courier.status === 'online';
+                  const isAssigning = assigningCourierUuid === courier.uuid;
+                  return (
+                    <div
+                      key={courier.uuid}
+                      className="p-3.5 rounded-xl border border-edge bg-slate-900 flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-bold text-ink text-sm truncate">
+                          {courier.first_name} {courier.last_name}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                          <span className={`text-[10px] font-bold uppercase ${isOnline ? 'text-emerald-400' : 'text-slate-500'}`}>
+                            {isOnline ? 'Onlayn' : courier.status === 'busy' ? 'Band' : (courier.status || "Noma'lum")}
+                          </span>
+                          <span className="text-[10px] text-slate-500">· {courier.phone}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleAssignCourier(courier.uuid)}
+                        disabled={!!assigningCourierUuid}
+                        className="shrink-0 px-3.5 py-2 rounded-lg bg-brand hover:bg-brand-dark text-white font-bold text-xs transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                      >
+                        {isAssigning && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                        Biriktirish
+                      </button>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="py-12 text-center text-slate-500">
+                  <Bike className="w-10 h-10 mx-auto mb-2 text-slate-600" />
+                  <p className="text-sm font-semibold">Kuryerlar topilmadi</p>
+                  <p className="text-xs mt-1">Xodimlar bo'limidan kuryer qo'shishingiz mumkin</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

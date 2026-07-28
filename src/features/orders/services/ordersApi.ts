@@ -41,6 +41,7 @@ export interface Order {
   distance?: number;
   description?: string;
   reject_reason?: string | null;
+  courier?: { first_name?: string; last_name?: string } | null;
   is_paid?: boolean;
   table_number?: string | null;
   delivery_type?: string;
@@ -101,6 +102,22 @@ export const ordersApi = {
     payload: { payment_method: string, is_paid: boolean }
   ): Promise<any> => {
     const response = await apiClient.post(`orders/partner-pos/${orderUuid}/mark-paid/`, payload);
+    return response.data;
+  },
+
+  // Assign one of the partner's own couriers directly — the order is accepted
+  // immediately, no confirmation is awaited from the courier.
+  assignOwnCourier: async (orderUuid: string, courierUuid: string): Promise<any> => {
+    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/assign-own-courier/`, {
+      courier_uuid: courierUuid,
+    });
+    return response.data;
+  },
+
+  // Push the order out to the global courier pool (used when the partner's own
+  // couriers are busy/unavailable). Backend runs a 5-minute acceptance timer.
+  dispatchGlobally: async (orderUuid: string): Promise<any> => {
+    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/dispatch-globally/`);
     return response.data;
   },
 

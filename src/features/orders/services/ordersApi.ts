@@ -134,8 +134,8 @@ export const ordersApi = {
   },
 
   createDeliveryOrder: async (payload: {
-    contact_phone: string;
-    contact_name: string;
+    contact_phone?: string;
+    contact_name?: string;
     address: string;
     latitude: number;
     longitude: number;
@@ -148,8 +148,8 @@ export const ordersApi = {
   },
 
   createPickupOrder: async (payload: {
-    contact_phone: string;
-    contact_name: string;
+    contact_phone?: string;
+    contact_name?: string;
     payment_method: string;
     description?: string;
     items: { product_uuid: string; quantity: number }[];

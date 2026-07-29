@@ -33,15 +33,13 @@ import { tablesApi } from '../../tables/services/tablesApi';
 import type { TableModel } from '../../tables/services/tablesApi';
 import { couriersApi } from '../../staff/services/couriersApi';
 import type { CourierModel } from '../../staff/services/couriersApi';
-import { STORAGE_KEYS, ENDPOINTS } from '../../../core/config/constants';
-import apiClient from '../../../core/api/client';
+import { STORAGE_KEYS } from '../../../core/config/constants';
 import confetti from 'canvas-confetti';
 import { EditOrderModal } from '../components/EditOrderModal';
 import { useToast } from '../../../core/components/ToastProvider';
 
-// Partners identified by this opening-hours UUID skip the "Tayyorlanmoqda" (Preparing)
-// and "Yo'lda" (Delivering) kanban stages entirely — Accepted orders go straight to Ready.
-const QUICK_READY_OPENING_HOURS_UUID = 'ff187cf7-21b8-430e-ab3d-41603c0f44a0';
+// Which kanban status columns the partner has chosen to show/hide, kept per-browser.
+const KANBAN_VISIBILITY_STORAGE_KEY = 'milliygo_kanban_visible_statuses';
 
 // Kanban Board Column Configurations (explicit class names for Tailwind compilation safety)
 const KANBAN_COLUMNS: {
@@ -357,18 +355,33 @@ const OrdersPage: React.FC = () => {
   // Tables (used to free up a table's status once its dine-in order is paid)
   const [tables, setTables] = useState<TableModel[]>([]);
 
-  // Some partners (identified by their opening-hours record uuid) skip the
-  // Preparing/Delivering kanban stages — Accepted orders go straight to Ready.
-  const [skipIntermediateStages, setSkipIntermediateStages] = useState(false);
+  // Which kanban columns the partner wants shown, toggleable from the UI (persisted per-browser).
+  // Hiding "PREPARING" also collapses the workflow so Accepted orders go straight to Ready.
+  const [visibleStatuses, setVisibleStatuses] = useState<Set<Order['status']>>(() => {
+    try {
+      const raw = localStorage.getItem(KANBAN_VISIBILITY_STORAGE_KEY);
+      if (raw) {
+        const parsed: string[] = JSON.parse(raw);
+        const valid = parsed.filter((s) => KANBAN_COLUMNS.some((c) => c.status === s)) as Order['status'][];
+        if (valid.length > 0) return new Set(valid);
+      }
+    } catch (err) {
+      console.error("Failed to read kanban column visibility from localStorage:", err);
+    }
+    return new Set(KANBAN_COLUMNS.map((c) => c.status));
+  });
 
-  useEffect(() => {
-    apiClient.get(ENDPOINTS.PROFILE.ME)
-      .then((res) => {
-        const data = res.data?.data || res.data;
-        setSkipIntermediateStages(data?.opening_hours?.uuid === QUICK_READY_OPENING_HOURS_UUID);
-      })
-      .catch((err) => console.error("Failed to fetch partner profile for kanban flag check:", err));
-  }, []);
+  const toggleStatusVisibility = (status: Order['status']) => {
+    setVisibleStatuses((prev) => {
+      if (prev.has(status) && prev.size <= 1) return prev; // keep at least one column visible
+      const next = new Set(prev);
+      next.has(status) ? next.delete(status) : next.add(status);
+      localStorage.setItem(KANBAN_VISIBILITY_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      return next;
+    });
+  };
+
+  const skipIntermediateStages = !visibleStatuses.has('PREPARING');
 
   useEffect(() => {
     tablesApi.getTables()
@@ -889,6 +902,29 @@ const OrdersPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Kanban Column Visibility Filter — lets the partner toggle which status columns are shown */}
+      {viewMode === 'kanban' && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] uppercase font-bold text-slate-500 mr-0.5">Statuslar:</span>
+          {KANBAN_COLUMNS.map((col) => {
+            const isOn = visibleStatuses.has(col.status);
+            return (
+              <button
+                key={col.status}
+                onClick={() => toggleStatusVisibility(col.status)}
+                title={isOn ? `${col.label} ustunini yashirish` : `${col.label} ustunini ko'rsatish`}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${isOn
+                  ? `${col.badgeBg} ${col.badgeText} border-transparent`
+                  : 'bg-overlay text-slate-500 border-edge-strong opacity-60'
+                  }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${isOn ? 'bg-current' : 'bg-slate-600'}`} />
+                <span className={isOn ? '' : 'line-through'}>{col.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Main content container (full width) */}
       <div className="w-full space-y-6">
@@ -1057,9 +1093,7 @@ const OrdersPage: React.FC = () => {
                 </button>
               </div>
             ) : (
-              KANBAN_COLUMNS.filter((col) =>
-                !skipIntermediateStages || (col.status !== 'PREPARING' && col.status !== 'ON_THE_WAY')
-              ).map((col) => {
+              KANBAN_COLUMNS.filter((col) => visibleStatuses.has(col.status)).map((col) => {
                 const colOrders = getFilteredOrdersByDeliveryType(orders).filter(o =>
                   col.status === 'PENDING'
                     ? (o.status === 'PENDING' || o.status === 'SEARCHING_COURIER')

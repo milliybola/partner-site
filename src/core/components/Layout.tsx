@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
+  Kanban,
   ShoppingBag,
-  Grid,
+  BookOpen,
   DollarSign,
   User,
   LogOut,
@@ -143,11 +144,11 @@ const Layout: React.FC = () => {
 
   const navItems = [
     { to: '/', label: 'Dashbord', icon: LayoutDashboard },
-    { to: '/orders', label: 'Karban', icon: ShoppingBag },
+    { to: '/orders', label: 'Kanban', icon: Kanban },
     { to: '/new-order', label: 'Yangi buyurtma', icon: PlusCircle },
     { to: '/tables', label: 'Stollar', icon: Table },
     { to: '/shift', label: 'Smena', icon: Clock },
-    { to: '/catalog', label: 'Katalog', icon: Grid },
+    { to: '/catalog', label: 'Katalog', icon: BookOpen },
     ...(partner?.role === 'manager' ? [] : [{ to: '/branches', label: 'Filiallar', icon: Building2 }]),
     ...(partner?.role === 'manager' ? [] : [{ to: '/finance', label: 'Moliya', icon: DollarSign }]),
     { to: '/all-orders', label: 'Barcha buyurtmalar', icon: ShoppingBag },

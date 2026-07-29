@@ -429,9 +429,9 @@ const CreateOrderPage: React.FC = () => {
     if (cart.length === 0) return false;
     
     if (serviceType === 'DELIVERY') {
-      return contactName.trim().length >= 2 && contactPhone.trim().length >= 7 && address.trim().length >= 3;
+      return address.trim().length >= 3;
     } else if (serviceType === 'PICKUP') {
-      return contactName.trim().length >= 2 && contactPhone.trim().length >= 7;
+      return true;
     } else if (serviceType === 'DINE_IN') {
       return selectedTableUuid.trim().length > 0;
     }
@@ -556,8 +556,8 @@ const CreateOrderPage: React.FC = () => {
     try {
       if (serviceType === 'DELIVERY') {
         const payload = {
-          contact_phone: cleanedPhone,
-          contact_name: contactName.trim(),
+          contact_phone: cleanedPhone || undefined,
+          contact_name: contactName.trim() || undefined,
           address: address.trim(),
           latitude: latVal,
           longitude: lngVal,
@@ -568,8 +568,8 @@ const CreateOrderPage: React.FC = () => {
         await ordersApi.createDeliveryOrder(payload);
       } else if (serviceType === 'PICKUP') {
         const payload = {
-          contact_phone: cleanedPhone,
-          contact_name: contactName.trim(),
+          contact_phone: cleanedPhone || undefined,
+          contact_name: contactName.trim() || undefined,
           payment_method: paymentMethod,
           description: comment.trim() || undefined,
           items: commonItems,
@@ -1087,12 +1087,11 @@ const CreateOrderPage: React.FC = () => {
                   {/* Customer Name input */}
                   <div className="space-y-1.5 flex flex-col items-start">
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                      <User className={`w-3.5 h-3.5 ${serviceType !== 'DINE_IN' ? 'text-brand' : 'text-slate-500'}`} />
-                      <span>Mijoz ismi {serviceType === 'DINE_IN' && '(Ixtiyoriy)'}</span>
+                      <User className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Mijoz ismi (Ixtiyoriy)</span>
                     </label>
                     <input
                       type="text"
-                      required={serviceType !== 'DINE_IN'}
                       placeholder="Masalan: Anvar"
                       value={contactName}
                       onChange={(e) => updateActiveCart({ contactName: e.target.value })}
@@ -1103,12 +1102,11 @@ const CreateOrderPage: React.FC = () => {
                   {/* Customer Phone input */}
                   <div className="space-y-1.5 flex flex-col items-start">
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                      <PhoneIcon className={`w-3.5 h-3.5 ${serviceType !== 'DINE_IN' ? 'text-brand' : 'text-slate-500'}`} />
-                      <span>Mijoz telefoni {serviceType === 'DINE_IN' && '(Ixtiyoriy)'}</span>
+                      <PhoneIcon className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Mijoz telefoni (Ixtiyoriy)</span>
                     </label>
                     <input
                       type="text"
-                      required={serviceType !== 'DINE_IN'}
                       placeholder="+998901234567"
                       value={contactPhone}
                       onChange={(e) => updateActiveCart({ contactPhone: e.target.value })}

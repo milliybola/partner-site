@@ -64,10 +64,14 @@ export const getStatusSlug = (status: string): string => {
 };
 
 export const ordersApi = {
-  getOrders: async (filialUuid?: string): Promise<Order[]> => {
+  getOrders: async (filters?: { filialUuid?: string; fromDate?: string; toDate?: string }): Promise<Order[]> => {
     const config: any = {};
-    if (filialUuid) {
-      config.params = { filial: filialUuid };
+    const params: Record<string, string> = {};
+    if (filters?.filialUuid) params.filial = filters.filialUuid;
+    if (filters?.fromDate) params.from_date = filters.fromDate;
+    if (filters?.toDate) params.to_date = filters.toDate;
+    if (Object.keys(params).length > 0) {
+      config.params = params;
     }
     const response = await apiClient.get(ENDPOINTS.ORDERS.LIST, config);
     // APIs might return results inside a 'results' field or direct array
@@ -136,7 +140,7 @@ export const ordersApi = {
   createDeliveryOrder: async (payload: {
     contact_phone?: string;
     contact_name?: string;
-    address: string;
+    address?: string;
     latitude: number;
     longitude: number;
     payment_method: string;

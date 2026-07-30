@@ -429,14 +429,14 @@ const CreateOrderPage: React.FC = () => {
     if (cart.length === 0) return false;
     
     if (serviceType === 'DELIVERY') {
-      return address.trim().length >= 3;
+      return true;
     } else if (serviceType === 'PICKUP') {
       return true;
     } else if (serviceType === 'DINE_IN') {
       return selectedTableUuid.trim().length > 0;
     }
     return false;
-  }, [cart, serviceType, contactName, contactPhone, address, selectedTableUuid]);
+  }, [cart, serviceType, selectedTableUuid]);
 
   // Handle Wizard Steps Navigation
   const handleServiceSelect = (type: 'DELIVERY' | 'PICKUP' | 'DINE_IN') => {
@@ -558,7 +558,7 @@ const CreateOrderPage: React.FC = () => {
         const payload = {
           contact_phone: cleanedPhone || undefined,
           contact_name: contactName.trim() || undefined,
-          address: address.trim(),
+          address: address.trim() || undefined,
           latitude: latVal,
           longitude: lngVal,
           payment_method: paymentMethod,
@@ -1119,11 +1119,10 @@ const CreateOrderPage: React.FC = () => {
                 {serviceType === 'DELIVERY' && (
                   <div className="space-y-1.5 animate-fade-in flex flex-col items-start">
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-brand" />
-                      <span>Yetkazish manzili</span>
+                      <MapPin className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Yetkazish manzili (Ixtiyoriy)</span>
                     </label>
                     <textarea
-                      required
                       rows={2}
                       placeholder="Ko'cha, uy, kvartira, podyezd, qavat, mo'ljal..."
                       value={address}

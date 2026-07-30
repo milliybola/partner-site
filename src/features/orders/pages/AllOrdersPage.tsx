@@ -13,6 +13,7 @@ import {
   AlertCircle,
   DollarSign,
   SlidersHorizontal,
+  ArrowUpDown,
   Printer,
   User,
   Truck,
@@ -25,6 +26,42 @@ import type { PartnerFilial } from '../services/filialApi';
 import { STORAGE_KEYS } from '../../../core/config/constants';
 import { EditOrderModal } from '../components/EditOrderModal';
 import { useToast } from '../../../core/components/ToastProvider';
+
+type DatePreset = 'ALL' | 'TODAY' | 'WEEK' | 'MONTH' | 'YEAR' | 'CUSTOM';
+
+const formatDateParam = (d: Date): string => {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+// Resolves a preset into a concrete from/to date pair (both inclusive, local time).
+const getPresetDateRange = (preset: DatePreset): { from?: string; to?: string } => {
+  const now = new Date();
+  const today = formatDateParam(now);
+  switch (preset) {
+    case 'TODAY':
+      return { from: today, to: today };
+    case 'WEEK': {
+      const day = now.getDay(); // 0 = Sunday
+      const diffToMonday = day === 0 ? 6 : day - 1;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - diffToMonday);
+      return { from: formatDateParam(monday), to: today };
+    }
+    case 'MONTH': {
+      const first = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from: formatDateParam(first), to: today };
+    }
+    case 'YEAR': {
+      const first = new Date(now.getFullYear(), 0, 1);
+      return { from: formatDateParam(first), to: today };
+    }
+    default:
+      return {};
+  }
+};
 
 const AllOrdersPage: React.FC = () => {
   const toast = useToast();
@@ -40,6 +77,9 @@ const AllOrdersPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [paymentFilter, setPaymentFilter] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<string>('newest');
+  const [datePreset, setDatePreset] = useState<DatePreset>('ALL');
+  const [customFromDate, setCustomFromDate] = useState('');
+  const [customToDate, setCustomToDate] = useState('');
 
   // Filial / Role States
   const [userRole, setUserRole] = useState<'superadmin' | 'manager'>('superadmin');
@@ -51,8 +91,16 @@ const AllOrdersPage: React.FC = () => {
     setError(null);
     try {
       const activeBranchUuid = branchUuid !== undefined ? branchUuid : selectedFilialUuid;
-      const data = await ordersApi.getOrders(activeBranchUuid || undefined);
+      const { from, to } = datePreset === 'CUSTOM'
+        ? { from: customFromDate || undefined, to: customToDate || undefined }
+        : getPresetDateRange(datePreset);
+      const data = await ordersApi.getOrders({
+        filialUuid: activeBranchUuid || undefined,
+        fromDate: from,
+        toDate: to,
+      });
       setOrders(data);
+      return data;
     } catch (err: any) {
       console.error("Failed to load orders:", err);
       setError(
@@ -60,10 +108,11 @@ const AllOrdersPage: React.FC = () => {
         err.message ||
         "Buyurtmalarni yuklashda xatolik yuz berdi. Internet aloqasini tekshiring."
       );
+      return [];
     } finally {
       setLoading(false);
     }
-  }, [selectedFilialUuid]);
+  }, [selectedFilialUuid, datePreset, customFromDate, customToDate]);
 
   useEffect(() => {
     const data = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
@@ -78,8 +127,12 @@ const AllOrdersPage: React.FC = () => {
           .catch(err => console.error("Failed to fetch filials in AllOrdersPage:", err));
       }
     }
-    fetchOrders();
   }, []);
+
+  // Refetch whenever the branch or date filters change (also covers the initial load)
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
 
   const handlePrintReceipt = useCallback(async (orderUuid: string) => {
     setPrintingUuid(orderUuid);
@@ -589,7 +642,7 @@ const AllOrdersPage: React.FC = () => {
 
           {/* Sort selection */}
           <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
-            <Calendar className="w-3.5 h-3.5 shrink-0" />
+            <ArrowUpDown className="w-3.5 h-3.5 shrink-0" />
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
@@ -602,17 +655,58 @@ const AllOrdersPage: React.FC = () => {
             </select>
           </div>
 
+          {/* Date range filter */}
+          <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
+            <Calendar className="w-3.5 h-3.5 shrink-0" />
+            <select
+              value={datePreset}
+              onChange={(e) => {
+                const val = e.target.value as DatePreset;
+                setDatePreset(val);
+                if (val !== 'CUSTOM') {
+                  setCustomFromDate('');
+                  setCustomToDate('');
+                }
+              }}
+              className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
+            >
+              <option value="ALL" className="bg-slate-900 text-ink">Umumiy (barcha vaqt)</option>
+              <option value="TODAY" className="bg-slate-900 text-ink">Bugungi</option>
+              <option value="WEEK" className="bg-slate-900 text-ink">Shu haftalik</option>
+              <option value="MONTH" className="bg-slate-900 text-ink">Shu oylik</option>
+              <option value="YEAR" className="bg-slate-900 text-ink">Shu yillik</option>
+              <option value="CUSTOM" className="bg-slate-900 text-ink">Sana oralig'i...</option>
+            </select>
+          </div>
+
+          {/* Custom date range inputs (shown only when "Sana oralig'i" is selected) */}
+          {datePreset === 'CUSTOM' && (
+            <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
+              <input
+                type="date"
+                value={customFromDate}
+                onChange={(e) => setCustomFromDate(e.target.value)}
+                max={customToDate || undefined}
+                className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
+              />
+              <span className="text-slate-600">→</span>
+              <input
+                type="date"
+                value={customToDate}
+                onChange={(e) => setCustomToDate(e.target.value)}
+                min={customFromDate || undefined}
+                className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
+              />
+            </div>
+          )}
+
           {/* Branch filter (Superadmin only) */}
           {userRole === 'superadmin' && filials.length > 0 && (
             <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
               <SlidersHorizontal className="w-3.5 h-3.5 shrink-0 text-brand" />
               <select
                 value={selectedFilialUuid}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedFilialUuid(val);
-                  fetchOrders(val);
-                }}
+                onChange={(e) => setSelectedFilialUuid(e.target.value)}
                 className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
               >
                 <option value="" className="bg-slate-900 text-ink">Barcha filiallar</option>
@@ -957,8 +1051,7 @@ const AllOrdersPage: React.FC = () => {
             setEditingOrder(null);
             if (refresh) {
               try {
-                const data = await ordersApi.getOrders();
-                setOrders(data);
+                const data = await fetchOrders();
                 const fresh = data.find((o: Order) => o.uuid === editingOrder.uuid);
                 if (fresh) {
                   setSelectedOrder(fresh);

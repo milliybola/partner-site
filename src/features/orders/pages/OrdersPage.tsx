@@ -431,7 +431,7 @@ const OrdersPage: React.FC = () => {
     setError(null);
     try {
       const activeBranchUuid = branchUuid !== undefined ? branchUuid : selectedFilialUuid;
-      const data = await ordersApi.getOrders(activeBranchUuid || undefined);
+      const data = await ordersApi.getOrders({ filialUuid: activeBranchUuid || undefined });
       setOrders(data);
     } catch (err: any) {
       console.error("Failed to load orders from API:", err);

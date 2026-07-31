@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -7,8 +7,10 @@ const __dirname = path.dirname(__filename);
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
-// Skip the print preview dialog and send window.print() straight to the OS default printer
-// (matches the "Kiosk printing" behavior previously documented for running this app in a browser)
+// Kept as a fallback for window.print() calls, but the --kiosk-printing switch alone isn't
+// reliable across Chromium versions — the renderer instead asks the 'silent-print' IPC
+// handler below to print directly via webContents.print({ silent: true }), which is the
+// approach Electron's docs actually recommend for a dialog-free print.
 app.commandLine.appendSwitch('kiosk-printing');
 
 function createWindow() {
@@ -18,7 +20,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   });
 
@@ -32,6 +34,39 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'dist/index.html'));
   }
 }
+
+// Print arbitrary receipt HTML with no OS/print-dialog prompt. Loads the HTML into a
+// throwaway hidden window and prints it silently to the default printer, then discards
+// the window. `copies` is handled natively by webContents.print() (no need to repeat calls).
+ipcMain.handle('silent-print', async (_event, { html, copies = 1 } = {}) => {
+  const printWindow = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  try {
+    await printWindow.loadURL(`data:text/html;charset=UTF-8,${encodeURIComponent(html)}`);
+    await new Promise((resolve, reject) => {
+      printWindow.webContents.print(
+        { silent: true, printBackground: true, copies },
+        (success, failureReason) => {
+          if (success) {
+            resolve();
+          } else {
+            reject(new Error(failureReason || 'Print failed'));
+          }
+        }
+      );
+    });
+  } finally {
+    if (!printWindow.isDestroyed()) {
+      printWindow.destroy();
+    }
+  }
+});
 
 app.whenReady().then(() => {
   createWindow();

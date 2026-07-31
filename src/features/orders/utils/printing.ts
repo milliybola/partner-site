@@ -1,5 +1,14 @@
 import { ordersApi } from '../services/ordersApi';
 
+declare global {
+  interface Window {
+    electronAPI?: {
+      // Prints HTML silently (no OS print dialog) via the Electron main process.
+      silentPrint: (payload: { html: string; copies: number }) => Promise<void>;
+    };
+  }
+}
+
 export interface ReceiptData {
   order_number?: string;
   created_at?: string;
@@ -27,10 +36,23 @@ export interface ReceiptData {
   partner_phone?: string;
 }
 
-// Send an HTML document to the printer via a set of hidden iframes (one per copy)
-const printHtmlCopies = (html: string): void => {
+// Send an HTML document to the printer, silently and without any OS/browser print dialog.
+const printHtmlCopies = async (html: string): Promise<void> => {
   const printCopies = parseInt(localStorage.getItem('milliygo_print_copies') || '1', 10) || 1;
 
+  // Desktop app — print via the main process (webContents.print({ silent: true })).
+  // Reliable across Chromium versions, unlike the browser-only --kiosk-printing switch below.
+  if (window.electronAPI?.silentPrint) {
+    try {
+      await window.electronAPI.silentPrint({ html, copies: printCopies });
+    } catch (err) {
+      console.error("Silent print failed:", err);
+    }
+    return;
+  }
+
+  // Plain browser fallback — relies on the browser itself being launched with the
+  // --kiosk-printing flag (see Settings page instructions) for a dialog-free print.
   for (let i = 0; i < printCopies; i++) {
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
@@ -39,6 +61,10 @@ const printHtmlCopies = (html: string): void => {
     iframe.style.width = '0';
     iframe.style.height = '0';
     iframe.style.border = '0';
+    iframe.onload = () => {
+      iframe.contentWindow?.print();
+      setTimeout(() => iframe.remove(), 1000);
+    };
     document.body.appendChild(iframe);
 
     const doc = iframe.contentDocument || iframe.contentWindow?.document;
@@ -264,15 +290,6 @@ const buildReceiptHtml = (receiptData: ReceiptData): string => {
           <p style="margin: 0; font-weight: 700;">milliyapp.uz</p>
 
         </div>
-
-        <script>
-          window.onload = function() {
-            window.print();
-            setTimeout(function() {
-              window.frameElement.remove();
-            }, 1000);
-          };
-        </script>
       </body>
     </html>
   `;
@@ -284,13 +301,13 @@ const buildReceiptHtml = (receiptData: ReceiptData): string => {
 export const printReceipt = async (orderUuid: string): Promise<void> => {
   const responseData = await ordersApi.getOrderReceipt(orderUuid);
   const receiptData = responseData.data || responseData;
-  printHtmlCopies(buildReceiptHtml(receiptData));
+  await printHtmlCopies(buildReceiptHtml(receiptData));
 };
 
 // Print the same official receipt layout, but built purely from local data —
 // used before the order actually exists on the backend (e.g. reviewing before submit).
-export const printReceiptPreview = (receiptData: ReceiptData): void => {
-  printHtmlCopies(buildReceiptHtml(receiptData));
+export const printReceiptPreview = async (receiptData: ReceiptData): Promise<void> => {
+  await printHtmlCopies(buildReceiptHtml(receiptData));
 };
 
 export interface PreCheckOrderInput {
@@ -306,7 +323,7 @@ export interface PreCheckOrderInput {
 }
 
 // Print a simple preliminary (not-yet-paid) receipt built purely from local order data
-export const printPreCheck = (order: PreCheckOrderInput): void => {
+export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> => {
   const now = new Date();
   const timeStr = now.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -364,15 +381,9 @@ export const printPreCheck = (order: PreCheckOrderInput): void => {
         <div class="divider"></div>
         <div class="total-row"><span>Jami:</span><span>${totalAmount.toLocaleString('uz-UZ')} so'm</span></div>
         <div class="total-row" style="margin-top: 4px;"><span>Jami to'lov:</span><span>${totalAmount.toLocaleString('uz-UZ')} so'm</span></div>
-        <script>
-          window.onload = function() {
-            window.print();
-            setTimeout(function() { window.frameElement.remove(); }, 1000);
-          };
-        </script>
       </body>
     </html>
   `;
 
-  printHtmlCopies(preCheckHtml);
+  await printHtmlCopies(preCheckHtml);
 };

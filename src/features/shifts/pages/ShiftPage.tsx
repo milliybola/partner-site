@@ -21,10 +21,12 @@ import { STORAGE_KEYS } from '../../../core/config/constants';
 import { shiftApi } from '../services/shiftApi';
 import type { Shift } from '../services/shiftApi';
 import { useToast } from '../../../core/components/ToastProvider';
+import { useConfirm } from '../../../core/components/ConfirmProvider';
 
 const ShiftPage: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
+  const confirm = useConfirm();
 
   // User role details
   const [userRole, setUserRole] = useState<'superadmin' | 'manager'>('superadmin');
@@ -198,14 +200,35 @@ const ShiftPage: React.FC = () => {
   const handleCloseShiftSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCloseError(null);
-    setSubmittingClose(true);
+
+    // Staff must actively count the drawer and type the real amount — an empty field
+    // must never silently become 0 (that's exactly how "Kamomad" reports have been
+    // triggered by mistake: a shift closed with 0 while cash was actually sitting there).
+    if (!closingBalance.trim()) {
+      setCloseError("Iltimos, kassadagi naqd pulni sanab, haqiqiy summani kiriting. Maydon bo'sh qolishi mumkin emas.");
+      return;
+    }
 
     const balanceNum = Number(closingBalance.replace(/[^\d]/g, ''));
     if (isNaN(balanceNum) || balanceNum < 0) {
       setCloseError("Iltimos, kassa balansini to'g'ri musbat son ko'rinishida kiriting.");
-      setSubmittingClose(false);
       return;
     }
+
+    const expectedBalance = Number(currentShift?.expected_closing_balance) || 0;
+    if (balanceNum !== expectedBalance) {
+      const diff = expectedBalance - balanceNum;
+      const diffLabel = diff > 0 ? `Kamomad: ${formatUzS(diff)}` : `Ortiqcha: ${formatUzS(Math.abs(diff))}`;
+      const proceed = await confirm(
+        `Kutilgan kassa qoldig'i ${formatUzS(expectedBalance)}, siz esa ${formatUzS(balanceNum)} kiritdingiz. ${diffLabel}. Kassadagi naqd pulni qayta sanab ko'rdingizmi? Shu summa bilan davom etasizmi?`,
+        { title: "Kassa summasi mos kelmadi", confirmText: "Ha, shu summa to'g'ri", cancelText: "Qayta sanayman", danger: true }
+      );
+      if (!proceed) {
+        return;
+      }
+    }
+
+    setSubmittingClose(true);
 
     try {
       const response = await shiftApi.closeShift(balanceNum);

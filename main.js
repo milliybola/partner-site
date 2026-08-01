@@ -49,9 +49,28 @@ ipcMain.handle('silent-print', async (_event, { html, copies = 1 } = {}) => {
 
   try {
     await printWindow.loadURL(`data:text/html;charset=UTF-8,${encodeURIComponent(html)}`);
+
+    // The receipt HTML declares `@page { size: 80mm auto }`, but webContents.print()
+    // doesn't honor CSS auto-height the way a real browser print dialog does — left
+    // unset, it falls back to the printer's default paper size (often A4/Letter),
+    // which is why a short thermal receipt was printing a long trailing blank stretch.
+    // Measure the actual rendered content and print an exact-height page instead.
+    const contentHeightPx = await printWindow.webContents.executeJavaScript(
+      'Math.ceil(document.body.getBoundingClientRect().height)'
+    );
+    const MICRONS_PER_PX = 25400 / 96; // 1 CSS px = 1/96 inch = 25400/96 microns
+    const RECEIPT_WIDTH_MICRONS = 80000; // 80mm, matches the @page width above
+    const heightMicrons = Math.ceil((contentHeightPx + 20) * MICRONS_PER_PX); // small safety buffer
+
     await new Promise((resolve, reject) => {
       printWindow.webContents.print(
-        { silent: true, printBackground: true, copies },
+        {
+          silent: true,
+          printBackground: true,
+          copies,
+          margins: { marginType: 'none' },
+          pageSize: { width: RECEIPT_WIDTH_MICRONS, height: heightMicrons },
+        },
         (success, failureReason) => {
           if (success) {
             resolve();

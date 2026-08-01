@@ -462,7 +462,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                   </button>
                 </div>
               ) : filteredProducts.length > 0 ? (
-                <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   {filteredProducts.map((prod) => {
                     const cartQty = isEditMode
                       ? 0

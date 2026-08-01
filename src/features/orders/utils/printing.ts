@@ -83,10 +83,25 @@ const printHtmlCopies = async (html: string): Promise<void> => {
 // Appends a self-triggering print script to an HTML document — used only for the
 // browser/iframe fallback above. The Electron path prints the raw `html` as-is, since
 // the main process triggers the print itself (adding this script there would double-print).
+//
+// The template below declares `@page { size: 80mm auto; }`, but Chromium's real-printer
+// path (unlike its "Save as PDF" output) doesn't actually shrink the page to fit the
+// content for `auto` — it falls back to whatever paper size the printer driver reports
+// as its default, which for many generic thermal-printer Windows drivers is a large fixed
+// placeholder (observed: "80 x 3276mm"). That prints the receipt at the very top of a
+// multi-meter blank page. So before printing, this measures the real rendered height and
+// injects an explicit `@page` override in millimeters — a concrete number Chromium can
+// actually hand to the driver, instead of the ambiguous "auto" it silently ignores.
 const withAutoPrintScript = (html: string): string => {
   const autoPrintScript = `
     <script>
       window.onload = function() {
+        try {
+          var heightMm = Math.ceil(document.body.getBoundingClientRect().height / 96 * 25.4) + 5;
+          var pageSizeStyle = document.createElement('style');
+          pageSizeStyle.textContent = '@page { size: 80mm ' + heightMm + 'mm; margin: 0; }';
+          document.head.appendChild(pageSizeStyle);
+        } catch (e) {}
         window.print();
         setTimeout(function() {
           if (window.frameElement) window.frameElement.remove();

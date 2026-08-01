@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Search,
   Plus,
   Minus,
   Trash2,
@@ -68,7 +67,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   // Catalog states (shared by both modes)
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeCategoryUuid, setActiveCategoryUuid] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery] = useState('');
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [errorCatalog, setErrorCatalog] = useState<string | null>(null);
 
@@ -76,7 +75,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   const [cart, setCart] = useState<CartItem[]>([]);
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
-  const [comment, setComment] = useState('');
+  const [comment] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CLICK' | 'PAYME' | 'UZCARD'>('CASH');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -325,14 +324,28 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     }
   };
 
-  const handlePrintPreCheck = () => {
+  // Prints a preliminary (not-yet-paid) receipt — from the live order in EDIT mode,
+  // or from the local cart before the order is even created in CREATE mode.
+  const handlePrintPreCheck = async () => {
     setPrintingPreCheck(true);
     try {
-      printPreCheckUtil({
-        table_number: table.table_number,
-        total_price: editItemsTotal,
-        items: orderItems,
-      });
+      if (isEditMode) {
+        await printPreCheckUtil({
+          table_number: table.table_number,
+          total_price: editItemsTotal,
+          items: orderItems,
+        });
+      } else {
+        await printPreCheckUtil({
+          table_number: table.table_number,
+          total_price: cartSubtotal,
+          items: cart.map((item) => ({
+            product_name: item.product.name,
+            price_at_time_of_order: item.product.price,
+            quantity: item.quantity,
+          })),
+        });
+      }
     } finally {
       setPrintingPreCheck(false);
     }
@@ -394,7 +407,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
           {/* Left: Catalog / Menu */}
           <div className="lg:col-span-7 p-5 flex flex-col min-h-0 overflow-hidden border-b lg:border-b-0 lg:border-r border-edge">
             <div className="space-y-3 shrink-0">
-              <div className="relative">
+              {/* <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                 <input
                   type="text"
@@ -403,12 +416,12 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-slate-900/50 border border-edge hover:border-edge-strong focus:border-brand rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                 />
-              </div>
+              </div> */}
 
               <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
                 <button
                   onClick={() => setActiveCategoryUuid('all')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+                  className={`px-4 py-2 rounded-xl text-md font-bold transition shrink-0 cursor-pointer ${
                     activeCategoryUuid === 'all'
                       ? 'bg-brand text-white'
                       : 'bg-slate-900 text-slate-400 border border-edge hover:border-edge-strong hover:text-slate-200'
@@ -420,7 +433,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                   <button
                     key={cat.uuid}
                     onClick={() => setActiveCategoryUuid(cat.uuid)}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+                    className={`px-4 py-2 rounded-xl text-md font-bold transition shrink-0 cursor-pointer ${
                       activeCategoryUuid === cat.uuid
                         ? 'bg-brand text-white'
                         : 'bg-slate-900 text-slate-400 border border-edge hover:border-edge-strong hover:text-slate-200'
@@ -459,10 +472,13 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                     return (
                       <div
                         key={prod.uuid}
+                        onClick={() => {
+                          if (!isEditMode && prod.is_available) addToCart(prod);
+                        }}
                         className={`rounded-2xl border bg-darkCard overflow-hidden transition-all duration-200 flex flex-col justify-between ${
                           !prod.is_available
                             ? 'opacity-50 border-edge'
-                            : 'border-edge hover:border-edge-strong hover:shadow-lg'
+                            : `border-edge hover:border-edge-strong hover:shadow-lg ${!isEditMode ? 'cursor-pointer' : ''}`
                         }`}
                       >
                         <div>
@@ -503,14 +519,20 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                           ) : cartQty > 0 ? (
                             <div className="flex items-center justify-between bg-slate-900 rounded-lg p-1 border border-edge">
                               <button
-                                onClick={() => decreaseCartQuantity(prod.uuid)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  decreaseCartQuantity(prod.uuid);
+                                }}
                                 className="p-1 rounded bg-overlay text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
                               >
                                 <Minus className="w-3.5 h-3.5" />
                               </button>
                               <span className="text-xs font-bold text-ink px-2">{cartQty} ta</span>
                               <button
-                                onClick={() => addToCart(prod)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addToCart(prod);
+                                }}
                                 className="p-1 rounded bg-overlay text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
                               >
                                 <Plus className="w-3.5 h-3.5" />
@@ -518,7 +540,10 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                             </div>
                           ) : (
                             <button
-                              onClick={() => addToCart(prod)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addToCart(prod);
+                              }}
                               disabled={!prod.is_available}
                               className={`w-full py-1.5 rounded-lg font-bold text-[10px] transition cursor-pointer flex items-center justify-center gap-1 ${
                                 prod.is_available
@@ -632,7 +657,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
               cart.length > 0 ? (
                 <div className="flex-1 overflow-y-auto divide-y divide-edge pr-1 scrollbar-thin">
                   {cart.map((item) => (
-                    <div key={item.product.uuid} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                    <div key={item.product.uuid} className="cursor-pointer py-2.5 flex items-center justify-between gap-3 text-xs">
                       <div className="min-w-0 flex-1">
                         <p className="font-bold text-ink truncate" title={item.product.name}>{item.product.name}</p>
                         <p className="text-slate-400 font-medium mt-0.5">
@@ -707,7 +732,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                     </div>
                   </div>
 
-                  <div className="space-y-1">
+                  {/* <div className="space-y-1">
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
                       <FileText className="w-3 h-3 text-slate-500" />
                       Qo'shimcha izoh
@@ -719,7 +744,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                       onChange={(e) => setComment(e.target.value)}
                       className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition resize-none"
                     />
-                  </div>
+                  </div> */}
 
                   <div className="space-y-1.5">
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
@@ -731,13 +756,13 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                         <button
                           key={opt.value}
                           onClick={() => setPaymentMethod(opt.value)}
-                          className={`py-2 rounded-lg border font-bold text-[10px] transition cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
+                          className={`py-2 rounded-lg border font-bold text-[12px] transition cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
                             paymentMethod === opt.value
                               ? 'border-brand bg-brand/10 text-brand'
                               : 'border-edge-strong bg-overlay text-slate-400 hover:border-edge-strong'
                           }`}
                         >
-                          <span className="text-sm">{opt.icon}</span>
+                          {/* <span className="text-sm">{opt.icon}</span> */}
                           {opt.label}
                         </button>
                       ))}
@@ -829,27 +854,41 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                   </button>
                 </div>
               ) : (
-                <button
-                  onClick={handleCreateOrder}
-                  disabled={cart.length === 0 || submitting}
-                  className={`w-full py-3 rounded-xl font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 ${
-                    cart.length > 0 && !submitting
-                      ? 'bg-brand hover:bg-brand-dark text-white shadow-lg shadow-brand/10'
-                      : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-edge'
-                  }`}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Yaratilmoqda...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="w-4 h-4" />
-                      <span>Buyurtma yaratish</span>
-                    </>
-                  )}
-                </button>
+                <div className="space-y-2.5">
+                  <button
+                    onClick={handlePrintPreCheck}
+                    disabled={printingPreCheck || cart.length === 0}
+                    className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {printingPreCheck ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <FileText className="w-3.5 h-3.5 text-slate-300" />
+                    )}
+                    <span>Chop etish</span>
+                  </button>
+                  <button
+                    onClick={handleCreateOrder}
+                    disabled={cart.length === 0 || submitting}
+                    className={`w-full py-3 rounded-xl font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 ${
+                      cart.length > 0 && !submitting
+                        ? 'bg-brand hover:bg-brand-dark text-white shadow-lg shadow-brand/10'
+                        : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-edge'
+                    }`}
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Yaratilmoqda...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        <span>Buyurtma yaratish</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               )}
             </div>
           </div>

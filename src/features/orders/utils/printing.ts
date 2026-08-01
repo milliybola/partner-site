@@ -53,6 +53,14 @@ const printHtmlCopies = async (html: string): Promise<void> => {
 
   // Plain browser fallback — relies on the browser itself being launched with the
   // --kiosk-printing flag (see Settings page instructions) for a dialog-free print.
+  //
+  // The print trigger MUST live inside the written document itself (not on iframe.onload):
+  // a freshly-appended, src-less iframe first loads "about:blank" and fires its own load
+  // event before doc.write() ever runs, then fires a second load event once the real
+  // content is written. Listening on iframe.onload prints that blank first pass too —
+  // a stray empty job that some thermal receipt printers respond to with a runaway blank
+  // paper feed. Embedding the script in the document ties it to that document's own
+  // window.onload, which only fires once, after the real content has loaded.
   for (let i = 0; i < printCopies; i++) {
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
@@ -61,19 +69,34 @@ const printHtmlCopies = async (html: string): Promise<void> => {
     iframe.style.width = '0';
     iframe.style.height = '0';
     iframe.style.border = '0';
-    iframe.onload = () => {
-      iframe.contentWindow?.print();
-      setTimeout(() => iframe.remove(), 1000);
-    };
     document.body.appendChild(iframe);
 
     const doc = iframe.contentDocument || iframe.contentWindow?.document;
     if (doc) {
       doc.open();
-      doc.write(html);
+      doc.write(withAutoPrintScript(html));
       doc.close();
     }
   }
+};
+
+// Appends a self-triggering print script to an HTML document — used only for the
+// browser/iframe fallback above. The Electron path prints the raw `html` as-is, since
+// the main process triggers the print itself (adding this script there would double-print).
+const withAutoPrintScript = (html: string): string => {
+  const autoPrintScript = `
+    <script>
+      window.onload = function() {
+        window.print();
+        setTimeout(function() {
+          if (window.frameElement) window.frameElement.remove();
+        }, 1000);
+      };
+    </script>
+  `;
+  return html.includes('</body>')
+    ? html.replace('</body>', `${autoPrintScript}</body>`)
+    : html + autoPrintScript;
 };
 
 // Build the official receipt HTML markup from receipt data — shared between the

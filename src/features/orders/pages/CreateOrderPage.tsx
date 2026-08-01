@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  ShoppingBag, 
-  Search, 
-  MapPin, 
+  ShoppingBag,
+  MapPin,
   Phone as PhoneIcon, 
   Utensils, 
   Plus, 
@@ -74,7 +73,7 @@ const CreateOrderPage: React.FC = () => {
   // Catalog State
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeCategoryUuid, setActiveCategoryUuid] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery] = useState('');
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [errorCatalog, setErrorCatalog] = useState<string | null>(null);
 
@@ -818,11 +817,12 @@ const CreateOrderPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Side: Catalog Menu & Search (Col span: 7) */}
-          <div className="lg:col-span-8 space-y-4">
+          {/* Left Side: Catalog Menu & Search (Col span: 7) — bounded to viewport height,
+              its own independent scroll box, matching the cart panel on the right. */}
+          <div className="lg:col-span-8 max-h-[calc(100vh-120px)] flex flex-col">
             {/* Filters Bar */}
-            <div className="p-4 rounded-2xl bg-darkCard border border-edge space-y-4">
-              <div className="relative">
+            <div className="p-4 rounded-2xl bg-darkCard border border-edge space-y-4 shrink-0">
+              {/* <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500 pointer-events-none">
                   <Search className="w-4.5 h-4.5" />
                 </span>
@@ -833,13 +833,13 @@ const CreateOrderPage: React.FC = () => {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-slate-900/50 border border-edge hover:border-edge-strong focus:border-brand rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
                 />
-              </div>
+              </div> */}
 
               {/* Categories scrollable pills */}
               <div className="grid grid-rows-2 grid-flow-col gap-2 overflow-x-auto pb-1 scrollbar-thin">
                 <button
                   onClick={() => setActiveCategoryUuid('all')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+                  className={`px-4 py-2 rounded-xl text-sm font-bold transition shrink-0 cursor-pointer ${
                     activeCategoryUuid === 'all'
                       ? 'bg-brand text-white'
                       : 'bg-slate-900 text-slate-400 border border-edge hover:border-edge-strong hover:text-slate-200'
@@ -851,7 +851,7 @@ const CreateOrderPage: React.FC = () => {
                   <button
                     key={cat.uuid}
                     onClick={() => setActiveCategoryUuid(cat.uuid)}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+                    className={`px-4 py-2 rounded-xl text-sm font-bold transition shrink-0 cursor-pointer ${
                       activeCategoryUuid === cat.uuid
                         ? 'bg-brand text-white'
                         : 'bg-slate-900 text-slate-400 border border-edge hover:border-edge-strong hover:text-slate-200'
@@ -863,6 +863,8 @@ const CreateOrderPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Scrollable product grid area — independent from the cart panel's own scroll */}
+            <div className="flex-1 overflow-y-auto mt-4 pr-1 scrollbar-thin">
             {/* Product Items Display */}
             {loadingCatalog ? (
               <div className="flex justify-center items-center py-24">
@@ -888,10 +890,13 @@ const CreateOrderPage: React.FC = () => {
                   return (
                     <div
                       key={prod.uuid}
+                      onClick={() => {
+                        if (prod.is_available) addToCart(prod);
+                      }}
                       className={`rounded-2xl border bg-darkCard overflow-hidden transition-all duration-200 flex flex-col justify-between ${
-                        !prod.is_available 
-                          ? 'opacity-50 border-edge' 
-                          : 'border-edge hover:border-edge-strong hover:shadow-lg'
+                        !prod.is_available
+                          ? 'opacity-50 border-edge'
+                          : 'border-edge hover:border-edge-strong hover:shadow-lg cursor-pointer'
                       }`}
                     >
                       <div>
@@ -938,14 +943,20 @@ const CreateOrderPage: React.FC = () => {
                         {cartQty > 0 ? (
                           <div className="flex items-center justify-between bg-slate-900 rounded-lg p-1 border border-edge">
                             <button
-                              onClick={() => decreaseQuantity(prod.uuid)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                decreaseQuantity(prod.uuid);
+                              }}
                               className="p-1 rounded bg-overlay text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
                             >
                               <Minus className="w-3.5 h-3.5" />
                             </button>
                             <span className="text-xs font-bold text-ink px-2">{cartQty} ta</span>
                             <button
-                              onClick={() => addToCart(prod)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addToCart(prod);
+                              }}
                               className="p-1 rounded bg-overlay text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
                             >
                               <Plus className="w-3.5 h-3.5" />
@@ -953,7 +964,10 @@ const CreateOrderPage: React.FC = () => {
                           </div>
                         ) : (
                           <button
-                            onClick={() => addToCart(prod)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addToCart(prod);
+                            }}
                             disabled={!prod.is_available}
                             className={`w-full py-2 rounded-lg font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
                               prod.is_available
@@ -977,12 +991,14 @@ const CreateOrderPage: React.FC = () => {
                 <p className="text-xs text-slate-400">Turkum yoki qidiruv so'zini o'zgartirib ko'ring.</p>
               </div>
             )}
+            </div>
           </div>
 
-          {/* Right Side: Cart Sidebar & Form Parameters (Col span: 5) */}
-          <div className="sticky top-[100px] lg:col-span-4 space-y-6 overflow-y-auto">
-            <div className="p-6 rounded-2xl bg-darkCard border border-edge space-y-6 shadow-xl text-left">
-              <h3 className="font-bold text-ink text-lg flex items-center justify-between border-b border-edge pb-3">
+          {/* Right Side: Cart Sidebar & Form Parameters (Col span: 5) — independently
+              scrollable, matching the product list's own scroll box on the left. */}
+          <div className="lg:col-span-4 max-h-[calc(100vh-120px)]">
+            <div className="rounded-2xl bg-darkCard border border-edge shadow-xl text-left flex flex-col max-h-full overflow-hidden">
+              <h3 className="font-bold text-ink text-lg flex items-center justify-between border-b border-edge px-6 pt-6 pb-3 shrink-0">
                 <span className="flex items-center gap-2">
                   <ShoppingBag className="w-5 h-5 text-brand" />
                   <span>Savatcha</span>
@@ -997,6 +1013,9 @@ const CreateOrderPage: React.FC = () => {
                   </button>
                 )}
               </h3>
+
+              {/* Scrollable middle: cart items, form fields, calculations */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6 scrollbar-thin">
 
               {/* Cart Items List */}
               {cart.length > 0 ? (
@@ -1151,7 +1170,7 @@ const CreateOrderPage: React.FC = () => {
                 </div> */}
 
                 {/* Comment field */}
-                <div className="space-y-1.5 flex flex-col items-start">
+                {/* <div className="space-y-1.5 flex flex-col items-start">
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
                     <FileText className="w-3.5 h-3.5 text-slate-500" />
                     <span>Qo'shimcha izoh</span>
@@ -1163,7 +1182,7 @@ const CreateOrderPage: React.FC = () => {
                     onChange={(e) => updateActiveCart({ comment: e.target.value })}
                     className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition h-16 resize-none"
                   />
-                </div>
+                </div> */}
               </div>
 
               {/* Calculations and Breakdown */}
@@ -1186,67 +1205,73 @@ const CreateOrderPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Error Message Alert */}
-              {submitError && (
-                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex gap-2.5 items-start">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span className="leading-normal">{submitError}</span>
-                </div>
-              )}
+              </div>
+              {/* End scrollable middle */}
 
-              {/* Pre-chek & Chek: print previews of the current cart before submitting */}
-              <div className="grid grid-cols-2 gap-2.5">
+              {/* Footer: always visible — error alert, print previews, submit action */}
+              <div className="shrink-0 border-t border-edge px-6 py-4 space-y-4">
+                {/* Error Message Alert */}
+                {submitError && (
+                  <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex gap-2.5 items-start">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span className="leading-normal">{submitError}</span>
+                  </div>
+                )}
+
+                {/* Pre-chek & Chek: print previews of the current cart before submitting */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handlePrintPreCheck}
+                    disabled={cart.length === 0 || printingPreCheck}
+                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {printingPreCheck ? (
+                      <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-ink rounded-full animate-spin" />
+                    ) : (
+                      <FileText className="w-3.5 h-3.5 text-slate-300" />
+                    )}
+                    <span>Pre-chek</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePrintReceipt}
+                    disabled={cart.length === 0 || printingReceipt}
+                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {printingReceipt ? (
+                      <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-ink rounded-full animate-spin" />
+                    ) : (
+                      <Printer className="w-3.5 h-3.5 text-slate-300" />
+                    )}
+                    <span>Chek</span>
+                  </button>
+                </div>
+
+                {/* Submit Action Button */}
                 <button
                   type="button"
-                  onClick={handlePrintPreCheck}
-                  disabled={cart.length === 0 || printingPreCheck}
-                  className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleSubmitOrder}
+                  disabled={!isFormValid || submitting}
+                  className={`w-full py-3.5 rounded-xl font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 ${
+                    isFormValid && !submitting
+                      ? 'bg-brand hover:bg-brand-dark text-white shadow-lg shadow-brand/10 hover:shadow-brand/20 hover:scale-[1.01]'
+                      : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-edge'
+                  }`}
                 >
-                  {printingPreCheck ? (
-                    <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-ink rounded-full animate-spin" />
+                  {submitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-edge-strong border-t-white rounded-full animate-spin" />
+                      <span>Kiritilmoqda...</span>
+                    </>
                   ) : (
-                    <FileText className="w-3.5 h-3.5 text-slate-300" />
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      <span>Buyurtmani tasdiqlash</span>
+                    </>
                   )}
-                  <span>Pre-chek</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handlePrintReceipt}
-                  disabled={cart.length === 0 || printingReceipt}
-                  className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {printingReceipt ? (
-                    <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-ink rounded-full animate-spin" />
-                  ) : (
-                    <Printer className="w-3.5 h-3.5 text-slate-300" />
-                  )}
-                  <span>Chek</span>
                 </button>
               </div>
-
-              {/* Submit Action Button */}
-              <button
-                type="button"
-                onClick={handleSubmitOrder}
-                disabled={!isFormValid || submitting}
-                className={`w-full py-3.5 rounded-xl font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 ${
-                  isFormValid && !submitting
-                    ? 'bg-brand hover:bg-brand-dark text-white shadow-lg shadow-brand/10 hover:shadow-brand/20 hover:scale-[1.01]'
-                    : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-edge'
-                }`}
-              >
-                {submitting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-edge-strong border-t-white rounded-full animate-spin" />
-                    <span>Kiritilmoqda...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-4 h-4" />
-                    <span>Buyurtmani tasdiqlash</span>
-                  </>
-                )}
-              </button>
             </div>
           </div>
         </div>

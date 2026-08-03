@@ -459,12 +459,12 @@ const CreateOrderPage: React.FC = () => {
   };
 
   // Print a preliminary (not-yet-paid) receipt for the current cart, before the order is submitted
-  const handlePrintPreCheck = () => {
+  const handlePrintPreCheck = async () => {
     if (cart.length === 0 || printingPreCheck) return;
     setPrintingPreCheck(true);
     try {
       const tableObj = serviceType === 'DINE_IN' ? tables.find(t => t.uuid === selectedTableUuid) : undefined;
-      printPreCheckUtil({
+      await printPreCheckUtil({
         table_number: tableObj?.table_number || null,
         total_price: total,
         items: cart.map((item) => ({
@@ -473,9 +473,9 @@ const CreateOrderPage: React.FC = () => {
           quantity: item.quantity,
         })),
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Pre-chek chop etishda xatolik:", err);
-      toast.error("Pre-chekni chop etishda xatolik yuz berdi.");
+      toast.error(`Pre-chekni chop etishda xatolik: ${err?.message || err}`);
     } finally {
       setPrintingPreCheck(false);
     }
@@ -496,12 +496,12 @@ const CreateOrderPage: React.FC = () => {
 
   // Print the official receipt layout using the current cart — built entirely from
   // local data, so it's available before the order is actually submitted/created.
-  const handlePrintReceipt = () => {
+  const handlePrintReceipt = async () => {
     if (cart.length === 0 || printingReceipt) return;
     setPrintingReceipt(true);
     try {
       const tableObj = serviceType === 'DINE_IN' ? tables.find(t => t.uuid === selectedTableUuid) : undefined;
-      printReceiptPreviewUtil({
+      await printReceiptPreviewUtil({
         created_at: new Date().toLocaleString('uz-UZ'),
         contact_name: contactName.trim() || undefined,
         contact_phone: contactPhone.trim() || undefined,
@@ -523,9 +523,9 @@ const CreateOrderPage: React.FC = () => {
         partner_address: partnerDetails?.address,
         partner_phone: partnerDetails?.phone,
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Chek chop etishda xatolik:", err);
-      toast.error("Chekni chop etishda xatolik yuz berdi.");
+      toast.error(`Chekni chop etishda xatolik: ${err?.message || err}`);
     } finally {
       setPrintingReceipt(false);
     }

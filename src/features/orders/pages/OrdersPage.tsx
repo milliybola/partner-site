@@ -104,6 +104,15 @@ const KANBAN_COLUMNS: {
       badgeText: "text-green-400",
       hoverStyle: "border-green-500 bg-brand/5 ring-green-500/20",
       validBorder: "border-green-500/40 border-dashed"
+    },
+    {
+      status: 'CANCELLED',
+      label: "Bekor qilingan",
+      headerText: "text-rose-400 border-rose-500/20",
+      badgeBg: "bg-rose-500/10",
+      badgeText: "text-rose-400",
+      hoverStyle: "border-rose-500 bg-brand/5 ring-rose-500/20",
+      validBorder: "border-rose-500/40 border-dashed"
     }
   ];
 
@@ -137,6 +146,7 @@ interface KanbanCardProps {
   onAssignCourier?: (order: Order) => void;
   onDispatchGlobally?: (order: Order) => void;
   skipIntermediateStages?: boolean;
+  hasOwnCouriers?: boolean;
   isSelected: boolean;
   formatUzS: (amount: number | string | null | undefined) => string;
 }
@@ -152,10 +162,11 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
   onAssignCourier,
   onDispatchGlobally,
   skipIntermediateStages,
+  hasOwnCouriers,
   isSelected,
   formatUzS
 }) => {
-  const isDraggable = order.status !== 'COMPLETED' && order.status !== 'DELIVERED';
+  const isDraggable = order.status !== 'COMPLETED' && order.status !== 'DELIVERED' && order.status !== 'CANCELLED';
 
   return (
     <div
@@ -239,18 +250,38 @@ const KanbanCard: React.FC<KanbanCardProps> = ({
             Qabul qilish
           </button>
         )}
-        {/* Assign own courier — for delivery orders, lets the partner skip the global search entirely */}
-        {(order.status === 'PENDING' || order.status === 'SEARCHING_COURIER') && order.delivery_type === 'DELIVERY' && onAssignCourier && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onAssignCourier(order);
-            }}
-            className="w-full py-1.5 rounded-lg bg-overlay hover:bg-overlay-strong border border-edge-strong text-slate-300 font-bold text-[11px] transition cursor-pointer flex items-center justify-center gap-1.5"
-          >
-            <Bike className="w-3 h-3" />
-            O'z kuryeringiz
-          </button>
+        {/* Delivery orders at this stage: with no own couriers registered, "O'z kuryeringiz"
+            has nothing to offer — a single-click "use MilliyGo courier" (plain accept, leaving
+            it to the global search) replaces it. With own couriers registered, offer the
+            courier picker directly instead. */}
+        {(order.status === 'PENDING' || order.status === 'SEARCHING_COURIER') && order.delivery_type === 'DELIVERY' && (
+          !hasOwnCouriers ? (
+            onAccept && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAccept(order);
+                }}
+                className="w-full py-1.5 rounded-lg bg-overlay hover:bg-overlay-strong border border-edge-strong text-slate-300 font-bold text-[11px] transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Globe2 className="w-3 h-3" />
+                MilliyGo kuryeridan foydalanish
+              </button>
+            )
+          ) : (
+            onAssignCourier && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAssignCourier(order);
+                }}
+                className="w-full py-1.5 rounded-lg bg-overlay hover:bg-overlay-strong border border-edge-strong text-slate-300 font-bold text-[11px] transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Bike className="w-3 h-3" />
+                O'z kuryeringiz
+              </button>
+            )
+          )
         )}
         {/* Dispatch to the global courier pool — for when the partner's own couriers are busy */}
         {order.status === 'ACCEPTED' && order.delivery_type === 'DELIVERY' && onDispatchGlobally && (
@@ -363,6 +394,9 @@ const OrdersPage: React.FC = () => {
       if (raw) {
         const parsed: string[] = JSON.parse(raw);
         const valid = parsed.filter((s) => KANBAN_COLUMNS.some((c) => c.status === s)) as Order['status'][];
+        // Newly-added columns (like CANCELLED) won't be in an existing saved preference —
+        // default those to visible too, rather than silently hiding them until toggled on.
+        if (!valid.includes('CANCELLED')) valid.push('CANCELLED');
         if (valid.length > 0) return new Set(valid);
       }
     } catch (err) {
@@ -382,6 +416,18 @@ const OrdersPage: React.FC = () => {
   };
 
   const skipIntermediateStages = !visibleStatuses.has('PREPARING');
+
+  // Whether the partner has any own couriers registered — decides whether a PENDING
+  // delivery order's Kanban card offers a one-click "use MilliyGo courier" shortcut
+  // (no own couriers to choose from) or sends the partner to "Batafsil" to pick between
+  // their own courier and MilliyGo's.
+  const hasOwnCouriers = couriers.length > 0;
+
+  useEffect(() => {
+    couriersApi.getCouriers()
+      .then(res => setCouriers(res))
+      .catch(err => console.error("Failed to fetch couriers in OrdersPage:", err));
+  }, []);
 
   useEffect(() => {
     tablesApi.getTables()
@@ -457,15 +503,20 @@ const OrdersPage: React.FC = () => {
       await printReceiptUtil(orderUuid);
     } catch (err: any) {
       console.error("Chek chop etishda xatolik:", err);
-      toast.error("Chek ma'lumotlarini yuklashda xatolik yuz berdi.");
+      toast.error(`Chekni chop etishda xatolik: ${err?.message || err}`);
     } finally {
       setPrintingUuid(null);
     }
   }, []);
 
   // Pre-check (Preliminary receipt) — simple format matching the image
-  const handlePrintPreCheck = useCallback((order: Order) => {
-    printPreCheckUtil(order);
+  const handlePrintPreCheck = useCallback(async (order: Order) => {
+    try {
+      await printPreCheckUtil(order);
+    } catch (err: any) {
+      console.error("Pre-chek chop etishda xatolik:", err);
+      toast.error(`Pre-chekni chop etishda xatolik: ${err?.message || err}`);
+    }
   }, []);
 
   // Handle incoming Websocket order alerts
@@ -1178,6 +1229,7 @@ const OrdersPage: React.FC = () => {
                             onAssignCourier={handleOpenCourierPicker}
                             onDispatchGlobally={handleDispatchGlobally}
                             skipIntermediateStages={skipIntermediateStages}
+                            hasOwnCouriers={hasOwnCouriers}
                             isSelected={selectedOrder?.uuid === order.uuid}
                           />
                         ))
@@ -1365,15 +1417,31 @@ const OrdersPage: React.FC = () => {
             <div className="space-y-2.5">
               {(selectedOrder.status === 'PENDING' || selectedOrder.status === 'SEARCHING_COURIER') && (
                 <div className="space-y-2">
-                  {/* Courier (DELIVERY) orders accept via courier assignment instead of a plain Accept button */}
+                  {/* Courier (DELIVERY) orders choose between MilliyGo's global courier pool
+                      (plain accept, no personal courier assigned) or one of the partner's own
+                      couriers — instead of a plain Accept button. */}
                   {selectedOrder.delivery_type === 'DELIVERY' ? (
-                    <button
-                      onClick={() => handleOpenCourierPicker(selectedOrder)}
-                      className="w-full py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
-                    >
-                      <Bike className="w-4 h-4" />
-                      O'z kuryeringizni biriktirish
-                    </button>
+                    <>
+                      <button
+                        onClick={() => {
+                          handleAcceptOrder(selectedOrder);
+                          setSelectedOrder(null);
+                        }}
+                        className="w-full py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
+                      >
+                        <Globe2 className="w-4 h-4" />
+                        MilliyGo kuryeridan foydalanish
+                      </button>
+                      {hasOwnCouriers && (
+                        <button
+                          onClick={() => handleOpenCourierPicker(selectedOrder)}
+                          className="w-full py-3 rounded-xl bg-overlay hover:bg-overlay-strong border border-edge-strong text-slate-300 font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
+                        >
+                          <Bike className="w-4 h-4" />
+                          O'z kuryeringizni biriktirish
+                        </button>
+                      )}
+                    </>
                   ) : (
                     <button
                       onClick={() => {

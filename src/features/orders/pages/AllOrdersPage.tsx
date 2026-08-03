@@ -141,7 +141,7 @@ const AllOrdersPage: React.FC = () => {
       await printReceiptUtil(orderUuid);
     } catch (err: any) {
       console.error("Chek chop etishda xatolik:", err);
-      toast.error("Chek ma'lumotlarini yuklashda xatolik yuz berdi.");
+      toast.error(`Chekni chop etishda xatolik: ${err?.message || err}`);
     } finally {
       setPrintingUuid(null);
     }

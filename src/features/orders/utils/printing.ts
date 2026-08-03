@@ -1,14 +1,5 @@
 import { ordersApi } from '../services/ordersApi';
 
-declare global {
-  interface Window {
-    electronAPI?: {
-      // Prints HTML silently (no OS print dialog) via the Electron main process.
-      silentPrint: (payload: { html: string; copies: number }) => Promise<void>;
-    };
-  }
-}
-
 export interface ReceiptData {
   order_number?: string;
   created_at?: string;
@@ -36,24 +27,17 @@ export interface ReceiptData {
   partner_phone?: string;
 }
 
-// Send an HTML document to the printer, silently and without any OS/browser print dialog.
+// Send an HTML document to the printer via a hidden iframe + window.print(). Relies on the
+// app being launched with the --kiosk-printing flag for a dialog-free print — set globally
+// in main.js for the Electron desktop app, or configured manually for a plain browser (see
+// the Settings page instructions). This is used uniformly for both: an earlier attempt to
+// print silently from Electron's main process via webContents.print() consistently failed
+// with "Invalid printer settings" on some printer/driver combinations regardless of any
+// option tried (deviceName, pageSize, silent on/off), while this simpler approach is the
+// same one that's known to actually reach the printer via a real browser tab.
 const printHtmlCopies = async (html: string): Promise<void> => {
   const printCopies = parseInt(localStorage.getItem('milliygo_print_copies') || '1', 10) || 1;
 
-  // Desktop app — print via the main process (webContents.print({ silent: true })).
-  // Reliable across Chromium versions, unlike the browser-only --kiosk-printing switch below.
-  if (window.electronAPI?.silentPrint) {
-    try {
-      await window.electronAPI.silentPrint({ html, copies: printCopies });
-    } catch (err) {
-      console.error("Silent print failed:", err);
-    }
-    return;
-  }
-
-  // Plain browser fallback — relies on the browser itself being launched with the
-  // --kiosk-printing flag (see Settings page instructions) for a dialog-free print.
-  //
   // The print trigger MUST live inside the written document itself (not on iframe.onload):
   // a freshly-appended, src-less iframe first loads "about:blank" and fires its own load
   // event before doc.write() ever runs, then fires a second load event once the real
@@ -80,9 +64,7 @@ const printHtmlCopies = async (html: string): Promise<void> => {
   }
 };
 
-// Appends a self-triggering print script to an HTML document — used only for the
-// browser/iframe fallback above. The Electron path prints the raw `html` as-is, since
-// the main process triggers the print itself (adding this script there would double-print).
+// Appends a self-triggering print script to an HTML document.
 //
 // The template below declares `@page { size: 80mm auto; }`, but Chromium's real-printer
 // path (unlike its "Save as PDF" output) doesn't actually shrink the page to fit the

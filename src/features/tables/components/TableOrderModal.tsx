@@ -346,6 +346,9 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
           })),
         });
       }
+    } catch (err: any) {
+      console.error("Pre-chek chop etishda xatolik:", err);
+      toast.error(`Pre-chekni chop etishda xatolik: ${err?.message || err}`);
     } finally {
       setPrintingPreCheck(false);
     }

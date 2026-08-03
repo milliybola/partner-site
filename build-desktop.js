@@ -48,7 +48,6 @@ console.log('Copying application resources...');
 fs.mkdirSync(RESOURCES_APP_DIR, { recursive: true });
 copyDirSync(path.join(__dirname, 'dist'), path.join(RESOURCES_APP_DIR, 'dist'));
 fs.copyFileSync(path.join(__dirname, 'main.js'), path.join(RESOURCES_APP_DIR, 'main.js'));
-fs.copyFileSync(path.join(__dirname, 'preload.cjs'), path.join(RESOURCES_APP_DIR, 'preload.cjs'));
 
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'));
 const appPkg = {

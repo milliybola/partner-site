@@ -44,5 +44,13 @@
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",
     "wait-on": "^9.0.10"
+  },
+  "overrides": {
+    "react-yandex-maps": {
+      "react": "$react"
+    },
+    "create-react-context": {
+      "react": "$react"
+    }
   }
 }

@@ -70,4 +70,11 @@ export const ENDPOINTS = {
     BASE: 'partner/couriers/',
     DETAIL: (uuid: string) => `partner/couriers/${uuid}/`,
   },
+  DELIVERY_ZONES: {
+    NEIGHBORHOODS: 'partner/delivery-zones/neighborhoods/',
+    BASE: 'partner/delivery-zones/',
+    BULK: 'partner/delivery-zones/bulk/',
+    CLEAR: 'partner/delivery-zones/clear/',
+    DETAIL: (uuid: string) => `partner/delivery-zones/${uuid}/`,
+  },
 };

@@ -16,6 +16,7 @@ import {
   Clock,
   Table,
   Building2,
+  MapPin,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -150,6 +151,7 @@ const Layout: React.FC = () => {
     { to: '/shift', label: 'Smena', icon: Clock },
     { to: '/catalog', label: 'Katalog', icon: BookOpen },
     ...(partner?.role === 'manager' ? [] : [{ to: '/branches', label: 'Filiallar', icon: Building2 }]),
+    ...(partner?.role === 'manager' ? [] : [{ to: '/delivery-zones', label: 'Yetkazib berish hududlari', icon: MapPin }]),
     ...(partner?.role === 'manager' ? [] : [{ to: '/finance', label: 'Moliya', icon: DollarSign }]),
     { to: '/all-orders', label: 'Barcha buyurtmalar', icon: ShoppingBag },
     { to: '/staff', label: 'Xodimlar', icon: Users },

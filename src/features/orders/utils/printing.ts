@@ -361,7 +361,7 @@ export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> =>
             font-family: 'Courier New', Courier, monospace;
             width: 74mm;
             margin: 0 auto;
-            padding: 70px 6px 8px 6px;
+            padding: 8px 6px;
             color: #000;
             background: #fff;
             font-size: 12px;

@@ -127,15 +127,20 @@ const buildReceiptHtml = (receiptData: ReceiptData): string => {
             size: 80mm auto;
             margin: 0;
           }
+          * {
+            box-sizing: border-box;
+          }
           body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            width: 74mm;
+            width: 80mm;
+            max-width: 80mm;
             margin: 0 auto;
             padding: 8px 4px;
             color: #000;
             background: #fff;
             line-height: 1.35;
             font-weight: 500;
+            overflow-wrap: break-word;
           }
           .text-center { text-align: center; }
           .bold { font-weight: 700; }
@@ -359,13 +364,15 @@ export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> =>
           * { box-sizing: border-box; }
           body {
             font-family: 'Courier New', Courier, monospace;
-            width: 74mm;
+            width: 80mm;
+            max-width: 80mm;
             margin: 0 auto;
             padding: 8px 6px;
             color: #000;
             background: #fff;
             font-size: 12px;
             font-weight: 700;
+            overflow-wrap: break-word;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }

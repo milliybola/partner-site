@@ -87,7 +87,7 @@ const withAutoPrintScript = (html: string): string => {
     <script>
       window.onload = function() {
         try {
-          var measuredMm = Math.ceil(document.body.getBoundingClientRect().height / 96 * 25.4) + 5;
+          var measuredMm = Math.ceil(document.body.getBoundingClientRect().height / 96 * 25.4);
           var heightMm = Math.max(measuredMm, ${MIN_RECEIPT_HEIGHT_MM});
           var pageSizeStyle = document.createElement('style');
           pageSizeStyle.textContent = '@page { size: 80mm ' + heightMm + 'mm; margin: 0; }';
@@ -144,7 +144,7 @@ const buildReceiptHtml = (receiptData: ReceiptData): string => {
             width: 80mm;
             max-width: 80mm;
             margin: 0 auto;
-            padding: 8px 4px;
+            padding: 8px 4px 0 4px;
             color: #000;
             background: #fff;
             line-height: 1.35;
@@ -376,7 +376,7 @@ export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> =>
             width: 80mm;
             max-width: 80mm;
             margin: 0 auto;
-            padding: 8px 6px;
+            padding: 8px 6px 0 6px;
             color: #000;
             background: #fff;
             font-size: 12px;

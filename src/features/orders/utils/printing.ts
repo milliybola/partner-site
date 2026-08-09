@@ -74,12 +74,21 @@ const printHtmlCopies = async (html: string): Promise<void> => {
 // multi-meter blank page. So before printing, this measures the real rendered height and
 // injects an explicit `@page` override in millimeters — a concrete number Chromium can
 // actually hand to the driver, instead of the ambiguous "auto" it silently ignores.
+//
+// The measured height must never be allowed below the 80mm width: `@page { size: W H }`
+// is a plain width-then-height pair with no orientation keyword, so a short receipt (e.g.
+// a pre-check with just one or two items) can measure out shorter than 80mm and flip the
+// page landscape — which is what was producing sideways-printed short receipts while long
+// ones (always taller than 80mm) never showed the problem. A fixed floor keeps every
+// receipt portrait-shaped regardless of how little content it has.
+const MIN_RECEIPT_HEIGHT_MM = 100;
 const withAutoPrintScript = (html: string): string => {
   const autoPrintScript = `
     <script>
       window.onload = function() {
         try {
-          var heightMm = Math.ceil(document.body.getBoundingClientRect().height / 96 * 25.4) + 5;
+          var measuredMm = Math.ceil(document.body.getBoundingClientRect().height / 96 * 25.4) + 5;
+          var heightMm = Math.max(measuredMm, ${MIN_RECEIPT_HEIGHT_MM});
           var pageSizeStyle = document.createElement('style');
           pageSizeStyle.textContent = '@page { size: 80mm ' + heightMm + 'mm; margin: 0; }';
           document.head.appendChild(pageSizeStyle);

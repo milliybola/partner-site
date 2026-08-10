@@ -496,7 +496,7 @@ const CreateOrderPage: React.FC = () => {
 
   // Print the official receipt layout using the current cart — built entirely from
   // local data, so it's available before the order is actually submitted/created.
-  const handlePrintReceipt = async () => {
+  const handlePrintReceipt = async (includeOfdQr: boolean) => {
     if (cart.length === 0 || printingReceipt) return;
     setPrintingReceipt(true);
     try {
@@ -522,7 +522,7 @@ const CreateOrderPage: React.FC = () => {
         partner_name: partnerDetails?.name || partnerDetails?.partner_name,
         partner_address: partnerDetails?.address,
         partner_phone: partnerDetails?.phone,
-      });
+      }, includeOfdQr);
     } catch (err: any) {
       console.error("Chek chop etishda xatolik:", err);
       toast.error(`Chekni chop etishda xatolik: ${err?.message || err}`);
@@ -1219,12 +1219,12 @@ const CreateOrderPage: React.FC = () => {
                 )}
 
                 {/* Pre-chek & Chek: print previews of the current cart before submitting */}
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={handlePrintPreCheck}
                     disabled={cart.length === 0 || printingPreCheck}
-                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-[11px] transition cursor-pointer flex flex-col justify-center items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {printingPreCheck ? (
                       <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-ink rounded-full animate-spin" />
@@ -1235,16 +1235,29 @@ const CreateOrderPage: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={handlePrintReceipt}
+                    onClick={() => handlePrintReceipt(true)}
                     disabled={cart.length === 0 || printingReceipt}
-                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-[11px] transition cursor-pointer flex flex-col justify-center items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {printingReceipt ? (
                       <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-ink rounded-full animate-spin" />
                     ) : (
                       <Printer className="w-3.5 h-3.5 text-slate-300" />
                     )}
-                    <span>Chek</span>
+                    <span>Chek (QR bilan)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePrintReceipt(false)}
+                    disabled={cart.length === 0 || printingReceipt}
+                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-[11px] transition cursor-pointer flex flex-col justify-center items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {printingReceipt ? (
+                      <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-ink rounded-full animate-spin" />
+                    ) : (
+                      <Printer className="w-3.5 h-3.5 text-slate-300" />
+                    )}
+                    <span>Chek (QR siz)</span>
                   </button>
                 </div>
 

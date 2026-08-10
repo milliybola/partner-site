@@ -1,4 +1,11 @@
+import QRCode from 'qrcode';
 import { ordersApi } from '../services/ordersApi';
+
+// No fiscal (OFD) integration exists yet — this links to the OFD portal's homepage as a
+// placeholder compliance QR code, not a signed per-receipt verification link. Once the
+// backend/cash register integration returns real fiscal data (receipt id, fiscal sign),
+// this should become a per-receipt verification URL instead of a fixed one.
+const OFD_QR_URL = 'https://ofd.soliq.uz';
 
 export interface ReceiptData {
   order_number?: string;
@@ -107,7 +114,13 @@ const withAutoPrintScript = (html: string): string => {
 
 // Build the official receipt HTML markup from receipt data — shared between the
 // backend-fetched (post-order) receipt and the locally-built (pre-order) preview.
-const buildReceiptHtml = (receiptData: ReceiptData): string => {
+// includeOfdQr is a temporary either/or choice (no fiscal integration yet — see
+// OFD_QR_URL above) offered as two separate print actions rather than a single default.
+const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean): Promise<string> => {
+  const qrCodeSvg = includeOfdQr
+    ? await QRCode.toString(OFD_QR_URL, { type: 'svg', margin: 0, width: 90 }).catch(() => '')
+    : '';
+
   const itemsHtml = (receiptData.items || []).map((item: any) => {
     const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
     const unitPrice = Number(item.unit_price || 0).toLocaleString('uz-UZ');
@@ -243,9 +256,10 @@ const buildReceiptHtml = (receiptData: ReceiptData): string => {
             <h2 style="margin: 0; font-size: 16px; font-weight: 700; color: #000; text-transform: uppercase; text-align: left;">${receiptData.partner_name || ''}</h2>
           </div>
           <div style="font-size: 10px; color: #000; font-weight: 500; margin-top: 2px; line-height: 1.2; text-align: center;">
-            <p style="margin: 1px 0;">${[receiptData.partner_address, receiptData.partner_phone].filter(Boolean).join(' | ')}</p>
+          <p style="margin: 1px 0;">${[receiptData.partner_address, receiptData.partner_phone].filter(Boolean).join(' | ')}</p>
           </div>
-        </div>
+          <p style="margin: 0; font-weight: 700;">milliyapp.uz</p>
+            </div>
 
         <div class="divider"></div>
 
@@ -321,8 +335,11 @@ const buildReceiptHtml = (receiptData: ReceiptData): string => {
 
         <div class="footer">
           <p class="bold" style="font-size: 11px; margin-bottom: 2px;">XARIDINGIZ UCHUN RAHMAT!</p>
-          <p style="margin: 0; font-weight: 700;">milliyapp.uz</p>
-
+          ${qrCodeSvg ? `
+          <div style="display: flex; flex-direction: column; align-items: center; margin-top: 8px;">
+            ${qrCodeSvg}
+            <p style="margin: 2px 0 0 0; font-size: 8px; color: #000;">Soliq QR kodi</p>
+          </div>` : ''}
         </div>
       </body>
     </html>
@@ -331,17 +348,19 @@ const buildReceiptHtml = (receiptData: ReceiptData): string => {
   return receiptHtml;
 };
 
-// Print the full backend-generated receipt for an existing (already created) order
-export const printReceipt = async (orderUuid: string): Promise<void> => {
+// Print the full backend-generated receipt for an existing (already created) order.
+// includeOfdQr picks between the two receipt variants (see buildReceiptHtml) — callers
+// offer this as two separate print actions rather than a single default.
+export const printReceipt = async (orderUuid: string, includeOfdQr: boolean): Promise<void> => {
   const responseData = await ordersApi.getOrderReceipt(orderUuid);
   const receiptData = responseData.data || responseData;
-  await printHtmlCopies(buildReceiptHtml(receiptData));
+  await printHtmlCopies(await buildReceiptHtml(receiptData, includeOfdQr));
 };
 
 // Print the same official receipt layout, but built purely from local data —
 // used before the order actually exists on the backend (e.g. reviewing before submit).
-export const printReceiptPreview = async (receiptData: ReceiptData): Promise<void> => {
-  await printHtmlCopies(buildReceiptHtml(receiptData));
+export const printReceiptPreview = async (receiptData: ReceiptData, includeOfdQr: boolean): Promise<void> => {
+  await printHtmlCopies(await buildReceiptHtml(receiptData, includeOfdQr));
 };
 
 export interface PreCheckOrderInput {

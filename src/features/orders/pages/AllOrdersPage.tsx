@@ -135,10 +135,10 @@ const AllOrdersPage: React.FC = () => {
     fetchOrders();
   }, [fetchOrders]);
 
-  const handlePrintReceipt = useCallback(async (orderUuid: string) => {
+  const handlePrintReceipt = useCallback(async (orderUuid: string, includeOfdQr: boolean) => {
     setPrintingUuid(orderUuid);
     try {
-      await printReceiptUtil(orderUuid);
+      await printReceiptUtil(orderUuid, includeOfdQr);
     } catch (err: any) {
       console.error("Chek chop etishda xatolik:", err);
       toast.error(`Chekni chop etishda xatolik: ${err?.message || err}`);
@@ -544,23 +544,34 @@ const AllOrdersPage: React.FC = () => {
                     <td className="py-4 text-center">{getStatusBadge(order.status)}</td>
                     <td className="py-4 text-right pr-2 font-bold text-ink text-xs">{formatUzS(order.total_price)}</td>
                     <td className="py-4 text-center pr-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePrintReceipt(order.uuid);
-                        }}
-                        disabled={printingUuid === order.uuid}
-                        className="p-2 rounded-lg bg-overlay hover:bg-brand/10 border border-edge-strong hover:border-brand/20 text-slate-400 hover:text-brand transition cursor-pointer flex items-center justify-center mx-auto disabled:opacity-50"
-                        title="Chekni chop etish"
-                      >
-                        {printingUuid === order.uuid ? (
-                          <div className="w-3.5 h-3.5 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
-                        ) : (
-                          <div className="flex items-center gap-1.5 text-xs font-semibold text-brand">
-                            Chekni chop etish
-                          </div>
-                        )}
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePrintReceipt(order.uuid, true);
+                          }}
+                          disabled={printingUuid === order.uuid}
+                          className="p-2 rounded-lg bg-overlay hover:bg-brand/10 border border-edge-strong hover:border-brand/20 text-slate-400 hover:text-brand transition cursor-pointer flex items-center justify-center disabled:opacity-50"
+                          title="Chek (QR bilan)"
+                        >
+                          {printingUuid === order.uuid ? (
+                            <div className="w-3.5 h-3.5 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
+                          ) : (
+                            <Printer className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePrintReceipt(order.uuid, false);
+                          }}
+                          disabled={printingUuid === order.uuid}
+                          className="p-2 rounded-lg bg-overlay hover:bg-overlay-strong border border-edge-strong text-slate-500 hover:text-slate-300 transition cursor-pointer flex items-center justify-center disabled:opacity-50"
+                          title="Chek (QR siz)"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -610,17 +621,28 @@ const AllOrdersPage: React.FC = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handlePrintReceipt(order.uuid);
+                          handlePrintReceipt(order.uuid, true);
                         }}
                         disabled={printingUuid === order.uuid}
                         className="p-1.5 rounded-lg bg-overlay border border-edge-strong text-slate-400 hover:text-ink transition cursor-pointer disabled:opacity-50"
-                        title="Chekni chop etish"
+                        title="Chek (QR bilan)"
                       >
                         {printingUuid === order.uuid ? (
                           <div className="w-3 h-3 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
                         ) : (
                           <Printer className="w-3.5 h-3.5" />
                         )}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePrintReceipt(order.uuid, false);
+                        }}
+                        disabled={printingUuid === order.uuid}
+                        className="p-1.5 rounded-lg bg-overlay border border-edge-strong text-slate-500 hover:text-slate-300 transition cursor-pointer disabled:opacity-50"
+                        title="Chek (QR siz)"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -779,18 +801,26 @@ const AllOrdersPage: React.FC = () => {
               )}
             </div>
             {selectedOrder.status === 'READY_FOR_PICKUP' && (
-              <div className="pt-2">
+              <div className="pt-2 grid grid-cols-2 gap-2.5">
                 <button
-                  onClick={() => handlePrintReceipt(selectedOrder.uuid)}
+                  onClick={() => handlePrintReceipt(selectedOrder.uuid, true)}
                   disabled={printingUuid === selectedOrder.uuid}
-                  className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 shadow-lg shadow-amber-500/10"
+                  className="py-3 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 shadow-lg shadow-amber-500/10"
                 >
                   {printingUuid === selectedOrder.uuid ? (
                     <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
                   ) : (
                     <Printer className="w-4 h-4" />
                   )}
-                  <span>Chekni chop etish</span>
+                  <span>Chek (QR bilan)</span>
+                </button>
+                <button
+                  onClick={() => handlePrintReceipt(selectedOrder.uuid, false)}
+                  disabled={printingUuid === selectedOrder.uuid}
+                  className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong disabled:opacity-50 text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
+                >
+                  <Printer className="w-4 h-4 text-slate-300" />
+                  <span>Chek (QR siz)</span>
                 </button>
               </div>
             )}

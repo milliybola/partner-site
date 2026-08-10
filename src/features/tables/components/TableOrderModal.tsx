@@ -360,7 +360,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     try {
       await ordersApi.markOrderPaid(orderUuid, { payment_method: editPaymentMethod, is_paid: true });
       await ordersApi.completeOrder(orderUuid);
-      await printReceiptUtil(orderUuid);
+      await printReceiptUtil(orderUuid, true);
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
       onClose(true);
     } catch (err: any) {

@@ -497,10 +497,10 @@ const OrdersPage: React.FC = () => {
     fetchOrders();
   }, [fetchOrders]);
 
-  const handlePrintReceipt = useCallback(async (orderUuid: string) => {
+  const handlePrintReceipt = useCallback(async (orderUuid: string, includeOfdQr: boolean) => {
     setPrintingUuid(orderUuid);
     try {
-      await printReceiptUtil(orderUuid);
+      await printReceiptUtil(orderUuid, includeOfdQr);
     } catch (err: any) {
       console.error("Chek chop etishda xatolik:", err);
       toast.error(`Chekni chop etishda xatolik: ${err?.message || err}`);
@@ -593,7 +593,7 @@ const OrdersPage: React.FC = () => {
       if (nextStatus === 'READY_FOR_PICKUP') {
         if (targetOrder && targetOrder.delivery_type === 'DELIVERY') {
           if (localStorage.getItem('milliygo_auto_print') === 'true') {
-            handlePrintReceipt(orderUuid);
+            handlePrintReceipt(orderUuid, true);
           }
         }
       }
@@ -680,7 +680,7 @@ const OrdersPage: React.FC = () => {
       freeTableForOrder(orders.find((o) => o.uuid === orderUuid));
 
       // Auto-print receipt on completion
-      handlePrintReceipt(orderUuid);
+      handlePrintReceipt(orderUuid, true);
 
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
     } catch (err: any) {
@@ -716,7 +716,7 @@ const OrdersPage: React.FC = () => {
         setSelectedOrder(null);
       }
       fetchOrders(false);
-      handlePrintReceipt(paymentModalOrder.uuid);
+      handlePrintReceipt(paymentModalOrder.uuid, true);
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
     } catch (err: any) {
       console.error('Payment submit failed:', err);
@@ -1388,28 +1388,42 @@ const OrdersPage: React.FC = () => {
             </div>
 
             {/* Print buttons row */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-2.5">
               {/* Pre-chek button */}
               <button
                 onClick={() => handlePrintPreCheck(selectedOrder)}
-                className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
+                className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-[11px] transition cursor-pointer flex flex-col justify-center items-center gap-1"
               >
                 <FileText className="w-4 h-4 text-slate-300" />
                 <span>Pre-chek</span>
               </button>
 
-              {/* Full receipt button */}
+              {/* Full receipt button — with OFD QR */}
               <button
-                onClick={() => handlePrintReceipt(selectedOrder.uuid)}
+                onClick={() => handlePrintReceipt(selectedOrder.uuid, true)}
                 disabled={printingUuid === selectedOrder.uuid}
-                className="py-3 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 shadow-lg shadow-amber-500/10"
+                className="py-3 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-[11px] transition cursor-pointer flex flex-col justify-center items-center gap-1 shadow-lg shadow-amber-500/10"
               >
                 {printingUuid === selectedOrder.uuid ? (
                   <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
                 ) : (
                   <Printer className="w-4 h-4" />
                 )}
-                <span>Chek chop etish</span>
+                <span>Chek (QR bilan)</span>
+              </button>
+
+              {/* Full receipt button — without OFD QR */}
+              <button
+                onClick={() => handlePrintReceipt(selectedOrder.uuid, false)}
+                disabled={printingUuid === selectedOrder.uuid}
+                className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-[11px] transition cursor-pointer flex flex-col justify-center items-center gap-1"
+              >
+                {printingUuid === selectedOrder.uuid ? (
+                  <div className="w-4 h-4 border-2 border-slate-500/30 border-t-slate-300 rounded-full animate-spin" />
+                ) : (
+                  <Printer className="w-4 h-4 text-slate-300" />
+                )}
+                <span>Chek (QR siz)</span>
               </button>
             </div>
 

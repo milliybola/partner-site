@@ -1,41 +1,60 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ShoppingBag,
-  Search,
-  MapPin,
-  Phone,
-  CreditCard,
-  Calendar,
-  CheckCircle,
-  XCircle,
-  Clock,
-  RefreshCw,
-  AlertCircle,
-  DollarSign,
-  SlidersHorizontal,
   ArrowUpDown,
+  CheckCircle,
+  Clock,
+  CreditCard,
+  DollarSign,
+  MapPin,
+  Pencil,
+  Phone,
   Printer,
-  User,
+  RefreshCw,
+  ShoppingBag,
+  SlidersHorizontal,
   Truck,
-  Pencil
+  User,
+  XCircle,
 } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
 import type { Order } from '../services/ordersApi';
 import { filialApi } from '../services/filialApi';
 import type { PartnerFilial } from '../services/filialApi';
-import { STORAGE_KEYS } from '../../../core/config/constants';
 import { EditOrderModal } from '../components/EditOrderModal';
 import { printReceipt as printReceiptUtil } from '../utils/printing';
 import { useToast } from '../../../core/components/ToastProvider';
+import {
+  Badge,
+  Button,
+  DataList,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  Input,
+  PageHeader,
+  SearchInput,
+  Segmented,
+  Select,
+  Sheet,
+  SkeletonList,
+  StatCard,
+} from '../../../core/ui';
+import type { Column } from '../../../core/ui';
+import { formatDateTime, formatMoney, formatPhone, parseDate } from '../../../core/lib/format';
+import { getErrorMessage } from '../../../core/lib/errors';
+import { getPartner, isShop } from '../../../core/lib/session';
+import {
+  QUEUE_GROUPS,
+  deliveryTypeLabel,
+  paymentLabel,
+  statusLabel,
+  statusTone,
+} from '../utils/status';
 
 type DatePreset = 'ALL' | 'TODAY' | 'WEEK' | 'MONTH' | 'YEAR' | 'CUSTOM';
 
-const formatDateParam = (d: Date): string => {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
+const formatDateParam = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 // Resolves a preset into a concrete from/to date pair (both inclusive, local time).
 const getPresetDateRange = (preset: DatePreset): { from?: string; to?: string } => {
@@ -45,70 +64,97 @@ const getPresetDateRange = (preset: DatePreset): { from?: string; to?: string } 
     case 'TODAY':
       return { from: today, to: today };
     case 'WEEK': {
-      const day = now.getDay(); // 0 = Sunday
+      const day = now.getDay();
       const diffToMonday = day === 0 ? 6 : day - 1;
       const monday = new Date(now);
       monday.setDate(now.getDate() - diffToMonday);
       return { from: formatDateParam(monday), to: today };
     }
-    case 'MONTH': {
-      const first = new Date(now.getFullYear(), now.getMonth(), 1);
-      return { from: formatDateParam(first), to: today };
-    }
-    case 'YEAR': {
-      const first = new Date(now.getFullYear(), 0, 1);
-      return { from: formatDateParam(first), to: today };
-    }
+    case 'MONTH':
+      return { from: formatDateParam(new Date(now.getFullYear(), now.getMonth(), 1)), to: today };
+    case 'YEAR':
+      return { from: formatDateParam(new Date(now.getFullYear(), 0, 1)), to: today };
     default:
       return {};
   }
 };
 
+const DATE_PRESETS: { value: DatePreset; label: string }[] = [
+  { value: 'TODAY', label: 'Bugun' },
+  { value: 'WEEK', label: 'Hafta' },
+  { value: 'MONTH', label: 'Oy' },
+  { value: 'YEAR', label: 'Yil' },
+  { value: 'ALL', label: 'Hammasi' },
+  { value: 'CUSTOM', label: 'Oraliq' },
+];
+
+const DONE_OK = ['COMPLETED', 'DELIVERED'];
+const DONE_BAD = ['CANCELLED', 'REJECTED'];
+const ACTIVE = ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'ON_THE_WAY'];
+
+const orderPayment = (o: Order) => (o.payment || o.payment_method || '').toUpperCase();
+const orderNo = (o: Order) => o.order_number || `#${o.id}`;
+const timeOf = (o: Order) => parseDate(o.created_at)?.getTime() ?? 0;
+
+const SOURCE_LABEL: Record<string, string> = {
+  WAITER: 'Ofitsiant',
+  CUSTOMER: 'Mijoz (ilova)',
+  PARTNER: 'Kassa',
+};
+
 const AllOrdersPage: React.FC = () => {
   const toast = useToast();
+  const partner = getPartner();
+  const manager = partner?.role === 'manager';
+  const shop = isShop(partner);
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [printingUuid, setPrintingUuid] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // Filters State
+  // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [paymentFilter, setPaymentFilter] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<string>('newest');
-  const [datePreset, setDatePreset] = useState<DatePreset>('ALL');
+  const [datePreset, setDatePreset] = useState<DatePreset>('TODAY');
   const [customFromDate, setCustomFromDate] = useState('');
   const [customToDate, setCustomToDate] = useState('');
 
-  // Filial / Role States
-  const [userRole, setUserRole] = useState<'superadmin' | 'manager'>('superadmin');
   const [selectedFilialUuid, setSelectedFilialUuid] = useState<string>('');
   const [filials, setFilials] = useState<PartnerFilial[]>([]);
 
-  const fetchOrders = useCallback(async (branchUuid?: string) => {
+  useEffect(() => {
+    if (manager) return;
+    filialApi
+      .getFilials()
+      .then(setFilials)
+      .catch(() => setFilials([]));
+  }, [manager]);
+
+  const fetchOrders = useCallback(async (): Promise<Order[]> => {
     setLoading(true);
     setError(null);
     try {
-      const activeBranchUuid = branchUuid !== undefined ? branchUuid : selectedFilialUuid;
-      const { from, to } = datePreset === 'CUSTOM'
-        ? { from: customFromDate || undefined, to: customToDate || undefined }
-        : getPresetDateRange(datePreset);
+      const { from, to } =
+        datePreset === 'CUSTOM'
+          ? { from: customFromDate || undefined, to: customToDate || undefined }
+          : getPresetDateRange(datePreset);
       const data = await ordersApi.getOrders({
-        filialUuid: activeBranchUuid || undefined,
+        filialUuid: selectedFilialUuid || undefined,
         fromDate: from,
         toDate: to,
       });
-      setOrders(data);
-      return data;
-    } catch (err: any) {
-      console.error("Failed to load orders:", err);
-      setError(
-        err.response?.data?.message ||
-        err.message ||
-        "Buyurtmalarni yuklashda xatolik yuz berdi. Internet aloqasini tekshiring."
-      );
+      const list = Array.isArray(data) ? data : [];
+      setOrders(list);
+      return list;
+    } catch (err) {
+      setError(getErrorMessage(err, "Buyurtmalarni yuklashda xatolik yuz berdi."));
       return [];
     } finally {
       setLoading(false);
@@ -116,735 +162,465 @@ const AllOrdersPage: React.FC = () => {
   }, [selectedFilialUuid, datePreset, customFromDate, customToDate]);
 
   useEffect(() => {
-    const data = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
-    if (data) {
-      const parsed = JSON.parse(data);
-      if (parsed.role === 'manager') {
-        setUserRole('manager');
-      } else {
-        setUserRole('superadmin');
-        filialApi.getFilials()
-          .then(res => setFilials(res))
-          .catch(err => console.error("Failed to fetch filials in AllOrdersPage:", err));
-      }
-    }
-  }, []);
-
-  // Refetch whenever the branch or date filters change (also covers the initial load)
-  useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
 
-  const handlePrintReceipt = useCallback(async (orderUuid: string, includeOfdQr: boolean) => {
+  const handlePrintReceipt = async (orderUuid: string, includeOfdQr: boolean) => {
     setPrintingUuid(orderUuid);
     try {
       await printReceiptUtil(orderUuid, includeOfdQr);
-    } catch (err: any) {
-      console.error("Chek chop etishda xatolik:", err);
-      toast.error(`Chekni chop etishda xatolik: ${err?.message || err}`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Chekni chop etishda xatolik'));
     } finally {
       setPrintingUuid(null);
     }
-  }, []);
-
-  const formatUzS = (amount: number | string | null | undefined) => {
-    const num = Number(amount);
-    if (isNaN(num)) {
-      return "0 UZS";
-    }
-    return num.toLocaleString('uz-UZ') + " UZS";
   };
 
-  const formatPhone = (phoneStr: string | undefined) => {
-    if (!phoneStr) return '';
-    const clean = phoneStr.replace(/\D/g, '');
-    if (clean.length === 12) {
-      return `+${clean.slice(0, 3)} (${clean.slice(3, 5)}) ${clean.slice(5, 8)}-${clean.slice(8, 10)}-${clean.slice(10, 12)}`;
-    }
-    return phoneStr;
+  // BUGFIX: the old filter called order.contact_phone.includes / order.address.toLowerCase
+  // directly, which crashed the page for dine-in/pickup orders without phone or address.
+  // Sorting used new Date(created_at), which is NaN for backend "dd-MM-yyyy HH:mm" strings.
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const qDigits = q.replace(/\D/g, '');
+    const group = QUEUE_GROUPS.find((g) => g.key === statusFilter);
+    return orders
+      .filter((o) => {
+        if (q) {
+          const hit =
+            String(o.id ?? '').includes(q) ||
+            (o.order_number || '').toLowerCase().includes(q) ||
+            (o.contact_name || '').toLowerCase().includes(q) ||
+            (o.address || '').toLowerCase().includes(q) ||
+            (!!qDigits && (o.contact_phone || '').replace(/\D/g, '').includes(qDigits));
+          if (!hit) return false;
+        }
+        const s = (o.status || '').toUpperCase();
+        if (statusFilter !== 'ALL') {
+          if (group) {
+            if (!group.statuses.includes(s)) return false;
+          } else if (s !== statusFilter) return false;
+        }
+        if (typeFilter !== 'ALL' && o.delivery_type !== typeFilter) return false;
+        if (paymentFilter !== 'ALL' && orderPayment(o) !== paymentFilter) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'oldest') return timeOf(a) - timeOf(b);
+        if (sortBy === 'price-desc') return Number(b.total_price) - Number(a.total_price);
+        if (sortBy === 'price-asc') return Number(a.total_price) - Number(b.total_price);
+        return timeOf(b) - timeOf(a);
+      });
+  }, [orders, searchQuery, statusFilter, typeFilter, paymentFilter, sortBy]);
+
+  const stats = useMemo(() => {
+    const st = (o: Order) => (o.status || '').toUpperCase();
+    const completed = orders.filter((o) => DONE_OK.includes(st(o)));
+    return {
+      total: orders.length,
+      active: orders.filter((o) => ACTIVE.includes(st(o))).length,
+      completed: completed.length,
+      cancelled: orders.filter((o) => DONE_BAD.includes(st(o))).length,
+      revenue: completed.reduce((sum, o) => sum + (Number(o.total_price) || 0), 0),
+    };
+  }, [orders]);
+
+  const activeFilterCount =
+    (statusFilter !== 'ALL' ? 1 : 0) +
+    (typeFilter !== 'ALL' ? 1 : 0) +
+    (paymentFilter !== 'ALL' ? 1 : 0) +
+    (sortBy !== 'newest' ? 1 : 0) +
+    (selectedFilialUuid ? 1 : 0);
+
+  const resetFilters = () => {
+    setStatusFilter('ALL');
+    setTypeFilter('ALL');
+    setPaymentFilter('ALL');
+    setSortBy('newest');
+    setSelectedFilialUuid('');
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">Kutilmoqda</span>;
-      case 'SEARCHING_COURIER':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">Kuryer izlanmoqda</span>;
-      case 'ACCEPTED':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">Qabul qilindi</span>;
-      case 'PREPARING':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20">Tayyorlanmoqda</span>;
-      case 'READY_FOR_PICKUP':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Tayyor (Kuryerga)</span>;
-      case 'ON_THE_WAY':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">Yo'lda</span>;
-      case 'COMPLETED':
-      case 'DELIVERED':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/15">Yetkazildi</span>;
-      case 'REJECTED':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/15">Rad etilgan</span>;
-      case 'CANCELLED':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-400 border border-slate-500/15">Bekor qilingan</span>;
-      default:
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-300">{status}</span>;
-    }
+  const typeBadge = (o: Order) => {
+    if (o.delivery_type === 'DINE_IN') return <Badge tone="neutral">{o.table_number ? `Stol ${o.table_number}` : 'Zalda'}</Badge>;
+    if (!o.delivery_type) return null;
+    return <Badge tone="neutral">{deliveryTypeLabel(o.delivery_type)}</Badge>;
   };
 
-  const getPaymentBadge = (method: string | undefined) => {
-    if (!method) {
-      return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-400 border border-slate-500/10">Noma'lum</span>;
-    }
-    switch (method) {
-      case 'CLICK':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/10">CLICK</span>;
-      case 'PAYME':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/10">Payme</span>;
-      case 'CASH':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-400 border border-slate-500/10">CASH</span>;
-      case 'UZCARD':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/10">Uzcard</span>;
-      default:
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-300">{method}</span>;
-    }
-  };
+  const printButtons = (o: Order, size: 'sm' | 'md' | 'lg' = 'sm') => (
+    <>
+      <Button
+        size={size}
+        variant="outline"
+        loading={printingUuid === o.uuid}
+        icon={<Printer className="w-4 h-4" />}
+        onClick={() => handlePrintReceipt(o.uuid, true)}
+        title="Chek (QR bilan)"
+      >
+        QR bilan
+      </Button>
+      <Button
+        size={size}
+        variant="ghost"
+        disabled={printingUuid === o.uuid}
+        icon={<Printer className="w-4 h-4" />}
+        onClick={() => handlePrintReceipt(o.uuid, false)}
+        title="Chek (QR siz)"
+      >
+        QR siz
+      </Button>
+    </>
+  );
 
-  // Get filtered and sorted orders list
-  const filteredAndSortedOrders = orders
-    .filter((order) => {
-      // Search matches ID, Order Number, Phone or Address
-      const matchesSearch =
-        order.id.toString().includes(searchQuery) ||
-        (order.order_number && order.order_number.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        order.contact_phone.includes(searchQuery) ||
-        order.address.toLowerCase().includes(searchQuery.toLowerCase());
-
-      // Status matches filter
-      const orderStatus = order.status?.toUpperCase();
-      const filterStatus = statusFilter?.toUpperCase();
-      const matchesStatus =
-        statusFilter === 'ALL' ||
-        orderStatus === filterStatus ||
-        (statusFilter === 'COMPLETED' && orderStatus === 'DELIVERED') ||
-        (statusFilter === 'PENDING_GROUP' && (orderStatus === 'PENDING' || orderStatus === 'SEARCHING_COURIER')) ||
-        (statusFilter === 'ACTIVE_GROUP' && ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'ON_THE_WAY'].includes(orderStatus)) ||
-        (statusFilter === 'HISTORY_GROUP' && ['COMPLETED', 'DELIVERED', 'REJECTED', 'CANCELLED'].includes(orderStatus));
-
-      // Payment matches filter
-      const matchesPayment =
-        paymentFilter === 'ALL' ||
-        order.payment === paymentFilter;
-
-      return matchesSearch && matchesStatus && matchesPayment;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'newest') {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      }
-      if (sortBy === 'oldest') {
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      }
-      if (sortBy === 'price-desc') {
-        return Number(b.total_price) - Number(a.total_price);
-      }
-      if (sortBy === 'price-asc') {
-        return Number(a.total_price) - Number(b.total_price);
-      }
-      return 0;
-    });
-
-  // Calculate statistics counters
-  const totalCount = orders.length;
-  const completedCount = orders.filter((o) => {
-    const s = o.status?.toUpperCase();
-    return s === 'COMPLETED' || s === 'DELIVERED';
-  }).length;
-  const activeCount = orders.filter((o) => {
-    const s = o.status?.toUpperCase();
-    return ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'ON_THE_WAY'].includes(s);
-  }).length;
-  const cancelledCount = orders.filter((o) => {
-    const s = o.status?.toUpperCase();
-    return ['CANCELLED', 'REJECTED'].includes(s);
-  }).length;
-  const totalRevenue = orders
-    .filter((o) => {
-      const s = o.status?.toUpperCase();
-      return s === 'COMPLETED' || s === 'DELIVERED';
-    })
-    .reduce((sum, o) => sum + Number(o.total_price), 0);
-
-  return (
-    <div className="space-y-8 font-Outfit">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-2">
-            Barcha buyurtmalar <ShoppingBag className="w-7 h-7 text-brand" />
-          </h1>
-          <p className="text-slate-400">Buyurtmalar to'liq tarixi, qidiruv va batafsil hisobotlari</p>
+  const columns: Column<Order>[] = [
+    {
+      key: 'no',
+      header: 'Buyurtma',
+      primary: true,
+      render: (o) => (
+        <div className="flex flex-col gap-1 min-w-0">
+          <span className="font-extrabold text-ink">{orderNo(o)}</span>
+          <span className="flex flex-wrap gap-1">{typeBadge(o)}</span>
         </div>
+      ),
+    },
+    { key: 'date', header: 'Sana', render: (o) => <span className="text-muted whitespace-nowrap">{formatDateTime(o.created_at)}</span> },
+    {
+      key: 'client',
+      header: 'Mijoz',
+      render: (o) => (
+        <div className="min-w-0">
+          <div className="truncate">{o.contact_name || formatPhone(o.contact_phone) || '—'}</div>
+          {o.contact_name && o.contact_phone && <div className="text-[12px] text-muted">{formatPhone(o.contact_phone)}</div>}
+        </div>
+      ),
+    },
+    {
+      key: 'address',
+      header: 'Manzil',
+      mobileHidden: true,
+      className: 'max-w-[240px]',
+      render: (o) => (
+        <span className="block truncate text-muted" title={o.address}>
+          {o.address || '—'}
+        </span>
+      ),
+    },
+    { key: 'pay', header: "To'lov", render: (o) => <span>{paymentLabel(orderPayment(o))}</span> },
+    {
+      key: 'status',
+      header: 'Holat',
+      mobileAside: true,
+      render: (o) => <Badge tone={statusTone(o.status)}>{statusLabel(o.status)}</Badge>,
+    },
+    {
+      key: 'total',
+      header: 'Jami',
+      align: 'right',
+      mobileAside: true,
+      render: (o) => <span className="font-extrabold text-ink whitespace-nowrap">{formatMoney(o.total_price)}</span>,
+    },
+  ];
 
-        <button
-          onClick={() => fetchOrders()}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-overlay border border-edge-strong hover:bg-overlay-strong hover:text-ink transition text-slate-300 text-sm cursor-pointer self-start sm:self-auto"
-        >
-          <RefreshCw className="w-4 h-4" />
-          <span>Yangilash</span>
-        </button>
+  /* ------------------------------------------------------------ filters */
+  const filterFields = (
+    <>
+      <Select label="Holat" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <option value="ALL">Barcha holatlar</option>
+        {QUEUE_GROUPS.map((g) => (
+          <option key={g.key} value={g.key}>
+            {g.label}
+          </option>
+        ))}
+        <option value="CANCELLED">Bekor qilingan</option>
+        <option value="REJECTED">Rad etilgan</option>
+      </Select>
+      <Select label="Turi" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+        <option value="ALL">Barcha turlar</option>
+        <option value="DELIVERY">Yetkazib berish</option>
+        {!shop && <option value="PICKUP">Olib ketish</option>}
+        {!shop && <option value="DINE_IN">Zalda</option>}
+      </Select>
+      <Select label="To'lov" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
+        <option value="ALL">Barcha to'lovlar</option>
+        <option value="CASH">Naqd</option>
+        <option value="CARD">Karta</option>
+        <option value="CLICK">Click</option>
+        <option value="PAYME">Payme</option>
+        <option value="UZCARD">Uzcard</option>
+      </Select>
+      <Select label="Saralash" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+        <option value="newest">Avval yangilari</option>
+        <option value="oldest">Avval eskilari</option>
+        <option value="price-desc">Summa: kamayish</option>
+        <option value="price-asc">Summa: o'sish</option>
+      </Select>
+      {!manager && filials.length > 0 && (
+        <Select label="Filial" value={selectedFilialUuid} onChange={(e) => setSelectedFilialUuid(e.target.value)}>
+          <option value="">Barcha filiallar</option>
+          {filials.map((f) => (
+            <option key={f.uuid} value={f.uuid}>
+              {f.filial_name}
+            </option>
+          ))}
+        </Select>
+      )}
+    </>
+  );
+
+  /* ------------------------------------------------------------- detail */
+  const o = selectedOrder;
+  const detail = o && (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={statusTone(o.status)}>{statusLabel(o.status)}</Badge>
+        {typeBadge(o)}
+        <Badge tone={o.is_paid ? 'success' : 'warning'}>{o.is_paid ? "To'langan" : "To'lanmagan"}</Badge>
       </div>
 
-      {/* KPI Counters Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
-        {/* Total Orders */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-brand/20 transition-all duration-300">
-          <div className="flex items-center justify-between mb-3">
-            <span className="p-2.5 rounded-xl bg-brand/10 text-brand"><ShoppingBag className="w-5 h-5" /></span>
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Jami</span>
-          </div>
-          <p className="text-xs text-slate-400 font-semibold">Jami buyurtmalar</p>
-          <h3 className="text-2xl font-bold text-ink mt-1">{totalCount} ta</h3>
-        </div>
-
-        {/* Active Orders */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-blue-500/20 transition-all duration-300">
-          <div className="flex items-center justify-between mb-3">
-            <span className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400"><Clock className="w-5 h-5" /></span>
-            <span className="text-[10px] font-bold text-blue-400 uppercase">Faol</span>
-          </div>
-          <p className="text-xs text-slate-400 font-semibold">Jarayondagilar</p>
-          <h3 className="text-2xl font-bold text-ink mt-1">{activeCount} ta</h3>
-        </div>
-
-        {/* Completed Orders */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-emerald-500/20 transition-all duration-300">
-          <div className="flex items-center justify-between mb-3">
-            <span className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400"><CheckCircle className="w-5 h-5" /></span>
-            <span className="text-[10px] font-bold text-emerald-400 uppercase">Yakunlandi</span>
-          </div>
-          <p className="text-xs text-slate-400 font-semibold">Yetkazib berildi</p>
-          <h3 className="text-2xl font-bold text-emerald-400 mt-1">{completedCount} ta</h3>
-        </div>
-
-        {/* Cancelled/Rejected Orders */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-rose-500/20 transition-all duration-300">
-          <div className="flex items-center justify-between mb-3">
-            <span className="p-2.5 rounded-xl bg-rose-500/10 text-rose-400"><XCircle className="w-5 h-5" /></span>
-            <span className="text-[10px] font-bold text-rose-400 uppercase">Bekor qilingan</span>
-          </div>
-          <p className="text-xs text-slate-400 font-semibold">Rad/Bekor bo'lganlar</p>
-          <h3 className="text-2xl font-bold text-ink mt-1">{cancelledCount} ta</h3>
-        </div>
-
-        {/* Completed revenue */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-amber-500/20 transition-all duration-300 sm:col-span-2 lg:col-span-1">
-          <div className="flex items-center justify-between mb-3">
-            <span className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400"><DollarSign className="w-5 h-5" /></span>
-            <span className="text-[10px] font-bold text-amber-400 uppercase">Kirim</span>
-          </div>
-          <p className="text-xs text-slate-400 font-semibold">Yakunlangan savdo summasi</p>
-          <h3 className="text-xl font-bold text-amber-400 mt-1 truncate">{formatUzS(totalRevenue)}</h3>
-        </div>
-      </div>
-
-      {/* Advanced Filter and Search Bar */}
-      <div className="p-5 rounded-2xl bg-darkCard border border-edge flex flex-col xl:flex-row xl:items-center justify-between gap-4 shadow-xl">
-        <div className="flex-1 relative">
-          <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500 pointer-events-none">
-            <Search className="w-4.5 h-4.5" />
-          </span>
-          <input
-            type="text"
-            placeholder="Buyurtma raqami, manzil yoki telefon orqali qidirish..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-900/50 border border-edge hover:border-edge-strong focus:border-brand rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Status filter */}
-          <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
-            <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
-            >
-              <option value="ALL" className="bg-slate-900 text-ink">Barcha holatlar</option>
-              <option value="PENDING_GROUP" className="bg-slate-900 text-ink">Yangi (Pending / Kuryer kutilmoqda)</option>
-              <option value="ACTIVE_GROUP" className="bg-slate-900 text-ink">Faol jarayondagilar (Yo'lda/Tayyorlanayotgan)</option>
-              <option value="HISTORY_GROUP" className="bg-slate-900 text-ink">Yakunlanganlar / Rad qilinganlar</option>
-              <option value="COMPLETED" className="bg-slate-900 text-ink">Yetkazib berilganlar</option>
-              <option value="CANCELLED" className="bg-slate-900 text-ink">Bekor qilinganlar</option>
-              <option value="REJECTED" className="bg-slate-900 text-ink">Rad etilganlar</option>
-            </select>
-          </div>
-
-          {/* Payment filter */}
-          <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
-            <CreditCard className="w-3.5 h-3.5 shrink-0" />
-            <select
-              value={paymentFilter}
-              onChange={(e) => setPaymentFilter(e.target.value)}
-              className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
-            >
-              <option value="ALL" className="bg-slate-900 text-ink">Barcha to'lovlar</option>
-              <option value="CASH" className="bg-slate-900 text-ink">CASH</option>
-              <option value="CLICK" className="bg-slate-900 text-ink">CLICK</option>
-              <option value="PAYME" className="bg-slate-900 text-ink">Payme</option>
-              <option value="UZCARD" className="bg-slate-900 text-ink">Uzcard</option>
-            </select>
-          </div>
-
-          {/* Sort selection */}
-          <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
-            <ArrowUpDown className="w-3.5 h-3.5 shrink-0" />
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
-            >
-              <option value="newest" className="bg-slate-900 text-ink">Yangi buyurtmalar birinchi</option>
-              <option value="oldest" className="bg-slate-900 text-ink">Eski buyurtmalar birinchi</option>
-              <option value="price-desc" className="bg-slate-900 text-ink">Summa: Kamayuvchi</option>
-              <option value="price-asc" className="bg-slate-900 text-ink">Summa: O'suvchi</option>
-            </select>
-          </div>
-
-          {/* Date range filter */}
-          <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
-            <Calendar className="w-3.5 h-3.5 shrink-0" />
-            <select
-              value={datePreset}
-              onChange={(e) => {
-                const val = e.target.value as DatePreset;
-                setDatePreset(val);
-                if (val !== 'CUSTOM') {
-                  setCustomFromDate('');
-                  setCustomToDate('');
-                }
-              }}
-              className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
-            >
-              <option value="ALL" className="bg-slate-900 text-ink">Umumiy (barcha vaqt)</option>
-              <option value="TODAY" className="bg-slate-900 text-ink">Bugungi</option>
-              <option value="WEEK" className="bg-slate-900 text-ink">Shu haftalik</option>
-              <option value="MONTH" className="bg-slate-900 text-ink">Shu oylik</option>
-              <option value="YEAR" className="bg-slate-900 text-ink">Shu yillik</option>
-              <option value="CUSTOM" className="bg-slate-900 text-ink">Sana oralig'i...</option>
-            </select>
-          </div>
-
-          {/* Custom date range inputs (shown only when "Sana oralig'i" is selected) */}
-          {datePreset === 'CUSTOM' && (
-            <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
-              <input
-                type="date"
-                value={customFromDate}
-                onChange={(e) => setCustomFromDate(e.target.value)}
-                max={customToDate || undefined}
-                className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
-              />
-              <span className="text-slate-600">→</span>
-              <input
-                type="date"
-                value={customToDate}
-                onChange={(e) => setCustomToDate(e.target.value)}
-                min={customFromDate || undefined}
-                className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
-              />
-            </div>
-          )}
-
-          {/* Branch filter (Superadmin only) */}
-          {userRole === 'superadmin' && filials.length > 0 && (
-            <div className="flex items-center gap-2 bg-slate-900/50 border border-edge px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 focus-within:border-brand transition">
-              <SlidersHorizontal className="w-3.5 h-3.5 shrink-0 text-brand" />
-              <select
-                value={selectedFilialUuid}
-                onChange={(e) => setSelectedFilialUuid(e.target.value)}
-                className="bg-transparent text-ink font-bold focus:outline-none cursor-pointer"
-              >
-                <option value="" className="bg-slate-900 text-ink">Barcha filiallar</option>
-                {filials.map(filial => (
-                  <option key={filial.uuid} value={filial.uuid} className="bg-slate-900 text-ink">
-                    {filial.filial_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Main Table view of Orders */}
-      <div className="p-6 rounded-2xl bg-darkCard border border-edge flex flex-col shadow-xl">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-4">
-            <div className="w-10 h-10 border-4 border-brand/30 border-t-brand rounded-full animate-spin" />
-            <p className="text-slate-400 font-semibold text-sm">Buyurtmalar ro'yxati yuklanmoqda...</p>
-          </div>
-        ) : error ? (
-          <div className="flex flex-col items-center justify-center py-16 text-slate-400 text-center">
-            <AlertCircle className="w-12 h-12 text-rose-500 animate-pulse mb-3" />
-            <h4 className="font-bold text-ink text-base">Ma'lumot yuklashda xatolik</h4>
-            <p className="text-xs max-w-sm mt-1 mb-4">{error}</p>
-            <button
-              onClick={() => fetchOrders()}
-              className="px-4 py-2.5 rounded-xl bg-brand text-white font-semibold text-xs transition hover:bg-brand-dark cursor-pointer flex items-center gap-1"
-            >
-              <RefreshCw className="w-4 h-4" /> Qayta urinish
-            </button>
-          </div>
-        ) : filteredAndSortedOrders.length > 0 ? (
-          <div className="overflow-x-auto">
-            {/* Desktop Table View */}
-            <table className="w-full text-left border-collapse text-sm hidden md:table">
-              <thead>
-                <tr className="border-b border-edge text-slate-500 text-xs uppercase tracking-wider font-bold">
-                  <th className="pb-3.5 pl-2">ID</th>
-                  <th className="pb-3.5">Sana / Vaqt</th>
-                  <th className="pb-3.5">Telefon</th>
-                  <th className="pb-3.5">Manzil</th>
-                  <th className="pb-3.5 text-center">To'lov</th>
-                  <th className="pb-3.5 text-center">Holat</th>
-                  <th className="pb-3.5 text-right pr-2">Jami</th>
-                  <th className="pb-3.5 text-center pr-2">Chek</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-edge text-slate-300">
-                {filteredAndSortedOrders.map((order) => (
-                  <tr
-                    key={order.uuid}
-                    onClick={() => setSelectedOrder(order)}
-                    className="hover:bg-overlay transition-colors cursor-pointer"
-                  >
-                    <td className="py-4 pl-2">
-                      <span className="font-bold text-ink text-xs block">{order.order_number || `#${order.id}`}</span>
-                      {order.delivery_type === 'DELIVERY' && (
-                        <span className="text-[9px] px-1 py-0.5 rounded font-extrabold bg-blue-500/10 text-blue-400 border border-blue-500/20 mt-1 inline-block">
-                          Kuryer
-                        </span>
-                      )}
-                      {order.delivery_type === 'PICKUP' && (
-                        <span className="text-[9px] px-1 py-0.5 rounded font-extrabold bg-amber-500/10 text-amber-400 border border-amber-500/20 mt-1 inline-block">
-                          Olib ketish
-                        </span>
-                      )}
-                      {order.delivery_type === 'DINE_IN' && (
-                        <span className="text-[9px] px-1 py-0.5 rounded font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mt-1 inline-block">
-                          {order.table_number ? `${order.table_number}-stol` : 'Stolda'}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-4 text-xs font-semibold text-slate-400">{order.created_at}</td>
-                    <td className="py-4 font-semibold text-slate-300 text-xs">{formatPhone(order.contact_phone)}</td>
-                    <td className="py-4 text-xs max-w-[200px] truncate" title={order.address}>{order.address}</td>
-                    <td className="py-4 text-center">{getPaymentBadge(order.payment)}</td>
-                    <td className="py-4 text-center">{getStatusBadge(order.status)}</td>
-                    <td className="py-4 text-right pr-2 font-bold text-ink text-xs">{formatUzS(order.total_price)}</td>
-                    <td className="py-4 text-center pr-2">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handlePrintReceipt(order.uuid, true);
-                          }}
-                          disabled={printingUuid === order.uuid}
-                          className="p-2 rounded-lg bg-overlay hover:bg-brand/10 border border-edge-strong hover:border-brand/20 text-slate-400 hover:text-brand transition cursor-pointer flex items-center justify-center disabled:opacity-50"
-                          title="Chek (QR bilan)"
-                        >
-                          {printingUuid === order.uuid ? (
-                            <div className="w-3.5 h-3.5 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
-                          ) : (
-                            <Printer className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handlePrintReceipt(order.uuid, false);
-                          }}
-                          disabled={printingUuid === order.uuid}
-                          className="p-2 rounded-lg bg-overlay hover:bg-overlay-strong border border-edge-strong text-slate-500 hover:text-slate-300 transition cursor-pointer flex items-center justify-center disabled:opacity-50"
-                          title="Chek (QR siz)"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* Mobile Card-List View (fallback) */}
-            <div className="grid grid-cols-1 gap-4 md:hidden">
-              {filteredAndSortedOrders.map((order) => (
-                <div
-                  key={order.uuid}
-                  onClick={() => setSelectedOrder(order)}
-                  className="p-4 rounded-xl border border-edge bg-slate-900/40 flex flex-col gap-3 cursor-pointer"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-ink text-xs">{order.order_number || `#${order.id}`}</span>
-                      {order.delivery_type === 'DELIVERY' && (
-                        <span className="text-[9px] px-1 py-0.2 rounded font-extrabold bg-blue-500/10 text-blue-400 border border-blue-500/10">
-                          Kuryer
-                        </span>
-                      )}
-                      {order.delivery_type === 'PICKUP' && (
-                        <span className="text-[9px] px-1 py-0.2 rounded font-extrabold bg-amber-500/10 text-amber-400 border border-amber-500/10">
-                          Olib ketish
-                        </span>
-                      )}
-                      {order.delivery_type === 'DINE_IN' && (
-                        <span className="text-[9px] px-1 py-0.2 rounded font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/10">
-                          {order.table_number ? `${order.table_number}-stol` : 'Stolda'}
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-slate-500">{order.created_at.split(',')[1] || order.created_at}</span>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-400 truncate">{order.address}</p>
-                    <p className="text-xs font-semibold text-slate-300 mt-1">{formatPhone(order.contact_phone)}</p>
-                  </div>
-                  <div className="flex items-center justify-between pt-2.5 border-t border-edge">
-                    <div className="flex items-center gap-1.5">
-                      {getPaymentBadge(order.payment)}
-                      {getStatusBadge(order.status)}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-ink text-xs">{formatUzS(order.total_price)}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePrintReceipt(order.uuid, true);
-                        }}
-                        disabled={printingUuid === order.uuid}
-                        className="p-1.5 rounded-lg bg-overlay border border-edge-strong text-slate-400 hover:text-ink transition cursor-pointer disabled:opacity-50"
-                        title="Chek (QR bilan)"
-                      >
-                        {printingUuid === order.uuid ? (
-                          <div className="w-3 h-3 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
-                        ) : (
-                          <Printer className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePrintReceipt(order.uuid, false);
-                        }}
-                        disabled={printingUuid === order.uuid}
-                        className="p-1.5 rounded-lg bg-overlay border border-edge-strong text-slate-500 hover:text-slate-300 transition cursor-pointer disabled:opacity-50"
-                        title="Chek (QR siz)"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+      <div>
+        <div className="text-[12px] font-bold uppercase tracking-wider text-subtle mb-2">Tarkibi</div>
+        <div className="divide-y divide-edge border border-edge rounded-2xl">
+          {(o.items || []).length === 0 && <div className="p-4 text-[14px] text-muted">Mahsulotlar ro'yxati kelmadi</div>}
+          {(o.items || []).map((item, idx) => {
+            const name = item?.product_name || item?.name || item?.product?.name || "Noma'lum mahsulot";
+            const price = Number(item?.price_at_time_of_order ?? item?.product?.price ?? 0);
+            const qty = item?.quantity || 0;
+            return (
+              <div key={item.uuid || idx} className="px-4 py-3 flex items-center justify-between gap-3 text-[14px]">
+                <div className="min-w-0">
+                  <div className="font-semibold text-ink">{name}</div>
+                  <div className="text-[13px] text-muted">
+                    {formatMoney(price)} × {qty}
                   </div>
                 </div>
-              ))}
+                <span className="font-bold shrink-0">{formatMoney(item.line_total ?? price * qty)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-2 text-[14px]">
+        {o.delivery_type === 'DELIVERY' && (
+          <div className="flex justify-between text-muted">
+            <span>Yetkazib berish</span>
+            <span>{formatMoney(o.delivery_fee)}</span>
+          </div>
+        )}
+        <div className="flex justify-between items-baseline">
+          <span className="font-bold">Jami</span>
+          <span className="text-[20px] font-black text-ink tracking-tightest">{formatMoney(o.total_price)}</span>
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-field p-4 space-y-2.5 text-[14px]">
+        {o.contact_name && (
+          <p className="flex items-center gap-2.5">
+            <User className="w-4 h-4 text-muted shrink-0" /> {o.contact_name}
+          </p>
+        )}
+        {o.contact_phone && (
+          <a href={`tel:${o.contact_phone}`} className="flex items-center gap-2.5 text-brand font-semibold">
+            <Phone className="w-4 h-4 shrink-0" /> {formatPhone(o.contact_phone)}
+          </a>
+        )}
+        {o.address && (
+          <p className="flex items-start gap-2.5">
+            <MapPin className="w-4 h-4 text-muted shrink-0 mt-0.5" />
+            <span>
+              {o.address}
+              {o.distance ? ` · ${o.distance} km` : ''}
+            </span>
+          </p>
+        )}
+        {o.courier_phone && (
+          <a href={`tel:${o.courier_phone}`} className="flex items-center gap-2.5">
+            <Truck className="w-4 h-4 text-muted shrink-0" /> Kuryer: {formatPhone(o.courier_phone)}
+          </a>
+        )}
+        <p className="flex items-center gap-2.5">
+          <CreditCard className="w-4 h-4 text-muted shrink-0" />
+          {o.payment_method_display || paymentLabel(orderPayment(o))}
+        </p>
+        {o.order_source && (
+          <p className="text-muted">Manba: {SOURCE_LABEL[o.order_source] || o.order_source_display || o.order_source}</p>
+        )}
+        {o.description && o.description !== "Izoh yo'q" && <p className="text-muted italic">Izoh: {o.description}</p>}
+        {o.reject_reason && <p className="text-danger-ink">Sabab: {o.reject_reason}</p>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="pb-4">
+      <PageHeader
+        title="Buyurtmalar tarixi"
+        subtitle={loading ? 'Yuklanmoqda...' : `${filtered.length} ta buyurtma`}
+        actions={
+          <>
+            <IconButton label="Yangilash" variant="outline" onClick={() => fetchOrders()} disabled={loading}>
+              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+            </IconButton>
+          </>
+        }
+      >
+        <div className="space-y-2.5">
+          <div className="flex gap-2">
+            <SearchInput
+              className="flex-1"
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Raqam, mijoz, telefon yoki manzil"
+            />
+            <button
+              type="button"
+              onClick={() => setFiltersOpen(true)}
+              className="md:hidden relative h-11 w-11 shrink-0 rounded-xl bg-surface border border-edge flex items-center justify-center text-ink cursor-pointer"
+              aria-label="Filtrlar"
+            >
+              <SlidersHorizontal className="w-5 h-5" />
+              {activeFilterCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-brand text-white text-[11px] font-extrabold flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          </div>
+          <Segmented
+            options={DATE_PRESETS}
+            value={datePreset}
+            onChange={(v) => {
+              setDatePreset(v);
+              if (v !== 'CUSTOM') {
+                setCustomFromDate('');
+                setCustomToDate('');
+              }
+            }}
+          />
+          {datePreset === 'CUSTOM' && (
+            <div className="grid grid-cols-2 gap-2 max-w-md">
+              <Input type="date" aria-label="Boshlanish" value={customFromDate} max={customToDate || undefined} onChange={(e) => setCustomFromDate(e.target.value)} />
+              <Input type="date" aria-label="Tugash" value={customToDate} min={customFromDate || undefined} onChange={(e) => setCustomToDate(e.target.value)} />
             </div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-500 text-center">
-            <ShoppingBag className="w-16 h-16 stroke-[1.2] mb-3 text-slate-600" />
-            <h3 className="font-bold text-ink mb-1">Buyurtmalar topilmadi</h3>
-            <p className="text-xs max-w-xs">Filtr parametrlari bo'yicha hech qanday buyurtma mavjud emas</p>
-          </div>
+          )}
+        </div>
+      </PageHeader>
+
+      {/* Desktop inline filters */}
+      <div className="hidden md:grid grid-cols-5 gap-3 mb-4 items-end">
+        {filterFields}
+        {activeFilterCount > 0 && (
+          <Button variant="ghost" onClick={resetFilters}>
+            Tozalash
+          </Button>
         )}
       </div>
 
-      {/* Selected Order Details Modal Dialog */}
-      {selectedOrder && (
-        <div
-          onClick={() => setSelectedOrder(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-6 animate-[slideUp_0.3s_ease-out]"
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-lg text-ink">Buyurtma {selectedOrder.order_number || `#${selectedOrder.id}`} Tafsilotlari</h3>
-                <p className="text-xs text-slate-400 mt-0.5">{selectedOrder.created_at}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setEditingOrder(selectedOrder)}
-                  className="px-3 py-1.5 rounded-lg bg-brand/10 hover:bg-brand/20 text-brand border border-brand/20 transition cursor-pointer text-xs font-bold flex items-center gap-1.5"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                  Tahrirlash
-                </button>
-                <button
-                  onClick={() => setSelectedOrder(null)}
-                  className="px-3 py-1.5 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer text-xs font-bold"
-                >
-                  Yopish
-                </button>
-              </div>
-            </div>
+      {/* KPIs (for the loaded period) */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+        <StatCard label="Jami" value={stats.total} icon={<ShoppingBag className="w-4 h-4" />} tone="neutral" />
+        <StatCard label="Jarayonda" value={stats.active} icon={<Clock className="w-4 h-4" />} tone="info" />
+        <StatCard label="Yakunlangan" value={stats.completed} icon={<CheckCircle className="w-4 h-4" />} tone="brand" />
+        <StatCard label="Bekor / rad" value={stats.cancelled} icon={<XCircle className="w-4 h-4" />} tone="danger" />
+        <StatCard
+          className="col-span-2 lg:col-span-1"
+          label="Yakunlangan savdo"
+          value={formatMoney(stats.revenue)}
+          icon={<DollarSign className="w-4 h-4" />}
+          tone="gold"
+        />
+      </div>
 
-            {/* Status indicators */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">Joriy Holat:</span>
-              {getStatusBadge(selectedOrder.status)}
-            </div>
-
-            {/* Dishes list items */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Buyurtma qilingan taomlar</h4>
-              <div className="divide-y divide-edge max-h-60 overflow-y-auto pr-1">
-                {(selectedOrder.items || []).map((item, idx) => {
-                  const productName = item?.product_name || item?.name || item?.product?.name || "Noma'lum taom";
-                  const productPrice = Number(item?.price_at_time_of_order || item?.product?.price || 0);
-                  const quantity = item?.quantity || 0;
-                  return (
-                    <div key={idx} className="py-2.5 flex items-center justify-between gap-3 text-sm">
-                      <div>
-                        <p className="font-medium text-ink">{productName}</p>
-                        <p className="text-xs text-slate-500">{formatUzS(productPrice)} x {quantity}</p>
-                      </div>
-                      <span className="font-semibold text-slate-300 shrink-0">
-                        {formatUzS(productPrice * quantity)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Pricing Details */}
-            <div className="pt-4 border-t border-edge space-y-2 text-sm">
-              <div className="flex justify-between text-slate-400">
-                <span>Kuryer yetkazib berish xizmati</span>
-                <span>{formatUzS(selectedOrder.delivery_fee)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-ink text-base pt-1">
-                <span>Jami to'lov summasi</span>
-                <span className="text-emerald-400">{formatUzS(selectedOrder.total_price)}</span>
-              </div>
-            </div>
-
-            {/* Client address details */}
-            <div className="p-4 rounded-xl bg-slate-900 border border-edge space-y-3 text-xs">
-              {selectedOrder.contact_name && (
-                <p className="flex items-center gap-2 text-slate-300">
-                  <User className="w-4 h-4 text-brand shrink-0" />
-                  <span><strong>Mijoz:</strong> {selectedOrder.contact_name}</span>
-                </p>
-              )}
-              <p className="flex items-start gap-2 text-slate-300">
-                <MapPin className="w-4 h-4 text-brand shrink-0 mt-0.5" />
-                <span>
-                  <strong>Manzil:</strong> {selectedOrder.address}
-                  {selectedOrder.distance ? ` (${selectedOrder.distance} km)` : ''}
-                </span>
-              </p>
-              {selectedOrder.contact_phone && (
-                <p className="flex items-center gap-2 text-slate-300">
-                  <Phone className="w-4 h-4 text-brand shrink-0" />
-                  <span><strong>Telefon:</strong> {formatPhone(selectedOrder.contact_phone)}</span>
-                </p>
-              )}
-              {selectedOrder.courier_phone && (
-                <p className="flex items-center gap-2 text-slate-300">
-                  <Truck className="w-4 h-4 text-brand shrink-0" />
-                  <span><strong>Kuryer telefoni:</strong> {formatPhone(selectedOrder.courier_phone)}</span>
-                </p>
-              )}
-              {selectedOrder.table_number && (
-                <p className="flex items-center gap-2 text-slate-300">
-                  <span className="w-4 h-4 text-brand shrink-0 flex items-center justify-center font-bold text-[10px]">T</span>
-                  <span><strong>Stol raqami:</strong> {selectedOrder.table_number}-stol</span>
-                </p>
-              )}
-              {selectedOrder.order_source && (
-                <p className="flex items-center gap-2 text-slate-300">
-                  <span className="w-4 h-4 text-brand shrink-0 flex items-center justify-center font-bold text-[10px]">S</span>
-                  <span>
-                    <strong>Manba:</strong>{' '}
-                    {selectedOrder.order_source === 'WAITER' ? 'Ofitsiant' :
-                     selectedOrder.order_source === 'CUSTOMER' ? 'Mijoz (App)' :
-                     selectedOrder.order_source === 'PARTNER' ? 'Hamkor (Kassa)' : selectedOrder.order_source}
-                  </span>
-                </p>
-              )}
-              <div className="flex items-center justify-between text-slate-300 border-t border-edge pt-2">
-                <p className="flex items-center gap-2">
-                  <CreditCard className="w-4 h-4 text-brand shrink-0" />
-                  <span>
-                    <strong>To'lov turi:</strong> {selectedOrder.payment_method_display || selectedOrder.payment_method || selectedOrder.payment}
-                  </span>
-                </p>
-                <div className="flex items-center gap-1.5">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    selectedOrder.is_paid 
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/10' 
-                      : 'bg-amber-500/10 text-amber-400 border border-amber-500/10'
-                  }`}>
-                    {selectedOrder.is_paid ? "To'langan" : "To'lanmagan"}
-                  </span>
-                </div>
-              </div>
-              {selectedOrder.description && selectedOrder.description !== "Izoh yo'q" && (
-                <div className="border-t border-edge pt-2 text-slate-400 italic">
-                  <strong>Izoh:</strong> {selectedOrder.description}
-                </div>
-              )}
-            </div>
-            {selectedOrder.status === 'READY_FOR_PICKUP' && (
-              <div className="pt-2 grid grid-cols-2 gap-2.5">
-                <button
-                  onClick={() => handlePrintReceipt(selectedOrder.uuid, true)}
-                  disabled={printingUuid === selectedOrder.uuid}
-                  className="py-3 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 shadow-lg shadow-amber-500/10"
-                >
-                  {printingUuid === selectedOrder.uuid ? (
-                    <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
-                  ) : (
-                    <Printer className="w-4 h-4" />
-                  )}
-                  <span>Chek (QR bilan)</span>
-                </button>
-                <button
-                  onClick={() => handlePrintReceipt(selectedOrder.uuid, false)}
-                  disabled={printingUuid === selectedOrder.uuid}
-                  className="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong disabled:opacity-50 text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
-                >
-                  <Printer className="w-4 h-4 text-slate-300" />
-                  <span>Chek (QR siz)</span>
-                </button>
-              </div>
-            )}
-          </div>
+      {loading ? (
+        <SkeletonList rows={6} />
+      ) : error ? (
+        <div className="ui-card">
+          <ErrorState message={error} onRetry={() => fetchOrders()} />
         </div>
+      ) : (
+        <DataList
+          rows={filtered}
+          columns={columns}
+          rowKey={(r) => r.uuid}
+          onRowClick={setSelectedOrder}
+          rowActions={(r) => printButtons(r)}
+          empty={
+            <div className="ui-card">
+              <EmptyState
+                icon={<ShoppingBag className="w-7 h-7" />}
+                title="Buyurtmalar topilmadi"
+                description={
+                  orders.length > 0 ? 'Filtr yoki qidiruvni o‘zgartirib ko‘ring.' : 'Tanlangan davrda buyurtmalar yo‘q.'
+                }
+                action={
+                  activeFilterCount > 0 || searchQuery ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        resetFilters();
+                        setSearchQuery('');
+                      }}
+                    >
+                      Filtrlarni tozalash
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          }
+        />
       )}
 
-      {/* Edit Order Modal Dialog */}
+      {/* Mobile filter sheet */}
+      <Sheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title="Filtrlar"
+        footer={
+          <>
+            <Button variant="secondary" size="lg" block onClick={resetFilters}>
+              Tozalash
+            </Button>
+            <Button size="lg" block icon={<ArrowUpDown className="w-4 h-4" />} onClick={() => setFiltersOpen(false)}>
+              Ko'rsatish ({filtered.length})
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">{filterFields}</div>
+      </Sheet>
+
+      {/* Order detail */}
+      <Sheet
+        open={!!o}
+        onClose={() => setSelectedOrder(null)}
+        title={o ? `Buyurtma ${orderNo(o)}` : ''}
+        subtitle={o ? formatDateTime(o.created_at) : undefined}
+        size="md"
+        footer={
+          o && (
+            <>
+              <Button variant="secondary" size="lg" icon={<Pencil className="w-4 h-4" />} onClick={() => setEditingOrder(o)}>
+                Tahrirlash
+              </Button>
+              <div className="grid grid-cols-2 gap-2 md:flex">{printButtons(o, 'lg')}</div>
+            </>
+          )
+        }
+      >
+        {detail}
+      </Sheet>
+
       {editingOrder && (
         <EditOrderModal
           orderUuid={editingOrder.uuid}
-          orderNumber={editingOrder.order_number || `#${editingOrder.id}`}
+          orderNumber={orderNo(editingOrder)}
           onClose={async (refresh) => {
+            const editedUuid = editingOrder.uuid;
             setEditingOrder(null);
             if (refresh) {
-              try {
-                const data = await fetchOrders();
-                const fresh = data.find((o: Order) => o.uuid === editingOrder.uuid);
-                if (fresh) {
-                  setSelectedOrder(fresh);
-                }
-              } catch (err) {
-                console.error("Failed to refresh orders after edit:", err);
-              }
+              const data = await fetchOrders();
+              const fresh = data.find((x) => x.uuid === editedUuid);
+              if (fresh) setSelectedOrder(fresh);
             }
           }}
         />

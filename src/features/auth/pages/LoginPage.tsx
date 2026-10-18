@@ -1,50 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { Navigate } from 'react-router-dom';
 import LoginForm from '../components/LoginForm';
-import { Sun, Moon } from 'lucide-react';
+import { getToken } from '../../../core/lib/session';
 
 const LoginPage: React.FC = () => {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('milliygo_theme') as 'light' | 'dark') || 'dark');
-
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'light') {
-      root.classList.add('light');
-      root.classList.remove('dark');
-      localStorage.setItem('milliygo_theme', 'light');
-    } else {
-      root.classList.add('dark');
-      root.classList.remove('light');
-      localStorage.setItem('milliygo_theme', 'dark');
-    }
-  }, [theme]);
+  // Already signed in -> straight to the app.
+  if (getToken()) return <Navigate to="/" replace />;
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-darkBg overflow-hidden font-Outfit px-4">
-      {/* Theme Toggle Button */}
-      <div className="absolute top-6 right-6 z-20">
-        <button
-          onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-          className="p-3 rounded-xl bg-darkCard border border-edge-strong text-slate-400 hover:text-ink hover:bg-overlay transition-all duration-300 cursor-pointer shadow-lg flex items-center justify-center"
-          aria-label="Toggle Theme"
-        >
-          {theme === 'light' ? (
-            <Moon className="w-5 h-5 text-indigo-400 animate-pulse" />
-          ) : (
-            <Sun className="w-5 h-5 text-amber-500 animate-spin-slow" />
-          )}
-        </button>
-      </div>
-
-      {/* Premium glowing blobs */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-brand/10 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-brand/10 blur-[120px] pointer-events-none" />
-
-      {/* Grid background pattern */}
-      <div className="absolute inset-0 login-grid-bg bg-[size:40px_40px] pointer-events-none" />
-
-      <div className="relative z-10 w-full flex justify-center items-center">
+    <div className="min-h-screen bg-canvas flex flex-col">
+      <div className="h-1.5 bg-gradient-to-r from-brand via-brand-bright to-gold" aria-hidden />
+      <main className="flex-1 flex items-center justify-center px-4 py-10 pt-[calc(40px+var(--safe-top))] pb-[calc(40px+var(--safe-bottom))]">
         <LoginForm />
-      </div>
+      </main>
     </div>
   );
 };

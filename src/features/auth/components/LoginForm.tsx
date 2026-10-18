@@ -1,195 +1,140 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Phone, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Lock, Phone } from 'lucide-react';
 import apiClient from '../../../core/api/client';
-import { ENDPOINTS } from '../../../core/config/constants';
+import { ENDPOINTS, STORAGE_KEYS } from '../../../core/config/constants';
+import { Button, InlineAlert, Input } from '../../../core/ui';
+import { cleanPhone, maskPhoneInput } from '../../../core/lib/format';
+import { getErrorMessage } from '../../../core/lib/errors';
+import { clearSession, setPartner } from '../../../core/lib/session';
+import type { PartnerSession } from '../../../core/lib/session';
 
 const LoginForm: React.FC = () => {
+  const navigate = useNavigate();
   const [phone, setPhone] = useState('+998');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const navigate = useNavigate();
-
-  // Simple formatting for Uzbek phone numbers: +998 (XX) XXX-XX-XX
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let val = e.target.value;
-    if (!val.startsWith('+998')) {
-      val = '+998';
-    }
-    // Limit length to +998 followed by 9 digits
-    const numbersOnly = val.substring(4).replace(/\D/g, '');
-    const truncated = numbersOnly.substring(0, 9);
-    
-    // Format presentation
-    let formatted = '+998';
-    if (truncated.length > 0) {
-      formatted += ' (' + truncated.substring(0, 2);
-    }
-    if (truncated.length > 2) {
-      formatted += ') ' + truncated.substring(2, 5);
-    }
-    if (truncated.length > 5) {
-      formatted += '-' + truncated.substring(5, 7);
-    }
-    if (truncated.length > 7) {
-      formatted += '-' + truncated.substring(7, 9);
-    }
-    
-    setPhone(formatted);
-  };
-
-  const cleanPhoneNumber = (formattedPhone: string) => {
-    return formattedPhone.replace(/[^\d+]/g, '');
-  };
+  const [fieldErr, setFieldErr] = useState<{ phone?: string; password?: string }>({});
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    const rawPhone = cleanPhone(phone);
+    const fe: typeof fieldErr = {};
+    if (rawPhone.length !== 13) fe.phone = "Telefon raqamini to'liq kiriting: +998 (90) 123-45-67";
+    if (password.length < 4) fe.password = "Parol kamida 4 ta belgidan iborat bo'lishi kerak";
+    setFieldErr(fe);
+    if (Object.keys(fe).length) return;
 
-    const rawPhone = cleanPhoneNumber(phone);
-    if (rawPhone.length !== 13) {
-      setError("Telefon raqami noto'g'ri shakllantirilgan. Misol: +998 (90) 123-45-67");
-      setLoading(false);
-      return;
-    }
-
-    if (password.length < 4) {
-      setError("Parol kamida 4 ta belgidan iborat bo'lishi kerak");
-      setLoading(false);
-      return;
-    }
-
+    setLoading(true);
     try {
-      // Unified login — the backend auto-detects superadmin vs staff (manager/waiter)
-      // from the phone/password pair and returns user_type/role/dashboard accordingly.
-      const loginResponse = await apiClient.post(ENDPOINTS.AUTH.LOGIN, {
-        phone: rawPhone,
-        password: password,
-      });
-
-      const data = loginResponse.data?.data || loginResponse.data;
+      // Unified login: backend detects owner (partner) vs staff (manager/waiter).
+      const res = await apiClient.post(ENDPOINTS.AUTH.LOGIN, { phone: rawPhone, password });
+      const data = res.data?.data || res.data || {};
       const { user_type, dashboard, tokens, profile } = data;
 
-      if (!tokens || !tokens.access) {
-        throw new Error("Tokenlar topilmadi. Login javobini tekshiring.");
-      }
+      if (!tokens?.access) throw new Error("Server javobida token yo'q. Qaytadan urinib ko'ring.");
 
-      // Waiters don't have a dashboard in this web panel — they use a separate app.
       if (dashboard === 'waiter') {
-        setError("Ofitsiantlar ushbu tizimga kira olmaydi. Iltimos, ofitsant ilovasidan foydalaning.");
-        setLoading(false);
+        setError('Ofitsiantlar bu panelga kira olmaydi. Iltimos, ofitsiant ilovasidan foydalaning.');
         return;
       }
 
-      localStorage.setItem('milliygo_access_token', tokens.access);
-      localStorage.setItem('milliygo_refresh_token', tokens.refresh);
+      clearSession();
+      localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, tokens.access);
+      if (tokens.refresh) localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refresh);
 
-      const partnerData = user_type === 'partner'
-        ? { ...profile, role: 'superadmin' }
-        : {
-          // Staff (manager) profile — normalize to the shape the rest of the app expects
-          ...profile,
-          staff_uuid: profile?.uuid,
-          uuid: profile?.partner_uuid,
-          is_open: true,
-          current_filial: profile?.filial_uuid
-            ? { uuid: profile.filial_uuid, filial_name: profile.filial_name }
-            : undefined,
-        };
+      const partnerData: PartnerSession =
+        user_type === 'partner'
+          ? { ...profile, role: 'superadmin' }
+          : {
+              ...profile,
+              role: 'manager',
+              staff_uuid: profile?.uuid,
+              uuid: profile?.partner_uuid,
+              current_filial: profile?.filial_uuid ? { uuid: profile.filial_uuid, filial_name: profile.filial_name } : profile?.current_filial,
+            };
+      // NOTE: `is_open` used to be forced to true for managers here, so the
+      // header always said "Ochiq" regardless of the real state. We now keep
+      // whatever the backend sent (undefined => shown as unknown/closed).
+      setPartner(partnerData);
 
-      localStorage.setItem('milliygo_partner_data', JSON.stringify(partnerData));
-
-      setLoading(false);
-      navigate(dashboard === 'superadmin' ? '/' : '/orders');
+      navigate(dashboard === 'superadmin' || user_type === 'partner' ? '/' : '/orders', { replace: true });
     } catch (err: any) {
-      console.error(err);
+      const status = err?.response?.status;
       setError(
-        err.response?.data?.message || 
-        err.response?.data?.detail || 
-        "Tizimga kirishda xatolik yuz berdi. Iltimos parolni yoki telefon raqamini tekshiring."
+        status === 401 || status === 400
+          ? getErrorMessage(err, "Telefon raqami yoki parol noto'g'ri.")
+          : getErrorMessage(err, "Tizimga kirishda xatolik yuz berdi."),
       );
+    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="w-full max-w-md p-8 rounded-2xl bg-darkCard backdrop-blur-xl border border-edge-strong shadow-2xl transition-all duration-300">
-      <div className="text-center mb-6">
-        <img src="/logo.png" alt="Logo" className="w-24 h-24 mx-auto mb-4" />
-        <h2 className="text-3xl font-bold tracking-tight text-ink mb-2">MilliyGo</h2>
-        <p className="text-slate-400">Hamkorlar boshqaruv paneliga xush kelibsiz</p>
+    <div className="w-full max-w-[400px]">
+      <div className="text-center mb-8">
+        <img src="./logo.png" alt="MilliyGo" className="w-20 h-20 mx-auto mb-4 rounded-2xl" />
+        <h1 className="text-[28px] font-black tracking-tightest text-ink">MilliyGo Hamkor</h1>
+        <p className="text-[15px] text-muted mt-1">Restoran va do'konlar uchun boshqaruv paneli</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {error && (
-          <div className="flex items-center gap-3 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
-            <AlertCircle className="w-5 h-5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+      <form onSubmit={handleSubmit} noValidate className="bg-surface border border-edge rounded-3xl p-5 sm:p-6 space-y-4 shadow-card">
+        {error && <InlineAlert>{error}</InlineAlert>}
 
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Telefon raqam</label>
-          <div className="relative">
-            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
-              <Phone className="w-5 h-5" />
-            </span>
-            <input
-              type="text"
-              value={phone}
-              onChange={handlePhoneChange}
-              className="block w-full pl-11 pr-4 py-3 rounded-xl bg-slate-900 border border-edge-strong text-ink placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
-              placeholder="+998 (90) 123-45-67"
-              disabled={loading}
-              required
-            />
-          </div>
-        </div>
+        <Input
+          label="Telefon raqam"
+          type="tel"
+          inputMode="tel"
+          autoComplete="username"
+          leftIcon={<Phone className="w-4 h-4" />}
+          value={phone}
+          onChange={(e) => {
+            setPhone(maskPhoneInput(e.target.value));
+            if (fieldErr.phone) setFieldErr((f) => ({ ...f, phone: undefined }));
+          }}
+          placeholder="+998 (90) 123-45-67"
+          disabled={loading}
+          error={fieldErr.phone}
+          autoFocus
+        />
 
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2 font-Outfit">Parol</label>
-          <div className="relative">
-            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
-              <Lock className="w-5 h-5" />
-            </span>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="block w-full pl-11 pr-12 py-3 rounded-xl bg-slate-900 border border-edge-strong text-ink placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
-              placeholder="••••••••"
-              disabled={loading}
-              required
-            />
+        <Input
+          label="Parol"
+          type={showPassword ? 'text' : 'password'}
+          autoComplete="current-password"
+          leftIcon={<Lock className="w-4 h-4" />}
+          value={password}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            if (fieldErr.password) setFieldErr((f) => ({ ...f, password: undefined }));
+          }}
+          placeholder="Parolingiz"
+          disabled={loading}
+          error={fieldErr.password}
+          rightSlot={
             <button
               type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 transition"
-              disabled={loading}
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? 'Parolni yashirish' : "Parolni ko'rsatish"}
+              className="w-10 h-10 rounded-lg flex items-center justify-center text-muted hover:text-ink cursor-pointer"
             >
-              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              {showPassword ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
             </button>
-          </div>
-        </div>
+          }
+        />
 
-
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-3.5 px-4 rounded-xl bg-brand hover:bg-brand-dark text-white font-medium shadow-lg hover:shadow-brand/20 transition duration-150 flex justify-center items-center gap-2 cursor-pointer disabled:opacity-50"
-        >
-          {loading ? (
-            <div className="w-5 h-5 border-2 border-edge-strong border-t-white rounded-full animate-spin" />
-          ) : (
-            "Kirish"
-          )}
-        </button>
+        <Button type="submit" block loading={loading} className="h-[52px] rounded-2xl text-[16px]">
+          Kirish
+        </Button>
       </form>
+
+      <p className="text-center text-[13px] text-muted mt-6">
+        Kirish ma'lumotlarini unutdingizmi? MilliyGo hamkorlar bo'limiga murojaat qiling.
+      </p>
     </div>
   );
 };

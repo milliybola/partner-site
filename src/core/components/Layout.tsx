@@ -112,8 +112,19 @@ const Logo: React.FC<{ partner: PartnerSession | null; size?: number }> = ({ par
 const OpenStatus: React.FC<{ partner: PartnerSession | null; compact?: boolean }> = ({ partner, compact }) => {
   const toast = useToast();
   const [saving, setSaving] = useState(false);
-  const isOpen = partner?.is_open ?? false;
+  const known = typeof partner?.is_open === 'boolean';
+  const isOpen = partner?.is_open === true;
   const manager = partner?.role === 'manager';
+
+  // Managers' login payload may not include is_open: show a neutral state, never a guess.
+  if (!known && manager) {
+    return (
+      <span title="Muassasa holati noma'lum (login javobida is_open yo'q)" className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full text-[13px] font-bold bg-field text-muted">
+        <span className="w-2 h-2 rounded-full bg-subtle" />
+        Holat
+      </span>
+    );
+  }
 
   // BUGFIX: the old toggle only flipped a localStorage flag — customers never
   // saw the change. It now calls the profile endpoint. PATCH support for

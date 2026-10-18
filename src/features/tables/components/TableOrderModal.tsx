@@ -1,26 +1,31 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  Plus,
-  Minus,
-  Trash2,
-  X,
-  ShoppingBag,
-  Loader2,
-  AlertCircle,
-  CheckCircle,
-  FileText,
-  CreditCard,
-  User,
-  Phone as PhoneIcon,
-  FolderOpen
-} from 'lucide-react';
-import confetti from 'canvas-confetti';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { CheckCircle, CreditCard, FileText, ImageOff, Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import { ordersApi } from '../../orders/services/ordersApi';
 import { printReceipt as printReceiptUtil, printPreCheck as printPreCheckUtil } from '../../orders/utils/printing';
 import apiClient from '../../../core/api/client';
-import { STORAGE_KEYS } from '../../../core/config/constants';
 import { useToast } from '../../../core/components/ToastProvider';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
+import { getPartner, wording } from '../../../core/lib/session';
+import { getErrorMessage } from '../../../core/lib/errors';
+import { cleanPhone, formatMoney, maskPhoneInput, minutesSince } from '../../../core/lib/format';
+import {
+  Badge,
+  Button,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  InlineAlert,
+  Input,
+  QtyStepper,
+  SearchInput,
+  Segmented,
+  Sheet,
+  Skeleton,
+  Spinner,
+  Tabs,
+  Textarea,
+} from '../../../core/ui';
+import { tablesApi } from '../services/tablesApi';
 import type { TableModel } from '../services/tablesApi';
 
 interface Product {
@@ -51,117 +56,130 @@ interface TableOrderModalProps {
   onClose: (refresh: boolean) => void;
 }
 
-const PAYMENT_METHODS = [
-  { value: 'CASH', label: 'Naqd pul', icon: '💵' },
-  { value: 'CLICK', label: 'Click', icon: '📱' },
-  { value: 'PAYME', label: 'Payme', icon: '💳' },
-  { value: 'UZCARD', label: 'Uzcard', icon: '🏦' },
-] as const;
+type PaymentMethod = 'CASH' | 'CLICK' | 'PAYME' | 'UZCARD';
+
+const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
+  { value: 'CASH', label: 'Naqd' },
+  { value: 'CLICK', label: 'Click' },
+  { value: 'PAYME', label: 'Payme' },
+  { value: 'UZCARD', label: 'Uzcard' },
+];
+
+const PaymentPicker: React.FC<{ value: PaymentMethod; onChange: (v: PaymentMethod) => void }> = ({ value, onChange }) => (
+  <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="To'lov turi">
+    {PAYMENT_METHODS.map((m) => (
+      <button
+        key={m.value}
+        type="button"
+        role="radio"
+        aria-checked={value === m.value}
+        onClick={() => onChange(m.value)}
+        className={`h-12 rounded-xl text-[14px] font-bold border transition cursor-pointer ${
+          value === m.value ? 'border-brand bg-brand-soft text-brand' : 'border-edge bg-surface text-ink hover:bg-field'
+        }`}
+      >
+        {m.label}
+      </button>
+    ))}
+  </div>
+);
 
 export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose }) => {
   const toast = useToast();
   const confirm = useConfirm();
+  const w = wording();
   const isEditMode = !!table.current_order;
   const orderUuid = table.current_order?.uuid;
 
-  // Catalog states (shared by both modes)
+  const [mobilePane, setMobilePane] = useState<'menu' | 'order'>(isEditMode ? 'order' : 'menu');
+
+  // Catalog
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeCategoryUuid, setActiveCategoryUuid] = useState<string>('all');
-  const [searchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [errorCatalog, setErrorCatalog] = useState<string | null>(null);
 
-  // CREATE mode states
+  // Create mode
   const [cart, setCart] = useState<CartItem[]>([]);
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
-  const [comment] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CLICK' | 'PAYME' | 'UZCARD'>('CASH');
+  const [comment, setComment] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // EDIT mode states (active order)
+  // Edit mode
   const [orderItems, setOrderItems] = useState<any[]>([]);
   const [loadingItems, setLoadingItems] = useState(isEditMode);
   const [itemsError, setItemsError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [printingPreCheck, setPrintingPreCheck] = useState(false);
-  const [showPaymentPanel, setShowPaymentPanel] = useState(false);
-  const [editPaymentMethod, setEditPaymentMethod] = useState<'CASH' | 'CLICK' | 'PAYME' | 'UZCARD'>(
-    (table.current_order?.payment_method as any) || 'CASH'
-  );
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>(() => {
+    const pm = String(table.current_order?.payment_method || '').toUpperCase();
+    return (PAYMENT_METHODS.some((m) => m.value === pm) ? pm : 'CASH') as PaymentMethod;
+  });
   const [paymentSaving, setPaymentSaving] = useState(false);
+  const [itemsChanged, setItemsChanged] = useState(false);
 
-  // Fetch catalog (categories + products)
   const fetchCatalog = useCallback(async () => {
     setLoadingCatalog(true);
     setErrorCatalog(null);
     try {
-      const partnerData = JSON.parse(localStorage.getItem(STORAGE_KEYS.PARTNER_DATA) || '{}');
-      const partnerUuid = partnerData.uuid;
+      const partnerUuid = getPartner()?.uuid;
       if (!partnerUuid) throw new Error("Muassasa ma'lumotlari topilmadi. Qaytadan tizimga kiring.");
-
       const catsResponse = await apiClient.get(`partner/category/?partner=${partnerUuid}`);
       const rawCats = catsResponse.data?.data?.categories || catsResponse.data?.categories || catsResponse.data?.data || catsResponse.data || [];
-
-      const mappedCats: Category[] = Array.isArray(rawCats) ? rawCats.map((c: any) => ({
-        uuid: c.uuid,
-        name: c.category_details?.name || c.name || "Nomi yo'q",
-        is_active: !!c.is_active,
-        products: Array.isArray(c.products) ? c.products.map((p: any) => {
-          const rawPrice = parseFloat(p.price || '0');
-          const discountPercent = p.discount ? parseFloat(p.discount) : 0;
-          const finalPrice = discountPercent > 0 ? rawPrice * (1 - discountPercent / 100) : rawPrice;
-          return {
-            uuid: p.uuid,
-            name: p.name,
-            description: p.description || '',
-            price: finalPrice,
-            original_price: rawPrice,
-            discount: discountPercent,
-            is_available: !!p.is_available && !!p.is_active,
-            image_url: p.images?.find((img: any) => img.is_main)?.image || p.images?.[0]?.image || p.image_url || null
-          };
-        }) : []
-      })) : [];
-
-      setCategories(mappedCats.filter((c) => c.is_active));
-    } catch (err: any) {
-      console.error("Failed to load catalog in TableOrderModal:", err);
-      setErrorCatalog(
-        err.response?.data?.message ||
-        err.message ||
-        "Katalog ma'lumotlarini yuklashda xatolik yuz berdi."
-      );
+      const mapped: Category[] = Array.isArray(rawCats)
+        ? rawCats.map((c: any) => ({
+            uuid: c.uuid,
+            name: c.category_details?.name || c.name || "Nomi yo'q",
+            is_active: !!c.is_active,
+            products: Array.isArray(c.products)
+              ? c.products.map((p: any) => {
+                  const rawPrice = parseFloat(p.price || '0');
+                  const discountPercent = p.discount ? parseFloat(p.discount) : 0;
+                  const finalPrice = discountPercent > 0 ? rawPrice * (1 - discountPercent / 100) : rawPrice;
+                  return {
+                    uuid: p.uuid,
+                    name: p.name,
+                    description: p.description || '',
+                    price: finalPrice,
+                    original_price: rawPrice,
+                    discount: discountPercent,
+                    is_available: !!p.is_available && !!p.is_active,
+                    image_url: p.images?.find((img: any) => img.is_main)?.image || p.images?.[0]?.image || p.image_url || null,
+                  };
+                })
+              : [],
+          }))
+        : [];
+      setCategories(mapped.filter((c) => c.is_active));
+    } catch (err) {
+      setErrorCatalog(getErrorMessage(err, "Menyuni yuklashda xatolik yuz berdi."));
     } finally {
       setLoadingCatalog(false);
     }
   }, []);
 
-  // Fetch active order items (Edit mode only)
   const fetchOrderItems = useCallback(async () => {
     if (!orderUuid) return;
-    setLoadingItems(true);
     setItemsError(null);
     try {
       const response = await ordersApi.getOrderItems(orderUuid);
-      const itemsList = Array.isArray(response)
+      const list = Array.isArray(response)
         ? response
-        : response.items
-        ? response.items
-        : response.data?.items
-        ? response.data.items
-        : response.data
-        ? (Array.isArray(response.data) ? response.data : [])
-        : [];
-      setOrderItems(itemsList);
-    } catch (err: any) {
-      console.error("Failed to fetch order items:", err);
-      setItemsError(
-        err.response?.data?.message ||
-        err.message ||
-        "Buyurtma mahsulotlarini yuklashda xatolik yuz berdi."
-      );
+        : response?.items
+          ? response.items
+          : response?.data?.items
+            ? response.data.items
+            : Array.isArray(response?.data)
+              ? response.data
+              : [];
+      setOrderItems(list);
+    } catch (err) {
+      setItemsError(getErrorMessage(err, 'Buyurtma tarkibini yuklashda xatolik yuz berdi.'));
     } finally {
       setLoadingItems(false);
     }
@@ -169,140 +187,87 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
 
   useEffect(() => {
     fetchCatalog();
-    if (isEditMode) {
-      fetchOrderItems();
-    }
+    if (isEditMode) fetchOrderItems();
   }, [fetchCatalog, fetchOrderItems, isEditMode]);
 
-  // Flattened products with active category filtering and search query
   const filteredProducts = useMemo(() => {
     let list: Product[] = [];
     if (activeCategoryUuid === 'all') {
-      categories.forEach((cat) => {
-        cat.products.forEach((prod) => {
-          if (!list.some((p) => p.uuid === prod.uuid)) {
-            list.push(prod);
+      const seen = new Set<string>();
+      categories.forEach((c) =>
+        c.products.forEach((p) => {
+          if (!seen.has(p.uuid)) {
+            seen.add(p.uuid);
+            list.push(p);
           }
-        });
-      });
-    } else {
-      const targetCat = categories.find((c) => c.uuid === activeCategoryUuid);
-      if (targetCat) list = targetCat.products;
-    }
-
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      list = list.filter((p) =>
-        p.name.toLowerCase().includes(query) ||
-        p.description.toLowerCase().includes(query)
+        }),
       );
+    } else {
+      list = categories.find((c) => c.uuid === activeCategoryUuid)?.products || [];
     }
-
+    const q = searchQuery.trim().toLowerCase();
+    if (q) list = list.filter((p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q));
     return list;
   }, [categories, activeCategoryUuid, searchQuery]);
 
-  const formatUzS = (amount: number | string | null | undefined) => {
-    if (amount === null || amount === undefined) return '0 UZS';
-    const num = typeof amount === 'number' ? amount : parseFloat(amount);
-    return isNaN(num) ? '0 UZS' : num.toLocaleString('uz-UZ') + ' UZS';
-  };
-
-  // --- CREATE mode cart helpers ---
-  const addToCart = (product: Product) => {
-    if (!product.is_available) return;
+  /* ----------------------------------------------------- create mode cart */
+  const setCartQty = (product: Product, qty: number) => {
     setCart((prev) => {
-      const existing = prev.find((item) => item.product.uuid === product.uuid);
-      if (existing) {
-        return prev.map((item) =>
-          item.product.uuid === product.uuid ? { ...item, quantity: item.quantity + 1 } : item
-        );
-      }
-      return [...prev, { product, quantity: 1 }];
+      if (qty <= 0) return prev.filter((i) => i.product.uuid !== product.uuid);
+      const exists = prev.some((i) => i.product.uuid === product.uuid);
+      return exists ? prev.map((i) => (i.product.uuid === product.uuid ? { ...i, quantity: qty } : i)) : [...prev, { product, quantity: qty }];
     });
   };
+  const cartQty = (uuid: string) => cart.find((i) => i.product.uuid === uuid)?.quantity || 0;
+  const cartSubtotal = useMemo(() => cart.reduce((s, i) => s + i.product.price * i.quantity, 0), [cart]);
+  const cartCount = useMemo(() => cart.reduce((s, i) => s + i.quantity, 0), [cart]);
 
-  const decreaseCartQuantity = (productUuid: string) => {
-    setCart((prev) => {
-      const existing = prev.find((item) => item.product.uuid === productUuid);
-      if (!existing) return prev;
-      if (existing.quantity === 1) {
-        return prev.filter((item) => item.product.uuid !== productUuid);
-      }
-      return prev.map((item) =>
-        item.product.uuid === productUuid ? { ...item, quantity: item.quantity - 1 } : item
-      );
-    });
-  };
-
-  const removeFromCart = (productUuid: string) => {
-    setCart((prev) => prev.filter((item) => item.product.uuid !== productUuid));
-  };
-
-  const cartSubtotal = useMemo(
-    () => cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0),
-    [cart]
-  );
-
-  // Submit a brand-new dine-in order for this table
   const handleCreateOrder = async () => {
     if (cart.length === 0 || submitting) return;
+    const phoneDigits = cleanPhone(contactPhone).replace(/\D/g, '');
+    if (phoneDigits.length > 3 && phoneDigits.length !== 12) {
+      setSubmitError("Telefon raqami to'liq emas. Misol: +998 (90) 123-45-67");
+      setMobilePane('order');
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const cleanedPhone = contactPhone.trim().replace(/\D/g, '');
       await ordersApi.createDineInOrder({
         table: table.uuid,
         payment_method: paymentMethod,
-        contact_phone: cleanedPhone || undefined,
+        contact_phone: phoneDigits.length === 12 ? phoneDigits : undefined,
         contact_name: contactName.trim() || undefined,
         description: comment.trim() || undefined,
-        items: cart.map((item) => ({ product_uuid: item.product.uuid, quantity: item.quantity })),
+        items: cart.map((i) => ({ product_uuid: i.product.uuid, quantity: i.quantity })),
       });
-      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      toast.success(`Stol ${table.table_number}: buyurtma yaratildi`);
       onClose(true);
-    } catch (err: any) {
-      console.error("Failed to create dine-in order:", err);
-      setSubmitError(
-        err.response?.data?.message ||
-        err.message ||
-        "Buyurtma yaratishda xatolik yuz berdi."
-      );
+    } catch (err) {
+      setSubmitError(getErrorMessage(err, 'Buyurtma yaratishda xatolik yuz berdi.'));
+      setMobilePane('order');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // --- EDIT mode (active order) helpers ---
-  const editItemsTotal = useMemo(() => {
-    return orderItems.reduce((sum, item) => {
-      const price = Number(item.price_at_time_of_order || item.product?.price || 0);
-      return sum + price * (item.quantity || 0);
-    }, 0);
-  }, [orderItems]);
+  /* -------------------------------------------------- edit mode (live order) */
+  const editItemsTotal = useMemo(
+    () => orderItems.reduce((s, i) => s + Number(i.price_at_time_of_order || i.product?.price || 0) * (i.quantity || 0), 0),
+    [orderItems],
+  );
+  const editItemsCount = useMemo(() => orderItems.reduce((s, i) => s + (i.quantity || 0), 0), [orderItems]);
 
-  const handleAddProductToOrder = async (productUuid: string) => {
-    if (!orderUuid) return;
-    setActionLoading(productUuid);
+  const handleAddProductToOrder = async (product: Product) => {
+    if (!orderUuid || actionLoading) return;
+    setActionLoading(product.uuid);
     try {
-      await ordersApi.addOrderItems(orderUuid, { items: [{ product_uuid: productUuid, quantity: 1 }] });
+      await ordersApi.addOrderItems(orderUuid, { items: [{ product_uuid: product.uuid, quantity: 1 }] });
       await fetchOrderItems();
-    } catch (err: any) {
-      console.error("Failed to add product to order:", err);
-      toast.error(err.response?.data?.message || err.message || "Mahsulot qo'shishda xatolik yuz berdi.");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleUpdateItemQuantity = async (itemUuid: string, newQuantity: number) => {
-    if (!orderUuid) return;
-    setActionLoading(itemUuid);
-    try {
-      await ordersApi.updateOrderItemQuantity(orderUuid, itemUuid, { quantity: newQuantity });
-      await fetchOrderItems();
-    } catch (err: any) {
-      console.error("Failed to update item quantity:", err);
-      toast.error(err.response?.data?.message || err.message || "Miqdorni yangilashda xatolik yuz berdi.");
+      setItemsChanged(true);
+      toast.success(`${product.name} qo'shildi`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Mahsulot qo'shishda xatolik yuz berdi."));
     } finally {
       setActionLoading(null);
     }
@@ -310,593 +275,365 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
 
   const handleRemoveOrderItem = async (itemUuid: string, currentQuantity: number) => {
     if (!orderUuid) return;
-    const ok = await confirm("Haqiqatan ham ushbu mahsulotni buyurtmadan o'chirmoqchimisiz?", { danger: true, confirmText: "O'chirish" });
+    const ok = await confirm("Ushbu mahsulotni buyurtmadan o'chirmoqchimisiz?", { danger: true, confirmText: "O'chirish" });
     if (!ok) return;
     setActionLoading(itemUuid);
     try {
       await ordersApi.removeOrderItems(orderUuid, { items: [{ item_uuid: itemUuid, quantity: currentQuantity }] });
       await fetchOrderItems();
-    } catch (err: any) {
-      console.error("Failed to remove item:", err);
-      toast.error(err.response?.data?.message || err.message || "Mahsulotni o'chirishda xatolik yuz berdi.");
+      setItemsChanged(true);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Mahsulotni o'chirishda xatolik yuz berdi."));
     } finally {
       setActionLoading(null);
     }
   };
 
-  // Prints a preliminary (not-yet-paid) receipt — from the live order in EDIT mode,
-  // or from the local cart before the order is even created in CREATE mode.
+  const handleChangeItemQty = async (item: any, next: number) => {
+    if (!orderUuid || !item?.uuid) return;
+    if (next <= 0) return handleRemoveOrderItem(item.uuid, item.quantity);
+    setActionLoading(item.uuid);
+    try {
+      await ordersApi.updateOrderItemQuantity(orderUuid, item.uuid, { quantity: next });
+      await fetchOrderItems();
+      setItemsChanged(true);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Miqdorni yangilashda xatolik yuz berdi.'));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handlePrintPreCheck = async () => {
     setPrintingPreCheck(true);
     try {
       if (isEditMode) {
-        await printPreCheckUtil({
-          table_number: table.table_number,
-          total_price: editItemsTotal,
-          items: orderItems,
-        });
+        await printPreCheckUtil({ table_number: table.table_number, total_price: editItemsTotal, items: orderItems });
       } else {
         await printPreCheckUtil({
           table_number: table.table_number,
           total_price: cartSubtotal,
-          items: cart.map((item) => ({
-            product_name: item.product.name,
-            price_at_time_of_order: item.product.price,
-            quantity: item.quantity,
-          })),
+          items: cart.map((i) => ({ product_name: i.product.name, price_at_time_of_order: i.product.price, quantity: i.quantity })),
         });
       }
-    } catch (err: any) {
-      console.error("Pre-chek chop etishda xatolik:", err);
-      toast.error(`Pre-chekni chop etishda xatolik: ${err?.message || err}`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Pre-chekni chop etishda xatolik.'));
     } finally {
       setPrintingPreCheck(false);
     }
   };
 
+  // BUGFIX: a printer failure after a successful payment used to show
+  // "To'lovni yakunlashda xatolik" and keep the sheet open, inviting a second
+  // (duplicate) payment. Printing is now handled separately.
   const handleConfirmPayment = async () => {
     if (!orderUuid || paymentSaving) return;
     setPaymentSaving(true);
     try {
       await ordersApi.markOrderPaid(orderUuid, { payment_method: editPaymentMethod, is_paid: true });
       await ordersApi.completeOrder(orderUuid);
-      await printReceiptUtil(orderUuid, true);
-      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-      onClose(true);
-    } catch (err: any) {
-      console.error("Payment confirmation failed:", err);
-      toast.error(err.response?.data?.message || err.message || "To'lovni yakunlashda xatolik yuz berdi.");
-    } finally {
+    } catch (err) {
+      toast.error(getErrorMessage(err, "To'lovni yakunlashda xatolik yuz berdi."));
       setPaymentSaving(false);
+      return;
     }
+    // Same as the kanban flow (OrdersPage): free the table explicitly after a
+    // dine-in order completes. Previously this path left the table OCCUPIED.
+    tablesApi.updateTableStatus(table.uuid, 'AVAILABLE').catch(() => {
+      toast.error("Stol holatini 'Bo'sh' ga o'tkazib bo'lmadi. Qo'lda o'zgartiring.");
+    });
+    try {
+      await printReceiptUtil(orderUuid, true);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "To'lov qabul qilindi, lekin chekni chop etib bo'lmadi."));
+    }
+    toast.success(`Stol ${table.table_number}: to'lov qabul qilindi`);
+    setPaymentSaving(false);
+    onClose(true);
   };
 
-  const headerSubtitle = isEditMode
-    ? `Buyurtma: ${table.current_order?.order_number}`
-    : "Yangi buyurtma";
+  const orderMins = table.current_order?.created_at ? minutesSince(table.current_order.created_at) : null;
+  const total = isEditMode ? editItemsTotal : cartSubtotal;
+  const count = isEditMode ? editItemsCount : cartCount;
 
-  return (
-    <div
-      onClick={() => onClose(false)}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-6xl bg-darkCard border border-edge-strong rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-left animate-[slideUp_0.3s_ease-out]"
-      >
-        {/* Header */}
-        <div className="p-5 border-b border-edge flex items-center justify-between shrink-0">
-          <div>
-            <h3 className="font-bold text-lg text-ink flex items-center gap-2">
-              Stol {table.table_number}
-              {isEditMode && (
-                <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                  Band
-                </span>
-              )}
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">{headerSubtitle}</p>
+  /* --------------------------------------------------------------- panes */
+  const menuPane = (
+    <div className={`${mobilePane === 'menu' ? 'flex' : 'hidden'} md:flex md:col-span-7 flex-col min-h-0 md:border-r border-edge`}>
+      <div className="px-4 md:px-5 pt-3 space-y-2.5 shrink-0">
+        <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder={`${w.product} nomi bo'yicha qidirish`} />
+        {categories.length > 0 && (
+          <Tabs
+            size="sm"
+            value={activeCategoryUuid}
+            onChange={setActiveCategoryUuid}
+            options={[{ value: 'all', label: 'Barchasi' }, ...categories.map((c) => ({ value: c.uuid, label: c.name }))]}
+          />
+        )}
+      </div>
+      <div className="flex-1 overflow-y-auto overscroll-contain px-4 md:px-5 py-3">
+        {loadingCatalog ? (
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-44 rounded-2xl" />
+            ))}
           </div>
-          <button
-            onClick={() => onClose(false)}
-            className="p-2 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-0">
-          {/* Left: Catalog / Menu */}
-          <div className="lg:col-span-7 p-5 flex flex-col min-h-0 overflow-hidden border-b lg:border-b-0 lg:border-r border-edge">
-            <div className="space-y-3 shrink-0">
-              {/* <div className="relative">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Taom nomini yozing..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-900/50 border border-edge hover:border-edge-strong focus:border-brand rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-                />
-              </div> */}
-
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-                <button
-                  onClick={() => setActiveCategoryUuid('all')}
-                  className={`px-4 py-2 rounded-xl text-md font-bold transition shrink-0 cursor-pointer ${
-                    activeCategoryUuid === 'all'
-                      ? 'bg-brand text-white'
-                      : 'bg-slate-900 text-slate-400 border border-edge hover:border-edge-strong hover:text-slate-200'
+        ) : errorCatalog ? (
+          <ErrorState message={errorCatalog} onRetry={fetchCatalog} />
+        ) : filteredProducts.length === 0 ? (
+          <EmptyState title={searchQuery ? 'Hech narsa topilmadi' : `${w.products} yo'q`} description={searchQuery ? "Boshqa so'z bilan qidirib ko'ring." : undefined} />
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {filteredProducts.map((p) => {
+              const qty = isEditMode ? 0 : cartQty(p.uuid);
+              const adding = actionLoading === p.uuid;
+              return (
+                <div
+                  key={p.uuid}
+                  className={`rounded-2xl border bg-surface overflow-hidden flex flex-col ${
+                    !p.is_available ? 'opacity-50 border-edge' : qty > 0 ? 'border-brand/40 ring-2 ring-brand/10' : 'border-edge'
                   }`}
                 >
-                  Barcha taomlar
-                </button>
-                {categories.map((cat) => (
                   <button
-                    key={cat.uuid}
-                    onClick={() => setActiveCategoryUuid(cat.uuid)}
-                    className={`px-4 py-2 rounded-xl text-md font-bold transition shrink-0 cursor-pointer ${
-                      activeCategoryUuid === cat.uuid
-                        ? 'bg-brand text-white'
-                        : 'bg-slate-900 text-slate-400 border border-edge hover:border-edge-strong hover:text-slate-200'
-                    }`}
+                    type="button"
+                    disabled={!p.is_available || (isEditMode && !!actionLoading)}
+                    onClick={() => (isEditMode ? handleAddProductToOrder(p) : setCartQty(p, qty + 1))}
+                    className="text-left flex-1 flex flex-col cursor-pointer disabled:cursor-not-allowed"
                   >
-                    {cat.name}
+                    <div className="h-24 bg-field relative flex items-center justify-center">
+                      {p.image_url ? (
+                        <img src={p.image_url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                      ) : (
+                        <ImageOff className="w-6 h-6 text-subtle" />
+                      )}
+                      {!p.is_available && (
+                        <span className="absolute inset-0 bg-surface/70 flex items-center justify-center text-[12px] font-extrabold text-danger-ink">Tugagan</span>
+                      )}
+                      {qty > 0 && (
+                        <span className="absolute top-1.5 right-1.5 min-w-[26px] h-[26px] px-1.5 rounded-full bg-brand text-white text-[13px] font-extrabold flex items-center justify-center">
+                          {qty}
+                        </span>
+                      )}
+                      {adding && (
+                        <span className="absolute inset-0 bg-surface/60 flex items-center justify-center">
+                          <Spinner />
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-2.5 flex-1 flex flex-col gap-0.5">
+                      <span className="text-[13px] font-bold text-ink leading-snug line-clamp-2">{p.name}</span>
+                      <span className="mt-auto flex items-baseline gap-1.5 flex-wrap">
+                        <span className="text-[14px] font-extrabold text-ink tabular-nums">{formatMoney(p.price)}</span>
+                        {p.discount > 0 && <span className="text-[11px] text-subtle line-through tabular-nums">{formatMoney(p.original_price, false)}</span>}
+                      </span>
+                    </div>
                   </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto mt-4 pr-1 scrollbar-thin">
-              {loadingCatalog ? (
-                <div className="flex justify-center items-center py-20">
-                  <Loader2 className="w-8 h-8 text-brand animate-spin" />
+                  {!isEditMode && qty > 0 && (
+                    <div className="px-2 pb-2 flex justify-center">
+                      <QtyStepper size="sm" value={qty} onChange={(v) => setCartQty(p, v)} />
+                    </div>
+                  )}
                 </div>
-              ) : errorCatalog ? (
-                <div className="p-6 rounded-2xl bg-rose-500/5 border border-rose-500/10 text-center space-y-3">
-                  <AlertCircle className="w-10 h-10 text-rose-400 mx-auto animate-pulse" />
-                  <p className="text-xs text-slate-400 max-w-sm mx-auto">{errorCatalog}</p>
-                  <button
-                    onClick={fetchCatalog}
-                    className="px-4 py-2 rounded-xl bg-brand text-white font-bold text-xs hover:bg-brand-dark transition cursor-pointer"
-                  >
-                    Qayta urinish
-                  </button>
-                </div>
-              ) : filteredProducts.length > 0 ? (
-                <div className="grid grid-cols-3 gap-4">
-                  {filteredProducts.map((prod) => {
-                    const cartQty = isEditMode
-                      ? 0
-                      : cart.find((item) => item.product.uuid === prod.uuid)?.quantity || 0;
-                    const isAdding = actionLoading === prod.uuid;
-
-                    return (
-                      <div
-                        key={prod.uuid}
-                        onClick={() => {
-                          if (!isEditMode && prod.is_available) addToCart(prod);
-                        }}
-                        className={`rounded-2xl border bg-darkCard overflow-hidden transition-all duration-200 flex flex-col justify-between ${
-                          !prod.is_available
-                            ? 'opacity-50 border-edge'
-                            : `border-edge hover:border-edge-strong hover:shadow-lg ${!isEditMode ? 'cursor-pointer' : ''}`
-                        }`}
-                      >
-                        <div>
-                          <div className="h-24 bg-slate-900 relative overflow-hidden flex items-center justify-center">
-                            {prod.image_url ? (
-                              <img src={prod.image_url} alt={prod.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <ShoppingBag className="w-8 h-8 text-slate-600 stroke-[1.2]" />
-                            )}
-                            {!prod.is_available && (
-                              <span className="absolute inset-0 bg-black/60 flex items-center justify-center text-[10px] font-bold text-rose-300">
-                                Tugagan
-                              </span>
-                            )}
-                          </div>
-                          <div className="p-3 space-y-1">
-                            <h4 className="font-bold text-ink text-xs truncate" title={prod.name}>
-                              {prod.name}
-                            </h4>
-                            <h5 className="font-bold text-brand text-xs">{formatUzS(prod.price)}</h5>
-                          </div>
-                        </div>
-
-                        <div className="p-2.5 border-t border-edge bg-slate-900/20">
-                          {isEditMode ? (
-                            <button
-                              onClick={() => handleAddProductToOrder(prod.uuid)}
-                              disabled={!prod.is_available || !!actionLoading}
-                              className={`w-full py-1.5 rounded-lg font-bold text-[10px] transition cursor-pointer flex items-center justify-center gap-1 ${
-                                prod.is_available
-                                  ? 'bg-brand hover:bg-brand-dark text-white shadow-md shadow-brand/10'
-                                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                              }`}
-                            >
-                              {isAdding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                              <span>Qo'shish</span>
-                            </button>
-                          ) : cartQty > 0 ? (
-                            <div className="flex items-center justify-between bg-slate-900 rounded-lg p-1 border border-edge">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  decreaseCartQuantity(prod.uuid);
-                                }}
-                                className="p-1 rounded bg-overlay text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
-                              >
-                                <Minus className="w-3.5 h-3.5" />
-                              </button>
-                              <span className="text-xs font-bold text-ink px-2">{cartQty} ta</span>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  addToCart(prod);
-                                }}
-                                className="p-1 rounded bg-overlay text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                addToCart(prod);
-                              }}
-                              disabled={!prod.is_available}
-                              className={`w-full py-1.5 rounded-lg font-bold text-[10px] transition cursor-pointer flex items-center justify-center gap-1 ${
-                                prod.is_available
-                                  ? 'bg-brand hover:bg-brand-dark text-white shadow-md shadow-brand/10'
-                                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                              }`}
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>Savatga</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="p-10 rounded-2xl bg-darkCard/50 border border-dashed border-edge text-center space-y-2">
-                  <FolderOpen className="w-10 h-10 text-slate-600 mx-auto" />
-                  <p className="text-xs text-slate-400">Mos keladigan taomlar topilmadi</p>
-                </div>
-              )}
-            </div>
+              );
+            })}
           </div>
-
-          {/* Right: Cart / Order + Actions */}
-          <div className="lg:col-span-5 p-5 flex flex-col min-h-0 overflow-hidden">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5 shrink-0">
-              <ShoppingBag className="w-3.5 h-3.5 text-brand" />
-              {isEditMode ? "Buyurtma tarkibi" : "Savatcha"}
-            </h4>
-
-            {isEditMode ? (
-              /* --- EDIT MODE: live order items list --- */
-              loadingItems ? (
-                <div className="flex-1 flex flex-col items-center justify-center py-12 text-slate-400">
-                  <Loader2 className="w-8 h-8 animate-spin text-brand mb-2" />
-                  <span className="text-xs">Mahsulotlar yuklanmoqda...</span>
-                </div>
-              ) : itemsError ? (
-                <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium my-auto text-center font-bold">
-                  {itemsError}
-                </div>
-              ) : orderItems.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center py-12 border border-dashed border-edge rounded-xl text-slate-500 text-xs">
-                  Savat bo'sh. Chapdan mahsulot qo'shing.
-                </div>
-              ) : (
-                <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 scrollbar-thin">
-                  {orderItems.map((item, idx) => {
-                    const itemUuid = item.uuid;
-                    const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
-                    const productPrice = Number(item.price_at_time_of_order || item.product?.price || 0);
-                    const quantity = item.quantity;
-                    const isModifying = actionLoading === itemUuid;
-
-                    return (
-                      <div
-                        key={itemUuid || idx}
-                        className="p-3 bg-slate-900 border border-edge rounded-xl flex items-center justify-between gap-3 text-sm transition-all"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-semibold text-ink truncate">{productName}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            {formatUzS(productPrice)} x {quantity} = <span className="text-slate-200 font-medium">{formatUzS(productPrice * quantity)}</span>
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => {
-                              if (quantity > 1) {
-                                handleUpdateItemQuantity(itemUuid, quantity - 1);
-                              } else {
-                                handleRemoveOrderItem(itemUuid, quantity);
-                              }
-                            }}
-                            disabled={!!actionLoading}
-                            className="p-1.5 rounded-lg bg-overlay hover:bg-overlay-strong text-slate-300 hover:text-ink transition disabled:opacity-50 cursor-pointer"
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                          </button>
-
-                          <span className="w-6 text-center font-bold text-ink text-xs">
-                            {isModifying ? <Loader2 className="w-3.5 h-3.5 animate-spin mx-auto text-brand" /> : quantity}
-                          </span>
-
-                          <button
-                            onClick={() => handleUpdateItemQuantity(itemUuid, quantity + 1)}
-                            disabled={!!actionLoading}
-                            className="p-1.5 rounded-lg bg-overlay hover:bg-overlay-strong text-slate-300 hover:text-ink transition disabled:opacity-50 cursor-pointer"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
-
-                          <button
-                            onClick={() => handleRemoveOrderItem(itemUuid, quantity)}
-                            disabled={!!actionLoading}
-                            className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition disabled:opacity-50 cursor-pointer ml-1"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )
-            ) : (
-              /* --- CREATE MODE: local cart list --- */
-              cart.length > 0 ? (
-                <div className="flex-1 overflow-y-auto divide-y divide-edge pr-1 scrollbar-thin">
-                  {cart.map((item) => (
-                    <div key={item.product.uuid} className="cursor-pointer py-2.5 flex items-center justify-between gap-3 text-xs">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-bold text-ink truncate" title={item.product.name}>{item.product.name}</p>
-                        <p className="text-slate-400 font-medium mt-0.5">
-                          {formatUzS(item.product.price)} x {item.quantity}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <div className="flex items-center bg-slate-900 rounded-lg p-0.5 border border-edge">
-                          <button
-                            onClick={() => decreaseCartQuantity(item.product.uuid)}
-                            className="p-1 rounded text-slate-400 hover:text-ink transition cursor-pointer"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="font-bold text-ink px-1.5 text-xs">{item.quantity}</span>
-                          <button
-                            onClick={() => addToCart(item.product)}
-                            className="p-1 rounded text-slate-400 hover:text-ink transition cursor-pointer"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                        <button
-                          onClick={() => removeFromCart(item.product.uuid)}
-                          className="p-1.5 rounded-lg bg-rose-500/5 border border-rose-500/10 text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center py-8 text-center text-slate-500 bg-slate-900/30 rounded-xl border border-dashed border-edge space-y-1">
-                  <ShoppingBag className="w-8 h-8 text-slate-600 mx-auto" />
-                  <p className="text-xs font-semibold text-slate-400">Savatcha bo'sh</p>
-                  <p className="text-[10px]">Chap tomondan menyudan taom qo'shing</p>
-                </div>
-              )
-            )}
-
-            {/* Footer: form + totals + actions */}
-            <div className="shrink-0 mt-4 pt-4 border-t border-edge space-y-4">
-              {!isEditMode && (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                        <User className="w-3 h-3 text-slate-500" />
-                        Mijoz ismi (Ixtiyoriy)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Masalan: Anvar"
-                        value={contactName}
-                        onChange={(e) => setContactName(e.target.value)}
-                        className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                        <PhoneIcon className="w-3 h-3 text-slate-500" />
-                        Telefon (Ixtiyoriy)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="+998901234567"
-                        value={contactPhone}
-                        onChange={(e) => setContactPhone(e.target.value)}
-                        className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-                      />
-                    </div>
-                  </div>
-
-                  {/* <div className="space-y-1">
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                      <FileText className="w-3 h-3 text-slate-500" />
-                      Qo'shimcha izoh
-                    </label>
-                    <textarea
-                      rows={2}
-                      placeholder="Buyurtma uchun maxsus izohlar..."
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                      className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition resize-none"
-                    />
-                  </div> */}
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                      <CreditCard className="w-3 h-3 text-slate-500" />
-                      To'lov turi
-                    </label>
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {PAYMENT_METHODS.map((opt) => (
-                        <button
-                          key={opt.value}
-                          onClick={() => setPaymentMethod(opt.value)}
-                          className={`py-2 rounded-lg border font-bold text-[12px] transition cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
-                            paymentMethod === opt.value
-                              ? 'border-brand bg-brand/10 text-brand'
-                              : 'border-edge-strong bg-overlay text-slate-400 hover:border-edge-strong'
-                          }`}
-                        >
-                          {/* <span className="text-sm">{opt.icon}</span> */}
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Payment panel for EDIT mode */}
-              {isEditMode && showPaymentPanel && (
-                <div className="p-3.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 space-y-3 animate-fade-in">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">To'lov turini tanlang</p>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {PAYMENT_METHODS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setEditPaymentMethod(opt.value)}
-                        className={`py-2 rounded-lg border font-bold text-[10px] transition cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
-                          editPaymentMethod === opt.value
-                            ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                            : 'border-edge-strong bg-overlay text-slate-400 hover:border-edge-strong'
-                        }`}
-                      >
-                        <span className="text-sm">{opt.icon}</span>
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => setShowPaymentPanel(false)}
-                      disabled={paymentSaving}
-                      className="py-2 rounded-lg bg-overlay hover:bg-overlay-strong text-slate-300 font-bold text-[11px] transition cursor-pointer disabled:opacity-40"
-                    >
-                      Bekor qilish
-                    </button>
-                    <button
-                      onClick={handleConfirmPayment}
-                      disabled={paymentSaving}
-                      className="py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-[11px] transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
-                    >
-                      {paymentSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
-                      Tasdiqlash
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Totals */}
-              <div className="flex justify-between font-bold text-ink text-sm pt-1 border-t border-edge">
-                <span>Jami:</span>
-                <span className="text-emerald-400 text-base">
-                  {formatUzS(isEditMode ? editItemsTotal : cartSubtotal)}
-                </span>
-              </div>
-
-              {submitError && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex gap-2 items-start">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{submitError}</span>
-                </div>
-              )}
-
-              {/* Action buttons */}
-              {isEditMode ? (
-                <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    onClick={handlePrintPreCheck}
-                    disabled={printingPreCheck || orderItems.length === 0}
-                    className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-slate-300" />
-                    Pre-chek
-                  </button>
-                  <button
-                    onClick={() => setShowPaymentPanel(true)}
-                    disabled={orderItems.length === 0 || showPaymentPanel}
-                    className="py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50"
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    To'lov qilish
-                  </button>
-                  <button
-                    onClick={() => onClose(true)}
-                    className="col-span-2 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5"
-                  >
-                    <CheckCircle className="w-3.5 h-3.5" />
-                    Saqlash
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  <button
-                    onClick={handlePrintPreCheck}
-                    disabled={printingPreCheck || cart.length === 0}
-                    className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-edge-strong text-ink font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 disabled:opacity-50"
-                  >
-                    {printingPreCheck ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <FileText className="w-3.5 h-3.5 text-slate-300" />
-                    )}
-                    <span>Chop etish</span>
-                  </button>
-                  <button
-                    onClick={handleCreateOrder}
-                    disabled={cart.length === 0 || submitting}
-                    className={`w-full py-3 rounded-xl font-bold text-xs transition cursor-pointer flex justify-center items-center gap-1.5 ${
-                      cart.length > 0 && !submitting
-                        ? 'bg-brand hover:bg-brand-dark text-white shadow-lg shadow-brand/10'
-                        : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-edge'
-                    }`}
-                  >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Yaratilmoqda...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="w-4 h-4" />
-                        <span>Buyurtma yaratish</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
+  );
+
+  const orderPane = (
+    <div className={`${mobilePane === 'order' ? 'flex' : 'hidden'} md:flex md:col-span-5 flex-col min-h-0`}>
+      <div className="flex-1 overflow-y-auto overscroll-contain px-4 md:px-5 py-3 space-y-3">
+        <div className="text-[13px] font-bold text-muted uppercase tracking-wide">{isEditMode ? 'Buyurtma tarkibi' : 'Savat'}</div>
+
+        {isEditMode ? (
+          loadingItems ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 rounded-2xl" />
+              ))}
+            </div>
+          ) : itemsError ? (
+            <ErrorState message={itemsError} onRetry={() => { setLoadingItems(true); fetchOrderItems(); }} className="py-6" />
+          ) : orderItems.length === 0 ? (
+            <EmptyState icon={<ShoppingBag className="w-7 h-7" />} title="Buyurtma bo'sh" description={`${w.menu}dan qo'shing.`} className="py-8" />
+          ) : (
+            <div className="space-y-2">
+              {orderItems.map((item, idx) => {
+                const name = item.product_name || item.name || item.product?.name || "Noma'lum";
+                const price = Number(item.price_at_time_of_order || item.product?.price || 0);
+                const modifying = actionLoading === item.uuid;
+                return (
+                  <div key={item.uuid || idx} className="rounded-2xl border border-edge bg-surface p-3 flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[14px] font-bold text-ink truncate">{name}</div>
+                      <div className="text-[12px] text-muted tabular-nums">
+                        {formatMoney(price)} × {item.quantity} = <span className="font-bold text-ink">{formatMoney(price * item.quantity)}</span>
+                      </div>
+                    </div>
+                    {modifying ? (
+                      <Spinner />
+                    ) : (
+                      <QtyStepper size="sm" value={item.quantity} min={0} disabled={!!actionLoading || !item.uuid} onChange={(v) => handleChangeItemQty(item, v)} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )
+        ) : cart.length === 0 ? (
+          <EmptyState icon={<ShoppingBag className="w-7 h-7" />} title="Savat bo'sh" description={`${w.menu}dan ${w.product.toLowerCase()} tanlang.`} className="py-8" />
+        ) : (
+          <div className="space-y-2">
+            {cart.map((i) => (
+              <div key={i.product.uuid} className="rounded-2xl border border-edge bg-surface p-3 flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[14px] font-bold text-ink truncate">{i.product.name}</div>
+                  <div className="text-[12px] text-muted tabular-nums">{formatMoney(i.product.price * i.quantity)}</div>
+                </div>
+                <QtyStepper size="sm" value={i.quantity} onChange={(v) => setCartQty(i.product, v)} />
+                <IconButton label="Olib tashlash" variant="danger-soft" size="sm" onClick={() => setCartQty(i.product, 0)}>
+                  <Trash2 className="w-4 h-4" />
+                </IconButton>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!isEditMode && (
+          <div className="space-y-3 pt-2">
+            <div className="grid grid-cols-1 xs:grid-cols-2 gap-3">
+              <Input label="Mijoz ismi" placeholder="Ixtiyoriy" value={contactName} onChange={(e) => setContactName(e.target.value)} />
+              <Input
+                label="Telefon"
+                type="tel"
+                inputMode="tel"
+                placeholder="+998 (90) 123-45-67"
+                value={contactPhone}
+                onFocus={() => !contactPhone && setContactPhone('+998')}
+                onChange={(e) => setContactPhone(e.target.value.trim() ? maskPhoneInput(e.target.value) : '')}
+              />
+            </div>
+            <Textarea label="Izoh" rows={2} placeholder="Masalan: achchiqsiz" value={comment} onChange={(e) => setComment(e.target.value)} />
+            <div>
+              <div className="text-[13px] font-semibold text-ink mb-1.5">To'lov turi</div>
+              <PaymentPicker value={paymentMethod} onChange={setPaymentMethod} />
+            </div>
+          </div>
+        )}
+
+        {submitError && <InlineAlert>{submitError}</InlineAlert>}
+      </div>
+    </div>
+  );
+
+  const footer = (
+    <div className="w-full space-y-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[14px] text-muted font-semibold">
+          Jami{count > 0 ? ` · ${count} ta` : ''}
+        </span>
+        <span className="text-[20px] font-black text-ink tracking-tightest tabular-nums">{formatMoney(total)}</span>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="lg"
+          icon={<FileText className="w-4 h-4" />}
+          loading={printingPreCheck}
+          disabled={isEditMode ? orderItems.length === 0 : cart.length === 0}
+          onClick={handlePrintPreCheck}
+          className="shrink-0"
+        >
+          Pre-chek
+        </Button>
+        {isEditMode ? (
+          <Button
+            variant="success"
+            size="lg"
+            className="flex-1"
+            icon={<CreditCard className="w-5 h-5" />}
+            disabled={orderItems.length === 0 || loadingItems}
+            onClick={() => setPaymentOpen(true)}
+          >
+            To'lov qilish
+          </Button>
+        ) : (
+          <Button size="lg" className="flex-1" icon={<CheckCircle className="w-5 h-5" />} loading={submitting} disabled={cart.length === 0} onClick={handleCreateOrder}>
+            Buyurtma yaratish
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <Sheet
+        open
+        size="full"
+        flush
+        persistent={submitting || paymentSaving}
+        onClose={() => onClose(itemsChanged)}
+        title={
+          <span className="flex items-center gap-2">
+            Stol {table.table_number}
+            {isEditMode ? <Badge tone="gold">Band</Badge> : <Badge tone="success">Bo'sh</Badge>}
+          </span>
+        }
+        subtitle={
+          isEditMode
+            ? `Buyurtma #${table.current_order?.order_number || ''}${orderMins !== null ? ` · ${orderMins} daq oldin` : ''}${table.current_order?.waiter_name ? ` · ${table.current_order.waiter_name}` : ''}`
+            : `Yangi buyurtma · ${table.capacity} kishilik`
+        }
+        footer={footer}
+      >
+        <div className="flex flex-col h-[calc(92vh-220px)] md:h-[64vh]">
+          <div className="md:hidden px-4 pt-3 shrink-0">
+            <Segmented
+              className="w-full [&>button]:flex-1 [&>button]:justify-center"
+              value={mobilePane}
+              onChange={setMobilePane}
+              options={[
+                { value: 'menu', label: w.menu, icon: <Plus className="w-4 h-4" /> },
+                { value: 'order', label: `${isEditMode ? 'Buyurtma' : 'Savat'}${count ? ` (${count})` : ''}`, icon: <ShoppingBag className="w-4 h-4" /> },
+              ]}
+            />
+          </div>
+          <div className="flex-1 min-h-0 flex flex-col md:grid md:grid-cols-12">
+            {menuPane}
+            {orderPane}
+          </div>
+        </div>
+      </Sheet>
+
+      <Sheet
+        open={paymentOpen}
+        size="sm"
+        persistent={paymentSaving}
+        onClose={() => setPaymentOpen(false)}
+        title="To'lovni qabul qilish"
+        subtitle={`Stol ${table.table_number}`}
+        footer={
+          <>
+            <Button variant="secondary" size="lg" disabled={paymentSaving} onClick={() => setPaymentOpen(false)} className="md:w-auto w-full">
+              Bekor qilish
+            </Button>
+            <Button variant="success" size="lg" loading={paymentSaving} icon={<CheckCircle className="w-5 h-5" />} onClick={handleConfirmPayment} className="md:w-auto w-full">
+              To'landi va yopish
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl bg-field p-4 text-center">
+            <div className="text-[13px] text-muted font-semibold">To'lov summasi</div>
+            <div className="text-[28px] font-black text-ink tracking-tightest tabular-nums">{formatMoney(editItemsTotal)}</div>
+          </div>
+          <PaymentPicker value={editPaymentMethod} onChange={setEditPaymentMethod} />
+          <p className="text-[13px] text-muted">Tasdiqlangandan so'ng buyurtma yakunlanadi, stol bo'shatiladi va chek chop etiladi.</p>
+        </div>
+      </Sheet>
+    </>
   );
 };

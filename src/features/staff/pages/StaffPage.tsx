@@ -1,1796 +1,584 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  Users,
-  Plus,
-  Edit,
-  Trash2,
-  UserCheck,
-  UserX,
-  AlertCircle,
-  RefreshCw,
-  Lock,
-  Phone,
-  Shield,
-  User,
-  X,
-  CheckCircle,
-  Eye,
-  EyeOff,
-  BarChart2,
-  TrendingUp,
-  ShoppingBag,
-  Coins,
-  Trophy,
-  Award,
-  Building2,
-  Bike,
-  Search,
-  Send
-} from 'lucide-react';
-import { STORAGE_KEYS } from '../../../core/config/constants';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { BarChart2, Bike, Edit, Plus, RefreshCw, Shield, Trash2, Trophy, Users } from 'lucide-react';
 import { staffApi } from '../services/staffApi';
-import type { StaffMember, StaffPeriodStats } from '../services/staffApi';
+import type { StaffMember, StaffRatingMember } from '../services/staffApi';
 import { couriersApi } from '../services/couriersApi';
 import type { CourierModel } from '../services/couriersApi';
 import { filialApi } from '../../orders/services/filialApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
 import { useToast } from '../../../core/components/ToastProvider';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
+import {
+  Badge,
+  Button,
+  Card,
+  DataList,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  InlineAlert,
+  PageHeader,
+  SearchInput,
+  Segmented,
+  Select,
+  SkeletonList,
+  Switch,
+  Tabs,
+} from '../../../core/ui';
+import type { Column } from '../../../core/ui';
+import { formatMoney, formatPhone } from '../../../core/lib/format';
+import { getErrorMessage } from '../../../core/lib/errors';
+import { isManager as isManagerFn } from '../../../core/lib/session';
+import { ROLE_LABEL, StaffFormSheet } from '../components/StaffFormSheet';
+import { CourierFormSheet, TRANSPORT_LABEL } from '../components/CourierFormSheet';
+import { StaffStatsSheet } from '../components/StaffStatsSheet';
+
+type Tab = 'staff' | 'couriers' | 'ratings';
+type Period = 'today' | 'week' | 'month' | 'all';
+
+const Avatar: React.FC<{ name?: string }> = ({ name }) => (
+  <span className="w-9 h-9 rounded-full bg-field text-ink flex items-center justify-center text-[13px] font-extrabold shrink-0">
+    {(name || '?').trim().charAt(0).toUpperCase()}
+  </span>
+);
+
+const courierStatus = (status?: string) => {
+  switch (status) {
+    case 'online':
+      return <Badge tone="success" dot>Onlayn</Badge>;
+    case 'busy':
+    case 'on_delivery':
+      return <Badge tone="warning" dot>Band</Badge>;
+    case 'offline':
+      return <Badge dot>Oflayn</Badge>;
+    default:
+      return <Badge>{status || '—'}</Badge>;
+  }
+};
 
 const StaffPage: React.FC = () => {
   const toast = useToast();
   const confirm = useConfirm();
-  const [staffList, setStaffList] = useState<StaffMember[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  // User role details
-  const [userRole, setUserRole] = useState<'superadmin' | 'manager'>('superadmin');
-  
-  // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'list' | 'ratings' | 'couriers'>('list');
-  
-  // CRUD Modal states
-  const [modalOpen, setModalOpen] = useState(false);
-  const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
-  
-  // Detailed statistics modal states
-  const [statsModalOpen, setStatsModalOpen] = useState(false);
-  const [statsStaff, setStatsStaff] = useState<StaffMember | null>(null);
-  const [statsLoading, setStatsLoading] = useState(false);
-  const [statsError, setStatsError] = useState<string | null>(null);
-  const [statsData, setStatsData] = useState<any | null>(null);
-  const [statsPeriod, setStatsPeriod] = useState<'today' | 'week' | 'month' | 'all'>('today');
-  
-  // Waitstaff ratings / leaderboard states
-  const [ratingsPeriod, setRatingsPeriod] = useState<'today' | 'week' | 'month' | 'all'>('month');
-  const [ratingsList, setRatingsList] = useState<any[]>([]);
-  const [ratingsLoading, setRatingsLoading] = useState(false);
-  const [ratingsError, setRatingsError] = useState<string | null>(null);
+  const manager = isManagerFn();
+  const canEdit = !manager;
 
-  // Couriers states
-  const [couriersList, setCouriersList] = useState<CourierModel[]>([]);
+  const [tab, setTab] = useState<Tab>('staff');
+  const [filials, setFilials] = useState<PartnerFilial[]>([]);
+
+  // Staff
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [staffLoading, setStaffLoading] = useState(true);
+  const [staffError, setStaffError] = useState<string | null>(null);
+  const [staffQuery, setStaffQuery] = useState('');
+  const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
+  const [staffFormOpen, setStaffFormOpen] = useState(false);
+  const [statsStaff, setStatsStaff] = useState<StaffMember | null>(null);
+
+  // Couriers
+  const [couriers, setCouriers] = useState<CourierModel[]>([]);
   const [couriersLoading, setCouriersLoading] = useState(false);
   const [couriersError, setCouriersError] = useState<string | null>(null);
   const [courierSearch, setCourierSearch] = useState('');
-  const [courierStatusFilter, setCourierStatusFilter] = useState<string>('ALL');
-  const [courierFilialFilter, setCourierFilialFilter] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [courierStatus_, setCourierStatus] = useState<'ALL' | 'online' | 'offline'>('ALL');
+  const [courierFilial, setCourierFilial] = useState('');
+  const [editingCourier, setEditingCourier] = useState<CourierModel | null>(null);
+  const [courierFormOpen, setCourierFormOpen] = useState(false);
 
-  // Courier CRUD modal states
-  const [courierModalOpen, setCourierModalOpen] = useState(false);
-  const [selectedCourier, setSelectedCourier] = useState<CourierModel | null>(null);
-  const [courierFirstName, setCourierFirstName] = useState('');
-  const [courierLastName, setCourierLastName] = useState('');
-  const [courierPhone, setCourierPhone] = useState('+998');
-  const [courierPassword, setCourierPassword] = useState('');
-  const [courierTelegramId, setCourierTelegramId] = useState('');
-  const [courierServiceTypes, setCourierServiceTypes] = useState('food_delivery');
-  const [courierTransportType, setCourierTransportType] = useState('car');
-  const [courierVehicleBrand, setCourierVehicleBrand] = useState('');
-  const [courierLicensePlate, setCourierLicensePlate] = useState('');
-  const [courierIsActive, setCourierIsActive] = useState(true);
-  const [courierFilialUuid, setCourierFilialUuid] = useState('');
-  const [courierFormError, setCourierFormError] = useState<string | null>(null);
-  const [courierSubmitting, setCourierSubmitting] = useState(false);
-  const [courierShowPassword, setCourierShowPassword] = useState(false);
+  // Ratings
+  const [period, setPeriod] = useState<Period>('month');
+  const [ratings, setRatings] = useState<StaffRatingMember[]>([]);
+  const [ratingsLoading, setRatingsLoading] = useState(false);
+  const [ratingsError, setRatingsError] = useState<string | null>(null);
 
-  // Form states
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('+998');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'manager' | 'waiter'>('waiter');
-  const [isActive, setIsActive] = useState(true);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [busyUuid, setBusyUuid] = useState<string | null>(null);
 
-  // Filial States
-  const [filialList, setFilialList] = useState<PartnerFilial[]>([]);
-  const [homeFilialUuid, setHomeFilialUuid] = useState('');
-  const [currentFilialUuid, setCurrentFilialUuid] = useState('');
-
-  // Load user role and fetch staff list
+  // BUGFIX: staff + filials were loaded with Promise.all, so a failing (or
+  // forbidden-for-managers) filials request blanked the whole staff list.
   const fetchStaff = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const partnerDataStr = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
-      if (partnerDataStr) {
-        const partnerData = JSON.parse(partnerDataStr);
-        if (partnerData.role === 'manager') {
-          setUserRole('manager');
-        } else {
-          setUserRole('superadmin');
-        }
-      }
-      
-      const [data, filialsData] = await Promise.all([
-        staffApi.getStaff(),
-        filialApi.getFilials()
-      ]);
-      setStaffList(data);
-      setFilialList(filialsData);
-    } catch (err: any) {
-      console.error("Failed to load staff list:", err);
-      setError(
-        err.response?.data?.message || 
-        err.message || 
-        "Xodimlar ro'yxatini yuklashda xatolik yuz berdi. Internet aloqasini tekshiring."
-      );
-    } finally {
-      setLoading(false);
-    }
+    setStaffLoading(true);
+    setStaffError(null);
+    const [s, f] = await Promise.allSettled([staffApi.getStaff(), filialApi.getFilials()]);
+    if (s.status === 'fulfilled') setStaff(s.value);
+    else setStaffError(getErrorMessage(s.reason, "Xodimlar ro'yxatini yuklab bo'lmadi."));
+    if (f.status === 'fulfilled') setFilials(f.value);
+    setStaffLoading(false);
   }, []);
 
   useEffect(() => {
     fetchStaff();
   }, [fetchStaff]);
 
-  const fetchRatings = useCallback(async (period: 'today' | 'week' | 'month' | 'all') => {
+  // BUGFIX: courier search fired a request on every keystroke; now debounced.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(courierSearch.trim()), 350);
+    return () => clearTimeout(t);
+  }, [courierSearch]);
+
+  const fetchCouriers = useCallback(async () => {
+    setCouriersLoading(true);
+    setCouriersError(null);
+    try {
+      setCouriers(
+        await couriersApi.getCouriers({
+          filial_uuid: courierFilial || undefined,
+          status: courierStatus_ !== 'ALL' ? courierStatus_ : undefined,
+          search: debouncedSearch || undefined,
+        }),
+      );
+    } catch (err) {
+      setCouriersError(getErrorMessage(err, "Kuryerlar ro'yxatini yuklab bo'lmadi."));
+    } finally {
+      setCouriersLoading(false);
+    }
+  }, [courierFilial, courierStatus_, debouncedSearch]);
+
+  useEffect(() => {
+    if (tab === 'couriers') fetchCouriers();
+  }, [tab, fetchCouriers]);
+
+  const fetchRatings = useCallback(async (p: Period) => {
     setRatingsLoading(true);
     setRatingsError(null);
     try {
-      const data = await staffApi.getStaffRating(period);
-      setRatingsList(data);
-    } catch (err: any) {
-      console.error("Failed to load staff ratings:", err);
-      setRatingsError(
-        err.response?.data?.message ||
-        err.response?.data?.detail ||
-        err.message ||
-        "Reyting ma'lumotlarini yuklashda xatolik yuz berdi."
-      );
+      setRatings(await staffApi.getStaffRating(p));
+    } catch (err) {
+      setRatingsError(getErrorMessage(err, "Reytingni yuklab bo'lmadi."));
     } finally {
       setRatingsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'ratings') {
-      fetchRatings(ratingsPeriod);
-    }
-  }, [activeTab, ratingsPeriod, fetchRatings]);
+    if (tab === 'ratings') fetchRatings(period);
+  }, [tab, period, fetchRatings]);
 
-  // Fetch couriers list (filtered by branch/status/search)
-  const fetchCouriers = useCallback(async () => {
-    setCouriersLoading(true);
-    setCouriersError(null);
-    try {
-      const data = await couriersApi.getCouriers({
-        filial_uuid: courierFilialFilter || undefined,
-        status: courierStatusFilter !== 'ALL' ? courierStatusFilter : undefined,
-        search: courierSearch.trim() || undefined,
-      });
-      setCouriersList(data);
-    } catch (err: any) {
-      console.error("Failed to load couriers:", err);
-      setCouriersError(
-        err.response?.data?.message ||
-        err.response?.data?.detail ||
-        err.message ||
-        "Kuryerlar ro'yxatini yuklashda xatolik yuz berdi."
-      );
-    } finally {
-      setCouriersLoading(false);
-    }
-  }, [courierFilialFilter, courierStatusFilter, courierSearch]);
-
-  useEffect(() => {
-    if (activeTab === 'couriers') {
-      fetchCouriers();
-    }
-  }, [activeTab, fetchCouriers]);
-
-  // Open modal for creating a new courier
-  const handleOpenAddCourierModal = () => {
-    setSelectedCourier(null);
-    setCourierFirstName('');
-    setCourierLastName('');
-    setCourierPhone('+998');
-    setCourierPassword('');
-    setCourierTelegramId('');
-    setCourierServiceTypes('food_delivery');
-    setCourierTransportType('car');
-    setCourierVehicleBrand('');
-    setCourierLicensePlate('');
-    setCourierIsActive(true);
-    setCourierFilialUuid('');
-    setCourierFormError(null);
-    setCourierShowPassword(false);
-    setCourierModalOpen(true);
+  const refresh = () => {
+    if (tab === 'staff') fetchStaff();
+    else if (tab === 'couriers') fetchCouriers();
+    else fetchRatings(period);
   };
 
-  // Open modal for editing an existing courier
-  const handleOpenEditCourierModal = (courier: CourierModel) => {
-    setSelectedCourier(courier);
-    setCourierFirstName(courier.first_name);
-    setCourierLastName(courier.last_name);
-    setCourierPhone(formatPhoneInput(courier.phone || ''));
-    setCourierPassword('');
-    setCourierTelegramId(courier.telegram_id || '');
-    setCourierServiceTypes(courier.service_types || 'food_delivery');
-    setCourierTransportType(courier.vehicle_info?.transport_type || 'car');
-    setCourierVehicleBrand(courier.vehicle_info?.brand || '');
-    setCourierLicensePlate(courier.vehicle_info?.license_plate || '');
-    setCourierIsActive(courier.is_active);
-    setCourierFilialUuid(courier.filial_uuid || '');
-    setCourierFormError(null);
-    setCourierShowPassword(false);
-    setCourierModalOpen(true);
-  };
-
-  // Handle courier CRUD submit (Create / Edit)
-  const handleCourierSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCourierFormError(null);
-
-    const rawPhone = cleanPhoneNumber(courierPhone);
-    if (rawPhone.length !== 13) {
-      setCourierFormError("Telefon raqami noto'g'ri. Format: +998 (90) 123-45-67");
-      return;
-    }
-    if (!selectedCourier && courierPassword.length < 4) {
-      setCourierFormError("Yangi kuryer uchun parol kamida 4 ta belgidan iborat bo'lishi kerak");
-      return;
-    }
-
-    setCourierSubmitting(true);
+  /* ------------------------------------------------------ staff actions */
+  const toggleStaff = async (m: StaffMember) => {
+    if (!canEdit) return;
+    setBusyUuid(m.uuid);
     try {
-      if (selectedCourier) {
-        const payload: any = {
-          first_name: courierFirstName,
-          last_name: courierLastName,
-          phone: rawPhone,
-          telegram_id: courierTelegramId || undefined,
-          service_types: courierServiceTypes || undefined,
-          transport_type: courierTransportType || undefined,
-          vehicle_brand: courierVehicleBrand || undefined,
-          license_plate: courierLicensePlate || undefined,
-          filial_uuid: courierFilialUuid || undefined,
-          is_active: courierIsActive,
-        };
-        if (courierPassword.trim().length >= 4) {
-          payload.password = courierPassword;
-        }
-        await couriersApi.updateCourier(selectedCourier.uuid, payload);
-      } else {
-        await couriersApi.createCourier({
-          first_name: courierFirstName,
-          last_name: courierLastName,
-          phone: rawPhone,
-          password: courierPassword,
-          telegram_id: courierTelegramId || undefined,
-          service_types: courierServiceTypes || undefined,
-          transport_type: courierTransportType || undefined,
-          vehicle_brand: courierVehicleBrand || undefined,
-          license_plate: courierLicensePlate || undefined,
-          filial_uuid: courierFilialUuid || undefined,
-          is_active: courierIsActive,
-        });
-      }
-
-      setCourierModalOpen(false);
-      fetchCouriers();
-    } catch (err: any) {
-      console.error("Save courier failed:", err);
-      setCourierFormError(
-        err.response?.data?.message ||
-        err.response?.data?.detail ||
-        "Kuryer ma'lumotlarini saqlashda xatolik yuz berdi. Telefon raqami band emasligini tekshiring."
-      );
-    } finally {
-      setCourierSubmitting(false);
-    }
-  };
-
-  // Toggle courier active status directly from row
-  const handleToggleCourierActive = async (courier: CourierModel) => {
-    try {
-      await couriersApi.updateCourier(courier.uuid, { is_active: !courier.is_active });
-      setCouriersList(prev =>
-        prev.map(item => item.uuid === courier.uuid ? { ...item, is_active: !item.is_active } : item)
-      );
+      await staffApi.updateStaff(m.uuid, { is_active: !m.is_active });
+      setStaff((prev) => prev.map((x) => (x.uuid === m.uuid ? { ...x, is_active: !x.is_active } : x)));
     } catch (err) {
-      console.error("Failed to toggle courier status:", err);
-      toast.error("Kuryer holatini o'zgartirib bo'lmadi.");
+      toast.error(getErrorMessage(err, "Xodim holatini o'zgartirib bo'lmadi."));
+    } finally {
+      setBusyUuid(null);
     }
   };
 
-  // Delete courier
-  const handleDeleteCourier = async (courier: CourierModel) => {
-    const ok = await confirm(`Haqiqatan ham "${courier.first_name} ${courier.last_name}" kuryerini o'chirishni xohlaysizmi?`, { danger: true, confirmText: "O'chirish" });
+  const deleteStaff = async (m: StaffMember) => {
+    const ok = await confirm(`"${m.name}" xodimini o'chirasizmi? Bu amalni bekor qilib bo'lmaydi.`, {
+      title: "Xodimni o'chirish",
+      danger: true,
+      confirmText: "O'chirish",
+    });
     if (!ok) return;
-
     try {
-      await couriersApi.deleteCourier(courier.uuid);
-      setCouriersList(prev => prev.filter(item => item.uuid !== courier.uuid));
+      await staffApi.deleteStaff(m.uuid);
+      setStaff((prev) => prev.filter((x) => x.uuid !== m.uuid));
+      toast.success("Xodim o'chirildi");
     } catch (err) {
-      console.error("Failed to delete courier:", err);
-      toast.error("Kuryerni o'chirishda xatolik yuz berdi.");
+      toast.error(getErrorMessage(err, "Xodimni o'chirib bo'lmadi."));
     }
   };
 
-  const handleOpenStatsModal = async (staff: StaffMember) => {
-    setStatsStaff(staff);
-    setStatsModalOpen(true);
-    setStatsLoading(true);
-    setStatsError(null);
-    setStatsData(null);
+  /* ---------------------------------------------------- courier actions */
+  const toggleCourier = async (c: CourierModel) => {
+    if (!canEdit) return;
+    setBusyUuid(c.uuid);
     try {
-      const response = await staffApi.getStaffDetails(staff.uuid);
-      if (response.success && response.statistics) {
-        setStatsData(response.statistics);
-      } else {
-        throw new Error("Tafsilotlar ma'lumoti topilmadi");
-      }
-    } catch (err: any) {
-      console.error("Failed to load staff detailed stats:", err);
-      setStatsError(
-        err.response?.data?.message ||
-        err.response?.data?.detail ||
-        err.message ||
-        "Xodimning statistik ma'lumotlarini yuklab bo'lmadi."
-      );
-    } finally {
-      setStatsLoading(false);
-    }
-  };
-
-  // Format a raw phone input value into the "+998 (90) 123-45-67" display format
-  const formatPhoneInput = (val: string) => {
-    if (!val.startsWith('+998')) {
-      val = '+998';
-    }
-    const numbersOnly = val.substring(4).replace(/\D/g, '');
-    const truncated = numbersOnly.substring(0, 9);
-
-    let formatted = '+998';
-    if (truncated.length > 0) {
-      formatted += ' (' + truncated.substring(0, 2);
-    }
-    if (truncated.length > 2) {
-      formatted += ') ' + truncated.substring(2, 5);
-    }
-    if (truncated.length > 5) {
-      formatted += '-' + truncated.substring(5, 7);
-    }
-    if (truncated.length > 7) {
-      formatted += '-' + truncated.substring(7, 9);
-    }
-    return formatted;
-  };
-
-  // Handle phone changes and apply formatting
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPhone(formatPhoneInput(e.target.value));
-  };
-
-  const handleCourierPhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setCourierPhone(formatPhoneInput(e.target.value));
-  };
-
-  const cleanPhoneNumber = (formattedPhone: string) => {
-    return formattedPhone.replace(/[^\d+]/g, '');
-  };
-
-  // Open modal for Create
-  const handleOpenAddModal = () => {
-    setSelectedStaff(null);
-    setName('');
-    setPhone('+998');
-    setPassword('');
-    setRole('waiter');
-    setIsActive(true);
-    setHomeFilialUuid('');
-    setCurrentFilialUuid('');
-    setFormError(null);
-    setModalOpen(true);
-    setShowPassword(false);
-  };
-
-  // Open modal for Edit
-  const handleOpenEditModal = (staff: StaffMember) => {
-    setSelectedStaff(staff);
-    setName(staff.name);
-    
-    // Format phone number back to input structure if possible
-    let rawPhone = staff.phone.replace(/[^\d]/g, '');
-    if (rawPhone.startsWith('998') && rawPhone.length === 12) {
-      rawPhone = rawPhone.substring(3);
-    }
-    let formatted = '+998';
-    if (rawPhone.length >= 2) formatted += ` (${rawPhone.substring(0, 2)})`;
-    if (rawPhone.length > 2) formatted += ` ${rawPhone.substring(2, 5)}`;
-    if (rawPhone.length > 5) formatted += `-${rawPhone.substring(5, 7)}`;
-    if (rawPhone.length > 7) formatted += `-${rawPhone.substring(7, 9)}`;
-    
-    setPhone(formatted);
-    setPassword(''); // keep blank unless updating
-    setRole(staff.role);
-    setIsActive(staff.is_active);
-    setHomeFilialUuid(staff.home_filial?.uuid || '');
-    setCurrentFilialUuid(staff.current_filial?.uuid || '');
-    setFormError(null);
-    setModalOpen(true);
-    setShowPassword(false);
-  };
-
-  // Handle CRUD submit (Create / Edit)
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-    setSubmitting(true);
-
-    const rawPhone = cleanPhoneNumber(phone);
-    if (rawPhone.length !== 13) {
-      setFormError("Telefon raqami noto'g'ri. Format: +998 (90) 123-45-67");
-      setSubmitting(false);
-      return;
-    }
-
-    if (!selectedStaff && password.length < 4) {
-      setFormError("Yangi xodim uchun parol kamida 4 ta belgidan iborat bo'lishi kerak");
-      setSubmitting(false);
-      return;
-    }
-
-    try {
-      if (selectedStaff) {
-        // Edit logic
-        const payload: any = {
-          name,
-          phone: rawPhone,
-          role,
-          is_active: isActive,
-          home_filial_uuid: homeFilialUuid || undefined,
-          current_filial_uuid: currentFilialUuid || undefined
-        };
-        if (password.trim().length >= 4) {
-          payload.password = password;
-        }
-        await staffApi.updateStaff(selectedStaff.uuid, payload);
-      } else {
-        // Create logic
-        const payload = {
-          name,
-          phone: rawPhone,
-          password,
-          role,
-          is_active: isActive,
-          home_filial_uuid: homeFilialUuid || undefined,
-          current_filial_uuid: currentFilialUuid || undefined
-        };
-        await staffApi.createStaff(payload);
-      }
-      
-      setModalOpen(false);
-      fetchStaff();
-    } catch (err: any) {
-      console.error("Save staff member failed:", err);
-      setFormError(
-        err.response?.data?.message || 
-        err.response?.data?.detail || 
-        "Ma'lumotlarni saqlashda xatolik yuz berdi. Telefon raqami band emasligini tekshiring."
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Toggle active status directly from row (Superadmin only)
-  const handleToggleStatus = async (staff: StaffMember) => {
-    if (userRole !== 'superadmin') return;
-    try {
-      await staffApi.updateStaff(staff.uuid, { is_active: !staff.is_active });
-      setStaffList(prev => 
-        prev.map(item => item.uuid === staff.uuid ? { ...item, is_active: !item.is_active } : item)
-      );
+      await couriersApi.updateCourier(c.uuid, { is_active: !c.is_active });
+      setCouriers((prev) => prev.map((x) => (x.uuid === c.uuid ? { ...x, is_active: !x.is_active } : x)));
     } catch (err) {
-      console.error("Failed to toggle status:", err);
-      toast.error("Xodim holatini o'zgartirib bo'lmadi.");
+      toast.error(getErrorMessage(err, "Kuryer holatini o'zgartirib bo'lmadi."));
+    } finally {
+      setBusyUuid(null);
     }
   };
 
-  // Delete staff member
-  const handleDeleteStaff = async (staff: StaffMember) => {
-    if (userRole !== 'superadmin') return;
-    const ok = await confirm(`Haqiqatan ham "${staff.name}" xodimini o'chirishni xohlaysizmi?`, { danger: true, confirmText: "O'chirish" });
+  const deleteCourier = async (c: CourierModel) => {
+    const ok = await confirm(`"${c.first_name} ${c.last_name}" kuryerini o'chirasizmi?`, {
+      title: "Kuryerni o'chirish",
+      danger: true,
+      confirmText: "O'chirish",
+    });
     if (!ok) return;
-
     try {
-      await staffApi.deleteStaff(staff.uuid);
-      setStaffList(prev => prev.filter(item => item.uuid !== staff.uuid));
+      await couriersApi.deleteCourier(c.uuid);
+      setCouriers((prev) => prev.filter((x) => x.uuid !== c.uuid));
+      toast.success("Kuryer o'chirildi");
     } catch (err) {
-      console.error("Failed to delete staff:", err);
-      toast.error("Xodimni o'chirishda xatolik yuz berdi.");
+      toast.error(getErrorMessage(err, "Kuryerni o'chirib bo'lmadi."));
     }
   };
 
-  const formatUzPhone = (phoneStr: string) => {
-    const clean = phoneStr.replace(/\D/g, '');
-    if (clean.length === 12) {
-      return `+${clean.slice(0, 3)} (${clean.slice(3, 5)}) ${clean.slice(5, 8)}-${clean.slice(8, 10)}-${clean.slice(10, 12)}`;
-    }
-    return phoneStr;
-  };
+  /* ------------------------------------------------------------ columns */
+  const filteredStaff = useMemo(() => {
+    const q = staffQuery.trim().toLowerCase();
+    if (!q) return staff;
+    const digits = q.replace(/\D/g, '');
+    return staff.filter((m) => m.name?.toLowerCase().includes(q) || (digits && m.phone?.replace(/\D/g, '').includes(digits)));
+  }, [staff, staffQuery]);
 
-  const getCourierStatusBadge = (status?: string) => {
-    switch (status) {
-      case 'online':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Onlayn
+  const staffColumns: Column<StaffMember>[] = [
+    {
+      key: 'name',
+      header: 'Xodim',
+      primary: true,
+      render: (m) => (
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar name={m.name} />
+          <div className="min-w-0">
+            <div className="font-bold truncate">{m.name}</div>
+            <div className="text-[12px] text-muted font-normal md:hidden">{formatPhone(m.phone)}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'role',
+      header: 'Rol',
+      mobileAside: true,
+      render: (m) => <Badge tone={m.role === 'manager' ? 'info' : 'neutral'}>{ROLE_LABEL[m.role] || m.role}</Badge>,
+    },
+    { key: 'phone', header: 'Telefon', mobileHidden: true, render: (m) => <span className="tabular-nums">{formatPhone(m.phone)}</span> },
+    {
+      key: 'filial',
+      header: 'Filial',
+      render: (m) => (
+        <div className="min-w-0">
+          <div className="truncate">{m.home_filial?.filial_name || '—'}</div>
+          {m.current_filial && m.current_filial.uuid !== m.home_filial?.uuid && (
+            <div className="text-[12px] text-brand truncate">Hozir: {m.current_filial.filial_name}</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'today',
+      header: 'Bugun',
+      render: (m) =>
+        m.today_stats ? (
+          <div className="tabular-nums">
+            <div className="font-semibold">{formatMoney(m.today_stats.revenue)}</div>
+            <div className="text-[12px] text-muted">
+              {m.today_stats.completed_orders}/{m.today_stats.total_orders} buyurtma
+            </div>
+          </div>
+        ) : (
+          '—'
+        ),
+    },
+    {
+      key: 'active',
+      header: 'Faol',
+      align: 'center',
+      render: (m) =>
+        canEdit ? (
+          <span onClick={(e) => e.stopPropagation()} className="inline-flex">
+            <Switch size="sm" checked={m.is_active} disabled={busyUuid === m.uuid} onChange={() => toggleStaff(m)} label="Faol" />
           </span>
-        );
-      case 'offline':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-400 border border-slate-500/15">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-            Oflayn
-          </span>
-        );
-      case 'busy':
-      case 'on_delivery':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            Band
-          </span>
-        );
-      default:
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-300">{status || '-'}</span>;
-    }
-  };
+        ) : (
+          <Badge tone={m.is_active ? 'success' : 'danger'}>{m.is_active ? 'Faol' : 'Bloklangan'}</Badge>
+        ),
+    },
+  ];
 
-  const formatUzS = (amount: number | string | null | undefined) => {
-    const num = Number(amount);
-    if (isNaN(num)) {
-      return "0 UZS";
-    }
-    return num.toLocaleString('uz-UZ') + " UZS";
-  };
+  const courierColumns: Column<CourierModel>[] = [
+    {
+      key: 'name',
+      header: 'Kuryer',
+      primary: true,
+      render: (c) => (
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar name={c.first_name} />
+          <div className="min-w-0">
+            <div className="font-bold truncate">{`${c.first_name || ''} ${c.last_name || ''}`.trim() || '—'}</div>
+            <div className="text-[12px] text-muted font-normal md:hidden">{formatPhone(c.phone)}</div>
+          </div>
+        </div>
+      ),
+    },
+    { key: 'status', header: 'Holat', mobileAside: true, render: (c) => courierStatus(c.status) },
+    { key: 'phone', header: 'Telefon', mobileHidden: true, render: (c) => <span className="tabular-nums">{formatPhone(c.phone)}</span> },
+    {
+      key: 'vehicle',
+      header: 'Transport',
+      render: (c) => (
+        <div className="min-w-0">
+          <div className="truncate">
+            {c.vehicle_info?.brand || TRANSPORT_LABEL[c.vehicle_info?.transport_type || ''] || c.vehicle_info?.transport_type || '—'}
+          </div>
+          {c.vehicle_info?.license_plate && <div className="text-[12px] text-muted font-mono">{c.vehicle_info.license_plate}</div>}
+        </div>
+      ),
+    },
+    { key: 'filial', header: 'Filial', render: (c) => c.filial_name || '—' },
+    { key: 'tg', header: 'Telegram', mobileHidden: true, render: (c) => (c.telegram_id ? <span className="font-mono text-[13px]">{c.telegram_id}</span> : '—') },
+    {
+      key: 'active',
+      header: 'Faol',
+      align: 'center',
+      render: (c) =>
+        canEdit ? (
+          <span onClick={(e) => e.stopPropagation()} className="inline-flex">
+            <Switch size="sm" checked={c.is_active} disabled={busyUuid === c.uuid} onChange={() => toggleCourier(c)} label="Faol" />
+          </span>
+        ) : (
+          <Badge tone={c.is_active ? 'success' : 'danger'}>{c.is_active ? 'Faol' : 'Bloklangan'}</Badge>
+        ),
+    },
+  ];
+
+  const sortedRatings = useMemo(() => [...ratings].sort((a, b) => (b.total_revenue || 0) - (a.total_revenue || 0)), [ratings]);
+  const maxRevenue = sortedRatings[0]?.total_revenue || 1;
+  const rankOf = (r: StaffRatingMember) => sortedRatings.indexOf(r) + 1;
+
+  const ratingColumns: Column<StaffRatingMember>[] = [
+    {
+      key: 'name',
+      header: 'Xodim',
+      primary: true,
+      render: (r) => {
+        const rank = rankOf(r);
+        const medal = rank === 1 ? 'bg-gold text-ink' : rank === 2 ? 'bg-edge-strong text-ink' : rank === 3 ? 'bg-gold-soft text-gold-ink' : 'bg-field text-muted';
+        return (
+          <div className="flex items-center gap-3 min-w-0">
+            <span className={`w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-black shrink-0 ${medal}`}>{rank}</span>
+            <div className="min-w-0">
+              <div className="font-bold truncate">{r.name}</div>
+              <div className="text-[12px] text-muted font-normal">{ROLE_LABEL[r.role] || r.role}</div>
+            </div>
+          </div>
+        );
+      },
+    },
+    { key: 'rev', header: 'Tushum', align: 'right', mobileAside: true, render: (r) => <span className="font-extrabold tabular-nums">{formatMoney(r.total_revenue)}</span> },
+    { key: 'orders', header: 'Buyurtmalar', align: 'right', render: (r) => `${r.completed_orders} / ${r.total_orders} ta` },
+    {
+      key: 'share',
+      header: 'Ulush',
+      className: 'md:w-1/4',
+      render: (r) => (
+        <div className="w-full h-2 rounded-full bg-field overflow-hidden" aria-hidden>
+          <div className="h-full bg-brand-bright rounded-full" style={{ width: `${Math.max(2, ((r.total_revenue || 0) / maxRevenue) * 100)}%` }} />
+        </div>
+      ),
+    },
+  ];
+
+  const addAction =
+    canEdit && tab === 'staff' ? (
+      <Button icon={<Plus className="w-4 h-4" />} onClick={() => { setEditingStaff(null); setStaffFormOpen(true); }}>
+        <span className="hidden sm:inline">Xodim qo'shish</span>
+        <span className="sm:hidden">Qo'shish</span>
+      </Button>
+    ) : canEdit && tab === 'couriers' ? (
+      <Button icon={<Plus className="w-4 h-4" />} onClick={() => { setEditingCourier(null); setCourierFormOpen(true); }}>
+        <span className="hidden sm:inline">Kuryer qo'shish</span>
+        <span className="sm:hidden">Qo'shish</span>
+      </Button>
+    ) : null;
 
   return (
-    <div className="space-y-8 font-Outfit">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-edge pb-4">
-        <div>
-          <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-3 text-left">
-            Xodimlar <span className="bg-brand/10 text-brand p-1.5 rounded-xl"><Users className="w-6 h-6" /></span>
-          </h1>
-          <p className="text-slate-400 text-left text-sm mt-1">Xizmat ko'rsatuvchi xodimlar, menejerlar va ofitsantlarni boshqaring</p>
-        </div>
+    <div className="pb-6">
+      <PageHeader
+        title="Xodimlar"
+        subtitle="Menejerlar, ofitsantlar va o'z kuryerlaringiz"
+        actions={
+          <>
+            <IconButton label="Yangilash" variant="outline" onClick={refresh}>
+              <RefreshCw className="w-4 h-4" />
+            </IconButton>
+            {addAction}
+          </>
+        }
+      >
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'staff', label: 'Xodimlar', icon: <Users className="w-4 h-4" />, count: staffLoading ? undefined : staff.length },
+            { value: 'couriers', label: 'Kuryerlar', icon: <Bike className="w-4 h-4" /> },
+            { value: 'ratings', label: 'Reyting', icon: <Trophy className="w-4 h-4" /> },
+          ]}
+        />
+      </PageHeader>
 
-        <div className="flex gap-3">
-          <button
-            onClick={() => {
-              if (activeTab === 'list') {
-                fetchStaff();
-              } else if (activeTab === 'ratings') {
-                fetchRatings(ratingsPeriod);
-              } else {
-                fetchCouriers();
-              }
-            }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-overlay border border-edge-strong hover:bg-overlay-strong hover:text-ink transition text-slate-300 text-xs font-bold cursor-pointer"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Yangilash</span>
-          </button>
+      <div className="space-y-4 mt-1">
+        {manager && (
+          <InlineAlert tone="info" icon={<Shield className="w-4 h-4" />}>
+            Menejer sifatida ro'yxatni ko'rasiz. Xodim va kuryerlarni qo'shish, tahrirlash va o'chirish faqat egasi hisobidan mumkin.
+          </InlineAlert>
+        )}
 
-          {userRole === 'superadmin' && activeTab === 'list' && (
-            <button
-              onClick={handleOpenAddModal}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs shadow-lg shadow-brand/15 hover:shadow-brand/25 transition cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Xodim qo'shish</span>
-            </button>
-          )}
-
-          {userRole === 'superadmin' && activeTab === 'couriers' && (
-            <button
-              onClick={handleOpenAddCourierModal}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs shadow-lg shadow-brand/15 hover:shadow-brand/25 transition cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Kuryer qo'shish</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex bg-slate-950/60 p-1 rounded-xl border border-edge max-w-xl">
-        <button
-          onClick={() => setActiveTab('list')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition duration-200 cursor-pointer ${
-            activeTab === 'list'
-              ? 'bg-brand text-white shadow-lg shadow-brand/10'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          Xodimlar ro'yxati
-        </button>
-        <button
-          onClick={() => setActiveTab('ratings')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition duration-200 cursor-pointer ${
-            activeTab === 'ratings'
-              ? 'bg-brand text-white shadow-lg shadow-brand/10'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Trophy className="w-4 h-4" />
-          Ofitsantlar reytingi
-        </button>
-        <button
-          onClick={() => setActiveTab('couriers')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition duration-200 cursor-pointer ${
-            activeTab === 'couriers'
-              ? 'bg-brand text-white shadow-lg shadow-brand/10'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Bike className="w-4 h-4" />
-          Kuryerlar
-        </button>
-      </div>
-
-      {/* Role notice banner for Manager */}
-      {userRole === 'manager' && (
-        <div className="flex items-start gap-3.5 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm text-left shadow-lg">
-          <Shield className="w-5 h-5 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <h4 className="font-bold text-ink">Menejer hisobi</h4>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Menejer sifatida siz faqat ofitsantlar (waiter) ro'yxatini ko'ra olasiz. Xodimlarni yaratish, yangilash yoki o'chirish faqat Restoran Egasi (Superadmin) hisobi orqali amalga oshiriladi.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Main List Display */}
-      {activeTab === 'list' && (
-        <>
-          {error ? (
-            <div className="flex flex-col items-center justify-center py-20 text-rose-400 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 text-center">
-              <AlertCircle className="w-12 h-12 mb-3 animate-pulse" />
-              <h4 className="font-bold text-ink text-base mb-1">Xatolik yuz berdi</h4>
-              <p className="text-sm max-w-sm mb-4 text-slate-400">{error}</p>
-              <button
-                onClick={fetchStaff}
-                className="px-4 py-2 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs transition cursor-pointer flex items-center gap-1 justify-center mx-auto"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span>Qayta urinish</span>
-              </button>
-            </div>
-          ) : loading ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-4">
-              <div className="w-10 h-10 border-4 border-brand/30 border-t-brand rounded-full animate-spin" />
-              <p className="text-slate-400 text-sm font-semibold">Xodimlar yuklanmoqda...</p>
-            </div>
-          ) : staffList.length > 0 ? (
-            <div className="p-6 rounded-2xl bg-darkCard border border-edge shadow-xl">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-edge text-slate-500 text-xs uppercase tracking-wider font-bold">
-                      <th className="pb-3.5 pl-2">Ism</th>
-                      <th className="pb-3.5">Telefon raqami</th>
-                      <th className="pb-3.5">Roli</th>
-                      <th className="pb-3.5">Filial (Asosiy / Joriy)</th>
-                      <th className="pb-3.5">Bugungi statistika</th>
-                      <th className="pb-3.5 text-center">Holat</th>
-                      <th className="pb-3.5 text-center pr-2">Amallar</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-edge text-slate-300">
-                    {staffList.map((staff) => (
-                      <tr key={staff.uuid} className="hover:bg-overlay transition-colors">
-                        <td className="py-4 pl-2 font-bold text-ink flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-slate-900 border border-edge-strong flex items-center justify-center text-slate-400 shrink-0 font-bold text-xs">
-                            {staff.name.charAt(0).toUpperCase()}
-                          </div>
-                          <span className="truncate">{staff.name}</span>
-                        </td>
-                        <td className="py-4 font-mono font-medium text-xs text-slate-300">
-                          {formatUzPhone(staff.phone)}
-                        </td>
-                        <td className="py-4 font-semibold">
-                          {staff.role === 'manager' ? (
-                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                              Menejer
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-violet-500/10 text-violet-400 border border-violet-500/20">
-                              Ofitsant
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-4 text-xs">
-                          <div className="flex flex-col gap-0.5 text-left text-slate-300">
-                            <span className="font-semibold text-ink">
-                              {staff.home_filial?.filial_name || "-"}
-                            </span>
-                            <span className="text-[10px] text-brand">
-                              Joriy: {staff.current_filial?.filial_name || "-"}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-4">
-                          {staff.today_stats ? (
-                            <div className="flex flex-col gap-1 text-[11px] text-slate-400 text-left">
-                              <div className="flex items-center gap-1 font-medium">
-                                <span className="text-ink font-bold">{staff.today_stats.total_orders} ta</span> buyurtma
-                                <span className="text-emerald-400 font-semibold">({staff.today_stats.completed_orders} yopilgan)</span>
-                              </div>
-                              <div className="text-brand font-mono font-bold">
-                                {formatUzS(staff.today_stats.revenue)}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-500">-</span>
-                          )}
-                        </td>
-                        <td className="py-4 text-center">
-                          <button
-                            onClick={() => handleToggleStatus(staff)}
-                            disabled={userRole !== 'superadmin'}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition ${
-                              userRole === 'superadmin' ? 'cursor-pointer hover:bg-opacity-80' : 'cursor-default'
-                            } ${
-                              staff.is_active
-                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                            }`}
-                          >
-                            {staff.is_active ? (
-                              <>
-                                <UserCheck className="w-3 h-3" />
-                                <span>Faol</span>
-                              </>
-                            ) : (
-                              <>
-                                <UserX className="w-3 h-3" />
-                                <span>Bloklangan</span>
-                              </>
-                            )}
-                          </button>
-                        </td>
-                        <td className="py-4 text-center pr-2">
-                          <div className="flex gap-2 justify-center">
-                            <button
-                              onClick={() => handleOpenStatsModal(staff)}
-                              className="p-2 rounded-lg bg-brand/10 border border-brand/20 text-brand hover:bg-brand/20 transition cursor-pointer"
-                              title="Statistika va Tafsilotlar"
-                            >
-                              <BarChart2 className="w-3.5 h-3.5" />
-                            </button>
-                            {userRole === 'superadmin' && (
-                              <>
-                                <button
-                                  onClick={() => handleOpenEditModal(staff)}
-                                  className="p-2 rounded-lg bg-overlay border border-edge text-slate-300 hover:text-ink hover:border-edge-strong transition cursor-pointer"
-                                  title="Tahrirlash"
-                                >
-                                  <Edit className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteStaff(staff)}
-                                  className="p-2 rounded-lg bg-rose-500/5 border border-rose-500/10 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition cursor-pointer"
-                                  title="O'chirish"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-edge rounded-2xl">
-              <Users className="w-16 h-16 stroke-[1.2] mb-3 text-slate-600 animate-pulse" />
-              <h3 className="font-bold text-ink mb-1">Xodimlar mavjud emas</h3>
-              <p className="text-xs px-6 text-center max-w-sm">Tizimda hali hech qanday xodim qo'shilmagan.</p>
-              {userRole === 'superadmin' && (
-                <button
-                  onClick={handleOpenAddModal}
-                  className="mt-4 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand/10 hover:bg-brand/20 text-brand text-xs font-bold transition cursor-pointer border border-brand/10"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Xodim qo'shish</span>
-                </button>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Ratings / Leaderboard Display */}
-      {activeTab === 'ratings' && (
-        <div className="space-y-6">
-          {/* Period selector */}
-          <div className="flex flex-wrap gap-2.5">
-            {(['today', 'week', 'month', 'all'] as const).map((period) => (
-              <button
-                key={period}
-                onClick={() => setRatingsPeriod(period)}
-                className={`px-4.5 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                  ratingsPeriod === period
-                    ? 'bg-brand text-white border-brand shadow-lg shadow-brand/10'
-                    : 'bg-overlay border-edge text-slate-400 hover:text-slate-200 hover:bg-overlay-strong'
-                }`}
-              >
-                {period === 'today' && 'Bugungi'}
-                {period === 'week' && 'Shu haftalik'}
-                {period === 'month' && 'Shu oylik'}
-                {period === 'all' && 'Barchasi'}
-              </button>
-            ))}
-          </div>
-
-          {ratingsLoading ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-4">
-              <div className="w-10 h-10 border-4 border-brand/30 border-t-brand rounded-full animate-spin" />
-              <p className="text-slate-400 text-sm font-semibold">Reyting ma'lumotlari yuklanmoqda...</p>
-            </div>
-          ) : ratingsError ? (
-            <div className="flex flex-col items-center justify-center py-20 text-rose-400 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 text-center">
-              <AlertCircle className="w-12 h-12 mb-3 animate-pulse" />
-              <h4 className="font-bold text-ink text-base mb-1">Xatolik yuz berdi</h4>
-              <p className="text-sm max-w-sm mb-4 text-slate-400">{ratingsError}</p>
-              <button
-                onClick={() => fetchRatings(ratingsPeriod)}
-                className="px-4 py-2 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs transition cursor-pointer flex items-center gap-1 justify-center mx-auto"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span>Qayta urinish</span>
-              </button>
-            </div>
-          ) : ratingsList.length > 0 ? (
-            <div className="space-y-6">
-              {/* Top Podium for 1st, 2nd, 3rd places */}
-              {(() => {
-                const sortedList = [...ratingsList].sort((a, b) => b.total_revenue - a.total_revenue);
-                const maxRevenue = sortedList[0]?.total_revenue || 1;
-                const top3 = sortedList.slice(0, 3);
-                // Arrange top3 visually: 2nd place on left, 1st in center, 3rd on right
-                const visualTop3 = [];
-                if (top3[1]) visualTop3.push({ ...top3[1], place: 2 });
-                if (top3[0]) visualTop3.push({ ...top3[0], place: 1 });
-                if (top3[2]) visualTop3.push({ ...top3[2], place: 3 });
-
-                return (
+        {tab === 'staff' && (
+          <>
+            {staff.length > 5 && <SearchInput value={staffQuery} onChange={setStaffQuery} placeholder="Ism yoki telefon bo'yicha qidirish" className="max-w-md" />}
+            {staffLoading ? (
+              <SkeletonList rows={5} />
+            ) : staffError ? (
+              <Card><ErrorState message={staffError} onRetry={fetchStaff} /></Card>
+            ) : (
+              <DataList
+                rows={filteredStaff}
+                columns={staffColumns}
+                rowKey={(m) => m.uuid}
+                onRowClick={setStatsStaff}
+                rowActions={(m) => (
                   <>
-                    {top3.length > 0 && (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end pb-4">
-                        {visualTop3.map((waiter) => {
-                          const isFirst = waiter.place === 1;
-                          const isSecond = waiter.place === 2;
-                          const cardHeight = isFirst ? 'md:h-64' : 'md:h-52';
-                          const cardBorder = isFirst 
-                            ? 'border-amber-500/35 bg-gradient-to-b from-amber-500/5 to-transparent' 
-                            : isSecond 
-                              ? 'border-slate-300/35 bg-gradient-to-b from-slate-300/5 to-transparent' 
-                              : 'border-amber-700/35 bg-gradient-to-b from-amber-700/5 to-transparent';
-                          const medalColor = isFirst 
-                            ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' 
-                            : isSecond 
-                              ? 'bg-slate-300/20 text-slate-300 border-slate-300/30' 
-                              : 'bg-amber-700/20 text-amber-600 border-amber-700/30';
-                          return (
-                            <div 
-                              key={waiter.uuid} 
-                              className={`p-6 rounded-2xl bg-darkCard border shadow-xl relative flex flex-col justify-between overflow-hidden transition-all duration-300 hover:scale-[1.01] ${cardHeight} ${cardBorder}`}
-                            >
-                              <div className="absolute top-0 right-0 w-24 h-24 bg-overlay rounded-bl-full pointer-events-none" />
-                              <div className="flex justify-between items-start">
-                                <div className="space-y-1 text-left">
-                                  <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Ofitsant</span>
-                                  <h3 className="font-bold text-ink text-lg truncate max-w-[150px]">{waiter.name}</h3>
-                                </div>
-                                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center font-bold text-base shadow-lg shrink-0 ${medalColor}`}>
-                                  {waiter.place === 1 && <Trophy className="w-5 h-5" />}
-                                  {waiter.place === 2 && '2'}
-                                  {waiter.place === 3 && '3'}
-                                </div>
-                              </div>
-
-                              <div className="space-y-2 mt-4 text-left">
-                                <div className="flex justify-between items-center text-xs text-slate-400">
-                                  <span>Buyurtmalar:</span>
-                                  <span className="font-bold text-ink">{waiter.completed_orders} ta ({waiter.total_orders} ta jami)</span>
-                                </div>
-                                <div className="flex justify-between items-center text-xs text-slate-400">
-                                  <span>Tushum summasi:</span>
-                                  <span className="font-bold text-emerald-400 font-mono">{formatUzS(waiter.total_revenue)}</span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                    <Button size="sm" variant="secondary" icon={<BarChart2 className="w-4 h-4" />} onClick={() => setStatsStaff(m)}>
+                      Statistika
+                    </Button>
+                    {canEdit && (
+                      <>
+                        <IconButton label="Tahrirlash" size="sm" variant="secondary" onClick={() => { setEditingStaff(m); setStaffFormOpen(true); }}>
+                          <Edit className="w-4 h-4" />
+                        </IconButton>
+                        <IconButton label="O'chirish" size="sm" variant="danger-soft" onClick={() => deleteStaff(m)}>
+                          <Trash2 className="w-4 h-4" />
+                        </IconButton>
+                      </>
                     )}
-
-                    {/* Complete Leaderboard list */}
-                    <div className="p-6 rounded-2xl bg-darkCard border border-edge shadow-xl text-left">
-                      <h3 className="font-bold text-ink text-base mb-4 flex items-center gap-2">
-                        <Award className="w-5 h-5 text-brand" /> Barcha Ofitsantlar Reytingi
-                      </h3>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse text-sm">
-                          <thead>
-                            <tr className="border-b border-edge text-slate-500 text-xs uppercase tracking-wider font-bold">
-                              <th className="pb-3.5 pl-2 text-center w-12">O'rin</th>
-                              <th className="pb-3.5 pl-2">Ism</th>
-                              <th className="pb-3.5 text-center">Buyurtmalar (Yakunlangan / Jami)</th>
-                              <th className="pb-3.5 text-right">Tushum</th>
-                              <th className="pb-3.5 pl-8 pr-2 w-1/3">Hissa bar</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-edge text-slate-300">
-                            {sortedList.map((waiter, index) => {
-                              const rank = index + 1;
-                              const percentage = (waiter.total_revenue / maxRevenue) * 100;
-                              return (
-                                <tr key={waiter.uuid} className="hover:bg-overlay transition-colors">
-                                  <td className="py-4 pl-2 text-center font-bold">
-                                    {rank === 1 && <span className="inline-flex w-6 h-6 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-400 items-center justify-center text-xs">1</span>}
-                                    {rank === 2 && <span className="inline-flex w-6 h-6 rounded-full bg-slate-300/20 border border-slate-300/30 text-slate-300 items-center justify-center text-xs">2</span>}
-                                    {rank === 3 && <span className="inline-flex w-6 h-6 rounded-full bg-amber-700/20 border border-amber-700/30 text-amber-600 items-center justify-center text-xs">3</span>}
-                                    {rank > 3 && <span className="text-slate-500">{rank}</span>}
-                                  </td>
-                                  <td className="py-4 pl-2 font-bold text-ink flex items-center gap-2.5">
-                                    <div className="w-8 h-8 rounded-full bg-slate-900 border border-edge-strong flex items-center justify-center text-slate-400 shrink-0 font-bold text-xs">
-                                      {waiter.name.charAt(0).toUpperCase()}
-                                    </div>
-                                    <span className="truncate">{waiter.name}</span>
-                                  </td>
-                                  <td className="py-4 text-center font-semibold text-xs text-slate-300">
-                                    {waiter.completed_orders} / {waiter.total_orders} ta
-                                  </td>
-                                  <td className="py-4 text-right font-bold text-emerald-400 font-mono text-xs">
-                                    {formatUzS(waiter.total_revenue)}
-                                  </td>
-                                  <td className="py-4 pl-8 pr-2">
-                                    <div className="w-full bg-slate-800 rounded-full h-2">
-                                      <div 
-                                        className="bg-brand h-2 rounded-full shadow-lg shadow-brand/10 transition-all duration-500" 
-                                        style={{ width: `${percentage}%` }}
-                                      />
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
                   </>
-                );
-              })()}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-edge rounded-2xl">
-              <Trophy className="w-16 h-16 stroke-[1.2] mb-3 text-slate-600" />
-              <h3 className="font-bold text-ink mb-1">Reyting ma'lumotlari mavjud emas</h3>
-              <p className="text-xs px-6 text-center max-w-sm">Tanlangan davr bo'yicha ofitsantlar reytingi topilmadi.</p>
-            </div>
-          )}
-        </div>
-      )}
+                )}
+                empty={
+                  <Card>
+                    <EmptyState
+                      icon={<Users className="w-7 h-7" />}
+                      title={staffQuery ? 'Hech narsa topilmadi' : "Xodimlar yo'q"}
+                      description={staffQuery ? "Qidiruv so'zini o'zgartirib ko'ring." : "Menejer yoki ofitsant qo'shing — ular o'z ilovasidan buyurtma qabul qiladi."}
+                      action={canEdit && !staffQuery ? <Button icon={<Plus className="w-4 h-4" />} onClick={() => { setEditingStaff(null); setStaffFormOpen(true); }}>Xodim qo'shish</Button> : undefined}
+                    />
+                  </Card>
+                }
+              />
+            )}
+          </>
+        )}
 
-      {/* Couriers Display */}
-      {activeTab === 'couriers' && (
-        <div className="space-y-6">
-          {/* Filters toolbar */}
-          <div className="p-4 rounded-2xl bg-darkCard border border-edge shadow-md">
-            <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
-              {/* Search bar */}
-              <div className="relative w-full lg:max-w-md">
-                <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Ism yoki telefon raqami bo'yicha qidirish..."
-                  value={courierSearch}
-                  onChange={(e) => setCourierSearch(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') fetchCouriers(); }}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none transition duration-150"
+        {tab === 'couriers' && (
+          <>
+            <div className="flex flex-col lg:flex-row gap-2.5 lg:items-center">
+              <SearchInput value={courierSearch} onChange={setCourierSearch} placeholder="Ism yoki telefon" className="lg:max-w-sm w-full" />
+              <div className="flex flex-col sm:flex-row gap-2.5 sm:items-center">
+                <Segmented
+                  value={courierStatus_}
+                  onChange={setCourierStatus}
+                  options={[
+                    { value: 'ALL', label: 'Barchasi' },
+                    { value: 'online', label: 'Onlayn' },
+                    { value: 'offline', label: 'Oflayn' },
+                  ]}
                 />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end">
-                {/* Status filters */}
-                <div className="flex items-center gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-edge text-xs font-semibold">
-                  {(['ALL', 'online', 'offline'] as const).map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setCourierStatusFilter(s)}
-                      className={`px-3 py-1.5 rounded-lg transition ${
-                        courierStatusFilter === s ? 'bg-brand text-white' : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      {s === 'ALL' ? 'Barchasi' : s === 'online' ? 'Onlayn' : 'Oflayn'}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Filial filter (Superadmin only) */}
-                {userRole === 'superadmin' && filialList.length > 0 && (
-                  <select
-                    value={courierFilialFilter}
-                    onChange={(e) => setCourierFilialFilter(e.target.value)}
-                    className="bg-slate-950/70 border border-edge focus:border-brand/40 text-slate-300 px-3 py-2 rounded-xl text-xs focus:outline-none transition cursor-pointer"
-                  >
+                {canEdit && filials.length > 1 && (
+                  <Select value={courierFilial} onChange={(e) => setCourierFilial(e.target.value)} aria-label="Filial" containerClassName="sm:w-56">
                     <option value="">Barcha filiallar</option>
-                    {filialList.map(f => (
+                    {filials.map((f) => (
                       <option key={f.uuid} value={f.uuid}>{f.filial_name}</option>
                     ))}
-                  </select>
+                  </Select>
                 )}
-
-                <button
-                  onClick={fetchCouriers}
-                  className="p-2.5 rounded-xl bg-overlay border border-edge-strong text-slate-400 hover:text-ink transition cursor-pointer"
-                  title="Yangilash"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
               </div>
             </div>
-          </div>
-
-          {couriersError ? (
-            <div className="flex flex-col items-center justify-center py-20 text-rose-400 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 text-center">
-              <AlertCircle className="w-12 h-12 mb-3 animate-pulse" />
-              <h4 className="font-bold text-ink text-base mb-1">Xatolik yuz berdi</h4>
-              <p className="text-sm max-w-sm mb-4 text-slate-400">{couriersError}</p>
-              <button
-                onClick={fetchCouriers}
-                className="px-4 py-2 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs transition cursor-pointer flex items-center gap-1 justify-center mx-auto"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span>Qayta urinish</span>
-              </button>
-            </div>
-          ) : couriersLoading ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-4">
-              <div className="w-10 h-10 border-4 border-brand/30 border-t-brand rounded-full animate-spin" />
-              <p className="text-slate-400 text-sm font-semibold">Kuryerlar yuklanmoqda...</p>
-            </div>
-          ) : couriersList.length > 0 ? (
-            <div className="p-6 rounded-2xl bg-darkCard border border-edge shadow-xl">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-edge text-slate-500 text-xs uppercase tracking-wider font-bold">
-                      <th className="pb-3.5 pl-2">Ism</th>
-                      <th className="pb-3.5">Telefon raqami</th>
-                      <th className="pb-3.5">Telegram ID</th>
-                      <th className="pb-3.5">Transport</th>
-                      <th className="pb-3.5">Filial</th>
-                      <th className="pb-3.5 text-center">Holat (Status)</th>
-                      <th className="pb-3.5 text-center">Faol</th>
-                      {userRole === 'superadmin' && <th className="pb-3.5 text-center pr-2">Amallar</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-edge text-slate-300">
-                    {couriersList.map((courier) => (
-                      <tr key={courier.uuid} className="hover:bg-overlay transition-colors">
-                        <td className="py-4 pl-2 font-bold text-ink flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-slate-900 border border-edge-strong flex items-center justify-center text-slate-400 shrink-0 font-bold text-xs">
-                            {courier.first_name?.charAt(0).toUpperCase()}
-                          </div>
-                          <span className="truncate">{courier.first_name} {courier.last_name}</span>
-                        </td>
-                        <td className="py-4 font-mono font-medium text-xs text-slate-300">
-                          {formatUzPhone(courier.phone)}
-                        </td>
-                        <td className="py-4 text-xs text-slate-400">
-                          {courier.telegram_id ? (
-                            <span className="inline-flex items-center gap-1.5 font-mono">
-                              <Send className="w-3.5 h-3.5 text-sky-400" />
-                              {courier.telegram_id}
-                            </span>
-                          ) : (
-                            <span className="text-slate-600">-</span>
-                          )}
-                        </td>
-                        <td className="py-4 text-xs">
-                          <div className="flex flex-col gap-0.5 text-left text-slate-300">
-                            <span className="font-semibold text-ink">
-                              {courier.vehicle_info?.brand || courier.vehicle_info?.transport_type || "-"}
-                            </span>
-                            {courier.vehicle_info?.license_plate && (
-                              <span className="text-[10px] text-slate-500 font-mono">{courier.vehicle_info.license_plate}</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-4 text-xs text-slate-300">
-                          {courier.filial_name || "-"}
-                        </td>
-                        <td className="py-4 text-center">
-                          {getCourierStatusBadge(courier.status)}
-                        </td>
-                        <td className="py-4 text-center">
-                          <button
-                            onClick={() => handleToggleCourierActive(courier)}
-                            disabled={userRole !== 'superadmin'}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition ${
-                              userRole === 'superadmin' ? 'cursor-pointer hover:bg-opacity-80' : 'cursor-default'
-                            } ${
-                              courier.is_active
-                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                            }`}
-                          >
-                            {courier.is_active ? (
-                              <>
-                                <UserCheck className="w-3 h-3" />
-                                <span>Faol</span>
-                              </>
-                            ) : (
-                              <>
-                                <UserX className="w-3 h-3" />
-                                <span>Bloklangan</span>
-                              </>
-                            )}
-                          </button>
-                        </td>
-                        {userRole === 'superadmin' && (
-                          <td className="py-4 text-center pr-2">
-                            <div className="flex gap-2 justify-center">
-                              <button
-                                onClick={() => handleOpenEditCourierModal(courier)}
-                                className="p-2 rounded-lg bg-overlay border border-edge text-slate-300 hover:text-ink hover:border-edge-strong transition cursor-pointer"
-                                title="Tahrirlash"
-                              >
-                                <Edit className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteCourier(courier)}
-                                className="p-2 rounded-lg bg-rose-500/5 border border-rose-500/10 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition cursor-pointer"
-                                title="O'chirish"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-edge rounded-2xl">
-              <Bike className="w-16 h-16 stroke-[1.2] mb-3 text-slate-600 animate-pulse" />
-              <h3 className="font-bold text-ink mb-1">Kuryerlar mavjud emas</h3>
-              <p className="text-xs px-6 text-center max-w-sm">Tizimda hali hech qanday shaxsiy kuryer qo'shilmagan.</p>
-              {userRole === 'superadmin' && (
-                <button
-                  onClick={handleOpenAddCourierModal}
-                  className="mt-4 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand/10 hover:bg-brand/20 text-brand text-xs font-bold transition cursor-pointer border border-brand/10"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Kuryer qo'shish</span>
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* CRUD Entry Modal Dialog */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
-          <div className="w-full max-w-md bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-5 animate-[slideUp_0.3s_ease-out]">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-edge pb-3">
-              <h3 className="font-bold text-lg text-ink">
-                {selectedStaff ? "Xodimni Tahrirlash" : "Yangi Xodim Yaratish"}
-              </h3>
-              <button
-                onClick={() => setModalOpen(false)}
-                className="p-1.5 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Modal Form Content */}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {formError && (
-                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex gap-2.5 items-start">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 animate-pulse" />
-                  <span className="leading-normal">{formError}</span>
-                </div>
-              )}
-
-              {/* Name field */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                  <User className="w-3.5 h-3.5 text-brand" />
-                  <span>Xodim Ismi</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Masalan: Bobur Karimov"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
+            {couriersLoading && couriers.length === 0 ? (
+              <SkeletonList rows={4} />
+            ) : couriersError ? (
+              <Card><ErrorState message={couriersError} onRetry={fetchCouriers} /></Card>
+            ) : (
+              <div className={couriersLoading ? 'opacity-60 transition-opacity' : ''}>
+                <DataList
+                  rows={couriers}
+                  columns={courierColumns}
+                  rowKey={(c) => c.uuid}
+                  rowActions={
+                    canEdit
+                      ? (c) => (
+                          <>
+                            <IconButton label="Tahrirlash" size="sm" variant="secondary" onClick={() => { setEditingCourier(c); setCourierFormOpen(true); }}>
+                              <Edit className="w-4 h-4" />
+                            </IconButton>
+                            <IconButton label="O'chirish" size="sm" variant="danger-soft" onClick={() => deleteCourier(c)}>
+                              <Trash2 className="w-4 h-4" />
+                            </IconButton>
+                          </>
+                        )
+                      : undefined
+                  }
+                  empty={
+                    <Card>
+                      <EmptyState
+                        icon={<Bike className="w-7 h-7" />}
+                        title="Kuryerlar topilmadi"
+                        description={debouncedSearch || courierStatus_ !== 'ALL' ? "Filtrlarni o'zgartirib ko'ring." : "O'z kuryeringizni qo'shing — buyurtmalarni unga to'g'ridan-to'g'ri biriktirasiz."}
+                        action={canEdit && !debouncedSearch ? <Button icon={<Plus className="w-4 h-4" />} onClick={() => { setEditingCourier(null); setCourierFormOpen(true); }}>Kuryer qo'shish</Button> : undefined}
+                      />
+                    </Card>
+                  }
                 />
               </div>
+            )}
+          </>
+        )}
 
-              {/* Phone field */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                  <Phone className="w-3.5 h-3.5 text-brand" />
-                  <span>Telefon Raqami (Login uchun)</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="+998 (90) 123-45-67"
-                  value={phone}
-                  onChange={handlePhoneChange}
-                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-                />
-              </div>
+        {tab === 'ratings' && (
+          <>
+            <Segmented
+              value={period}
+              onChange={setPeriod}
+              options={[
+                { value: 'today', label: 'Bugun' },
+                { value: 'week', label: 'Hafta' },
+                { value: 'month', label: 'Oy' },
+                { value: 'all', label: 'Hammasi' },
+              ]}
+            />
+            {ratingsLoading ? (
+              <SkeletonList rows={5} />
+            ) : ratingsError ? (
+              <Card><ErrorState message={ratingsError} onRetry={() => fetchRatings(period)} /></Card>
+            ) : (
+              <DataList
+                rows={sortedRatings}
+                columns={ratingColumns}
+                rowKey={(r) => r.uuid}
+                empty={<Card><EmptyState icon={<Trophy className="w-7 h-7" />} title="Reyting bo'sh" description="Tanlangan davrda xodimlar buyurtma qabul qilmagan." /></Card>}
+              />
+            )}
+          </>
+        )}
+      </div>
 
-              {/* Role selection dropdown */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                  <Shield className="w-3.5 h-3.5 text-brand" />
-                  <span>Roli / Huquqi</span>
-                </label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as any)}
-                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-ink focus:outline-none transition cursor-pointer"
-                >
-                  <option value="waiter">Ofitsant (Waiter)</option>
-                  <option value="manager">Menejer (Manager)</option>
-                </select>
-              </div>
-
-              {/* Password field */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                  <Lock className="w-3.5 h-3.5 text-brand" />
-                  <span>Parol {selectedStaff && "(Parolni o'zgartirish uchun yozing, aks holda bo'sh qoldiring)"}</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required={!selectedStaff}
-                    placeholder={selectedStaff ? "••••••••" : "Parolni kiriting"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl pl-4 pr-10 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 transition"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Home Filial Selection */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                  <Building2 className="w-3.5 h-3.5 text-brand" />
-                  <span>Asosiy Filiali (Home Branch)</span>
-                </label>
-                <select
-                  value={homeFilialUuid}
-                  onChange={(e) => setHomeFilialUuid(e.target.value)}
-                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-ink focus:outline-none transition cursor-pointer"
-                >
-                  <option value="">-- Filial tanlang --</option>
-                  {filialList.map(filial => (
-                    <option key={filial.uuid} value={filial.uuid}>
-                      {filial.filial_name} {filial.is_main ? "(Asosiy)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Current Filial Selection */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                  <Building2 className="w-3.5 h-3.5 text-brand" />
-                  <span>Hozirgi Filiali (Current Branch)</span>
-                </label>
-                <select
-                  value={currentFilialUuid}
-                  onChange={(e) => setCurrentFilialUuid(e.target.value)}
-                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-ink focus:outline-none transition cursor-pointer"
-                >
-                  <option value="">-- Filial tanlang --</option>
-                  {filialList.map(filial => (
-                    <option key={filial.uuid} value={filial.uuid}>
-                      {filial.filial_name} {filial.is_main ? "(Asosiy)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Active Switch checkbox */}
-              <div className="flex items-center justify-between border-t border-edge pt-3 mt-1">
-                <span className="text-xs text-slate-400 font-semibold font-Outfit">
-                  Hisob holati (Faol / Bloklangan)
-                </span>
-                
-                <button
-                  type="button"
-                  onClick={() => setIsActive(!isActive)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    isActive ? 'bg-brand shadow-md shadow-brand/20' : 'bg-slate-700'
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${
-                      isActive ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Modal footer save button */}
-              <div className="flex gap-3 justify-end pt-4 border-t border-edge mt-4">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition cursor-pointer"
-                >
-                  Bekor qilish
-                </button>
-                
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs shadow-lg shadow-brand/10 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  {submitting ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-white rounded-full animate-spin" />
-                      <span>Saqlanmoqda...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      <span>Saqlash</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* DETAILED STATISTICS MODAL */}
-      {statsModalOpen && statsStaff && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
-          <div className="w-full max-w-xl bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-5 animate-[slideUp_0.3s_ease-out]">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-edge pb-3">
-              <div>
-                <h3 className="font-bold text-lg text-ink flex items-center gap-2">
-                  <BarChart2 className="w-5 h-5 text-brand" />
-                  <span>Xodim Statistikasi</span>
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">{statsStaff.name} ({statsStaff.role === 'manager' ? 'Menejer' : 'Ofitsant'})</p>
-              </div>
-              <button
-                onClick={() => {
-                  setStatsModalOpen(false);
-                  setStatsStaff(null);
-                  setStatsData(null);
-                }}
-                className="p-1.5 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {statsLoading ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-3">
-                <div className="w-8 h-8 border-3 border-brand/30 border-t-brand rounded-full animate-spin" />
-                <p className="text-slate-400 text-xs font-semibold">Statistika yuklanmoqda...</p>
-              </div>
-            ) : statsError ? (
-              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex gap-2.5 items-start">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 animate-pulse" />
-                <div>
-                  <h4 className="font-bold text-ink mb-0.5">Xatolik yuz berdi</h4>
-                  <p className="leading-normal text-slate-400 font-semibold">{statsError}</p>
-                </div>
-              </div>
-            ) : statsData ? (
-              <div className="space-y-5">
-                {/* Period Selector inside Modal */}
-                <div className="flex bg-slate-900 p-1 rounded-xl border border-edge">
-                  {(['today', 'week', 'month', 'all'] as const).map((period) => (
-                    <button
-                      key={period}
-                      type="button"
-                      onClick={() => setStatsPeriod(period)}
-                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold tracking-wider uppercase transition duration-200 cursor-pointer ${
-                        statsPeriod === period
-                          ? 'bg-brand text-white shadow'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      {period === 'today' && 'Bugun'}
-                      {period === 'week' && 'Hafta'}
-                      {period === 'month' && 'Oy'}
-                      {period === 'all' && 'Barchasi'}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Period specific data */}
-                {(() => {
-                  const periodStats = statsData[statsPeriod] as StaffPeriodStats;
-                  if (!periodStats) return null;
-                  return (
-                    <div className="space-y-4">
-                      {/* Overall Stats Cards */}
-                      <div className="grid grid-cols-2 gap-4">
-                        {/* Order stats card */}
-                        <div className="p-4 rounded-xl bg-slate-900 border border-edge relative overflow-hidden text-left">
-                          <div className="absolute top-0 right-0 w-16 h-16 bg-violet-500/5 rounded-bl-full pointer-events-none" />
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="p-2 rounded-lg bg-violet-500/10 text-violet-400"><ShoppingBag className="w-4 h-4" /></span>
-                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Buyurtmalar</span>
-                          </div>
-                          <h4 className="text-xl font-bold text-ink mt-1">{periodStats.completed_orders} ta</h4>
-                          <p className="text-[10px] text-slate-500 font-semibold mt-1">
-                            Jami: {periodStats.total_orders} ta | Bekor qilingan: {periodStats.cancelled_orders} ta
-                          </p>
-                        </div>
-
-                        {/* Revenue stats card */}
-                        <div className="p-4 rounded-xl bg-slate-900 border border-edge relative overflow-hidden text-left">
-                          <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 rounded-bl-full pointer-events-none" />
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400"><TrendingUp className="w-4 h-4" /></span>
-                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Jami Tushum</span>
-                          </div>
-                          <h4 className="text-xl font-bold text-ink mt-1 font-mono truncate">{formatUzS(periodStats.total_revenue)}</h4>
-                          <p className="text-[10px] text-slate-500 font-semibold mt-1">
-                            Ajoyib natija!
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Payment Types Breakdown */}
-                      <div className="p-4.5 rounded-xl bg-slate-900 border border-edge space-y-3">
-                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <Coins className="w-3.5 h-3.5 text-brand" />
-                          <span>To'lov turlari bo'yicha tushum</span>
-                        </h4>
-
-                        <div className="space-y-2.5 pt-1 text-xs">
-                          <div className="flex justify-between items-center py-1 border-b border-edge">
-                            <span className="text-slate-400 font-semibold flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Naqd pul (Cash):
-                            </span>
-                            <span className="font-bold text-ink font-mono">{formatUzS(periodStats.cash_revenue)}</span>
-                          </div>
-                          <div className="flex justify-between items-center py-1">
-                            <span className="text-slate-400 font-semibold flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-sky-400" /> Plastik karta (Card):
-                            </span>
-                            <span className="font-bold text-ink font-mono">{formatUzS(periodStats.card_revenue)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            ) : null}
-
-            {/* Modal Footer */}
-            <div className="flex gap-3 justify-end pt-4 border-t border-edge mt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setStatsModalOpen(false);
-                  setStatsStaff(null);
-                  setStatsData(null);
-                }}
-                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition cursor-pointer"
-              >
-                Yopish
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Courier CRUD Entry Modal Dialog */}
-      {courierModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
-          <div className="w-full max-w-md bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh] overflow-y-auto text-left space-y-5 animate-[slideUp_0.3s_ease-out]">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-edge pb-3">
-              <h3 className="font-bold text-lg text-ink">
-                {selectedCourier ? "Kuryerni Tahrirlash" : "Yangi Kuryer Yaratish"}
-              </h3>
-              <button
-                onClick={() => setCourierModalOpen(false)}
-                className="p-1.5 rounded-lg bg-overlay text-slate-400 hover:text-ink transition cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Modal Form Content */}
-            <form onSubmit={handleCourierSubmit} className="space-y-4">
-              {courierFormError && (
-                <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex gap-2.5 items-start">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 animate-pulse" />
-                  <span className="leading-normal">{courierFormError}</span>
-                </div>
-              )}
-
-              {/* Name fields */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                    <User className="w-3.5 h-3.5 text-brand" />
-                    <span>Ismi</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Elbek"
-                    value={courierFirstName}
-                    onChange={(e) => setCourierFirstName(e.target.value)}
-                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                    <span>Familiyasi</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Narzullayev"
-                    value={courierLastName}
-                    onChange={(e) => setCourierLastName(e.target.value)}
-                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-                  />
-                </div>
-              </div>
-
-              {/* Phone field */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                  <Phone className="w-3.5 h-3.5 text-brand" />
-                  <span>Telefon Raqami (Login uchun)</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="+998 (90) 123-45-67"
-                  value={courierPhone}
-                  onChange={handleCourierPhoneChange}
-                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-                />
-              </div>
-
-              {/* Telegram ID field */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                  <Send className="w-3.5 h-3.5 text-brand" />
-                  <span>Telegram ID</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Masalan: 987654321"
-                  value={courierTelegramId}
-                  onChange={(e) => setCourierTelegramId(e.target.value)}
-                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-                />
-              </div>
-
-              {/* Password field */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                  <Lock className="w-3.5 h-3.5 text-brand" />
-                  <span>Parol {selectedCourier && "(Parolni o'zgartirish uchun yozing, aks holda bo'sh qoldiring)"}</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={courierShowPassword ? 'text' : 'password'}
-                    required={!selectedCourier}
-                    placeholder={selectedCourier ? "••••••••" : "Parolni kiriting"}
-                    value={courierPassword}
-                    onChange={(e) => setCourierPassword(e.target.value)}
-                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl pl-4 pr-10 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setCourierShowPassword(!courierShowPassword)}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 transition"
-                  >
-                    {courierShowPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Transport fields */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                    <Bike className="w-3.5 h-3.5 text-brand" />
-                    <span>Transport turi</span>
-                  </label>
-                  <select
-                    value={courierTransportType}
-                    onChange={(e) => setCourierTransportType(e.target.value)}
-                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-ink focus:outline-none transition cursor-pointer"
-                  >
-                    <option value="car">Avtomobil</option>
-                    <option value="motorcycle">Mototsikl</option>
-                    <option value="bicycle">Velosiped</option>
-                    <option value="on_foot">Piyoda</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                    <span>Xizmat turi</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="food_delivery"
-                    value={courierServiceTypes}
-                    onChange={(e) => setCourierServiceTypes(e.target.value)}
-                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                    <span>Transport markasi</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Chevrolet Spark"
-                    value={courierVehicleBrand}
-                    onChange={(e) => setCourierVehicleBrand(e.target.value)}
-                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                    <span>Davlat raqami</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="01 A 777 AA"
-                    value={courierLicensePlate}
-                    onChange={(e) => setCourierLicensePlate(e.target.value)}
-                    className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-4 py-2.5 text-xs font-semibold text-ink placeholder-slate-500 focus:outline-none transition"
-                  />
-                </div>
-              </div>
-
-              {/* Filial selection */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                  <Building2 className="w-3.5 h-3.5 text-brand" />
-                  <span>Filiali</span>
-                </label>
-                <select
-                  value={courierFilialUuid}
-                  onChange={(e) => setCourierFilialUuid(e.target.value)}
-                  className="w-full bg-slate-900 border border-edge focus:border-brand rounded-xl px-3 py-2.5 text-xs font-bold text-ink focus:outline-none transition cursor-pointer"
-                >
-                  <option value="">-- Filial tanlang --</option>
-                  {filialList.map(filial => (
-                    <option key={filial.uuid} value={filial.uuid}>
-                      {filial.filial_name} {filial.is_main ? "(Asosiy)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Active Switch checkbox */}
-              <div className="flex items-center justify-between border-t border-edge pt-3 mt-1">
-                <span className="text-xs text-slate-400 font-semibold font-Outfit">
-                  Hisob holati (Faol / Bloklangan)
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => setCourierIsActive(!courierIsActive)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    courierIsActive ? 'bg-brand shadow-md shadow-brand/20' : 'bg-slate-700'
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${
-                      courierIsActive ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Modal footer save button */}
-              <div className="flex gap-3 justify-end pt-4 border-t border-edge mt-4">
-                <button
-                  type="button"
-                  onClick={() => setCourierModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition cursor-pointer"
-                >
-                  Bekor qilish
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={courierSubmitting}
-                  className="px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs shadow-lg shadow-brand/10 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  {courierSubmitting ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-edge-strong border-t-white rounded-full animate-spin" />
-                      <span>Saqlanmoqda...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      <span>Saqlash</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <StaffFormSheet
+        open={staffFormOpen}
+        staff={editingStaff}
+        filials={filials}
+        onClose={() => setStaffFormOpen(false)}
+        onSaved={() => {
+          setStaffFormOpen(false);
+          toast.success(editingStaff ? 'Xodim yangilandi' : "Xodim qo'shildi");
+          fetchStaff();
+        }}
+      />
+      <CourierFormSheet
+        open={courierFormOpen}
+        courier={editingCourier}
+        filials={filials}
+        onClose={() => setCourierFormOpen(false)}
+        onSaved={() => {
+          setCourierFormOpen(false);
+          toast.success(editingCourier ? 'Kuryer yangilandi' : "Kuryer qo'shildi");
+          fetchCouriers();
+        }}
+      />
+      <StaffStatsSheet staff={statsStaff} onClose={() => setStatsStaff(null)} />
     </div>
   );
 };

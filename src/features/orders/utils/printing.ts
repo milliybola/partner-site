@@ -1,10 +1,24 @@
 import QRCode from 'qrcode';
 import { ordersApi } from '../services/ordersApi';
+// window.location.origin is 'null' under file:// and differs under tauri:// — resolve
+// public assets against document.baseURI instead.
+import { publicAsset } from '../../../core/platform';
 
 // No fiscal (OFD) integration exists yet — this links to the OFD portal's homepage as a
 // placeholder compliance QR code, not a signed per-receipt verification link. Once the
 // backend/cash register integration returns real fiscal data (receipt id, fiscal sign),
 // this should become a per-receipt verification URL instead of a fixed one.
+// SECURITY: receipts are rendered in a same-origin iframe, so every value that can
+// come from a customer (name, address, comment, product names) must be escaped —
+// otherwise a crafted comment could run script with access to the session token.
+const esc = (v: unknown): string =>
+  String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 const OFD_QR_URL = 'https://ofd.soliq.uz';
 
 export interface ReceiptData {
@@ -128,7 +142,7 @@ const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean)
     return `
       <div style="margin-bottom: 6px; font-size: 11px; font-weight: 500; color: #000;">
         <div style="display: flex; justify-content: space-between; font-weight: 700; color: #000;">
-          <span>${productName}</span>
+          <span>${esc(productName)}</span>
           <span>${lineTotal} UZS</span>
         </div>
         <div style="font-size: 10px; color: #000; font-weight: 500; margin-top: 1px;">
@@ -143,7 +157,7 @@ const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean)
   const receiptHtml = `
     <html>
       <head>
-        <title>Chek #${receiptData.order_number}</title>
+        <title>Chek #${esc(receiptData.order_number)}</title>
         <style>
           @page {
             size: 80mm auto;
@@ -248,15 +262,15 @@ const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean)
         <div class="header text-center" style="display: flex; flex-direction: column; align-items: center; margin-bottom: 6px;">
           <div style="display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 8px; margin-bottom: 2px;">
             <div style="display: flex; flex-direction: row; align-items: center; gap: 4px; flex-shrink: 0;">
-              <img src="${window.location.origin}/logo_bw.png" alt="MilliyGo Logo" style="width: 45px; height: 45px; border-radius: 50%; object-fit: cover;" />
+              <img src="${publicAsset('logo_bw.png')}" alt="MilliyGo Logo" style="width: 45px; height: 45px; border-radius: 50%; object-fit: cover;" />
               
               <span style="font-size: 15px; font-weight: 700; letter-spacing: 0.5px; color: #000;">MilliyGo</span>
             </div>
             |
-            <h2 style="margin: 0; font-size: 16px; font-weight: 700; color: #000; text-transform: uppercase; text-align: left;">${receiptData.partner_name || ''}</h2>
+            <h2 style="margin: 0; font-size: 16px; font-weight: 700; color: #000; text-transform: uppercase; text-align: left;">${esc(receiptData.partner_name)}</h2>
           </div>
           <div style="font-size: 10px; color: #000; font-weight: 500; margin-top: 2px; line-height: 1.2; text-align: center;">
-          <p style="margin: 1px 0;">${[receiptData.partner_address, receiptData.partner_phone].filter(Boolean).join(' | ')}</p>
+          <p style="margin: 1px 0;">${esc([receiptData.partner_address, receiptData.partner_phone].filter(Boolean).join(' | '))}</p>
           </div>
           <p style="margin: 0; font-weight: 700;">milliyapp.uz</p>
             </div>
@@ -266,7 +280,7 @@ const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean)
         ${receiptData.order_number ? `
         <div class="info-row">
           <span class="info-label">Buyurtma:</span>
-          <span class="info-value bold">${receiptData.order_number}</span>
+          <span class="info-value bold">${esc(receiptData.order_number)}</span>
         </div>` : ''}
         <div class="info-row">
           <span class="info-label">Sana:</span>
@@ -275,23 +289,23 @@ const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean)
         ${receiptData.contact_name ? `
         <div class="info-row">
           <span class="info-label">Mijoz:</span>
-          <span class="info-value">${receiptData.contact_name}</span>
+          <span class="info-value">${esc(receiptData.contact_name)}</span>
         </div>` : ''}
         ${receiptData.contact_phone ? `
         <div class="info-row">
           <span class="info-label">Tel:</span>
-          <span class="info-value">${receiptData.contact_phone}</span>
+          <span class="info-value">${esc(receiptData.contact_phone)}</span>
         </div>` : ''}
         
         ${receiptData.delivery_type_display ? `
         <div class="info-row">
           <span class="info-label">Turi:</span>
-          <span class="info-value">${receiptData.delivery_type_display}</span>
+          <span class="info-value">${esc(receiptData.delivery_type_display)}</span>
         </div>` : ''}
         ${receiptData.table_number ? `
         <div class="info-row">
           <span class="info-label">Stol:</span>
-          <span class="info-value bold">${receiptData.table_number}-stol</span>
+          <span class="info-value bold">${esc(receiptData.table_number)}-stol</span>
         </div>` : ''}
 
 
@@ -323,13 +337,13 @@ const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean)
 
           <div class="info-row" style="margin-top: 4px;">
             <span class="info-label">To'lov turi:</span>
-            <span class="info-value bold">${receiptData.payment_method_display || receiptData.payment_method || ''}</span>
+            <span class="info-value bold">${esc(receiptData.payment_method_display || receiptData.payment_method)}</span>
           </div>
 
           ${receiptData.description ? `
           <div class="info-row" style="margin-top: 3px;">
             <span class="info-label">Izoh:</span>
-            <span class="info-value">${receiptData.description}</span>
+            <span class="info-value">${esc(receiptData.description)}</span>
           </div>` : ''}
         </div>
 
@@ -381,7 +395,7 @@ export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> =>
   const timeStr = now.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   const totalAmount = Number(order.total_price || 0);
-  const tableLabel = order.table_number ? `stol "${order.table_number}"` : '';
+  const tableLabel = order.table_number ? `stol "${esc(order.table_number)}"` : '';
 
   const preCheckHtml = `
     <html>
@@ -423,7 +437,7 @@ export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> =>
           return `
             <div style="margin: 8px 0;">
               <div class="row">
-                <span style="font-size: 12px;">${productName}</span>
+                <span style="font-size: 12px;">${esc(productName)}</span>
                 <span style="font-size: 12px; margin-left: 6px; white-space: nowrap;">${quantity}</span>
               </div>
               <div class="row">

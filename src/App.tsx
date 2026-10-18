@@ -1,26 +1,34 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './core/components/Layout';
 import ProtectedRoute from './core/components/ProtectedRoute';
 import { ToastProvider } from './core/components/ToastProvider';
 import { ConfirmProvider } from './core/components/ConfirmProvider';
-
-// Lazy loading or direct imports
+import { LoadingState } from './core/ui';
+import { isManager } from './core/lib/session';
 import LoginPage from './features/auth/pages/LoginPage';
-import DashboardPage from './features/dashboard/pages/DashboardPage';
-import OrdersPage from './features/orders/pages/OrdersPage';
-import CatalogPage from './features/catalog/pages/CatalogPage';
-import FinancePage from './features/finance/pages/FinancePage';
-import ProfilePage from './features/profile/pages/ProfilePage';
-import SettingsPage from './features/profile/pages/SettingsPage';
-import BranchesPage from './features/profile/pages/BranchesPage';
-import AllOrdersPage from './features/orders/pages/AllOrdersPage';
-import CreateOrderPage from './features/orders/pages/CreateOrderPage';
-import StaffPage from './features/staff/pages/StaffPage';
-import ShiftPage from './features/shifts/pages/ShiftPage';
-import TablesPage from './features/tables/pages/TablesPage';
-import DeliveryZonesPage from './features/delivery-zones/pages/DeliveryZonesPage';
-import PromotionsPage from './features/promotions/pages/PromotionsPage';
+
+// Route-level code splitting keeps the first load small on phones.
+const DashboardPage = lazy(() => import('./features/dashboard/pages/DashboardPage'));
+const OrdersPage = lazy(() => import('./features/orders/pages/OrdersPage'));
+const CatalogPage = lazy(() => import('./features/catalog/pages/CatalogPage'));
+const FinancePage = lazy(() => import('./features/finance/pages/FinancePage'));
+const ProfilePage = lazy(() => import('./features/profile/pages/ProfilePage'));
+const SettingsPage = lazy(() => import('./features/profile/pages/SettingsPage'));
+const BranchesPage = lazy(() => import('./features/profile/pages/BranchesPage'));
+const AllOrdersPage = lazy(() => import('./features/orders/pages/AllOrdersPage'));
+const CreateOrderPage = lazy(() => import('./features/orders/pages/CreateOrderPage'));
+const StaffPage = lazy(() => import('./features/staff/pages/StaffPage'));
+const ShiftPage = lazy(() => import('./features/shifts/pages/ShiftPage'));
+const TablesPage = lazy(() => import('./features/tables/pages/TablesPage'));
+const DeliveryZonesPage = lazy(() => import('./features/delivery-zones/pages/DeliveryZonesPage'));
+const PromotionsPage = lazy(() => import('./features/promotions/pages/PromotionsPage'));
+
+/** Owner-only screens: managers were able to open them by typing the URL. */
+const OwnerOnly: React.FC<{ children: React.ReactElement }> = ({ children }) =>
+  isManager() ? <Navigate to="/orders" replace /> : children;
+
+const page = (el: React.ReactElement) => <Suspense fallback={<LoadingState className="min-h-[50vh]" />}>{el}</Suspense>;
 
 const App: React.FC = () => {
   return (
@@ -28,10 +36,8 @@ const App: React.FC = () => {
       <ConfirmProvider>
         <HashRouter>
           <Routes>
-            {/* Auth Route */}
             <Route path="/login" element={<LoginPage />} />
 
-            {/* Protected Dashboard Shell */}
             <Route
               path="/"
               element={
@@ -40,24 +46,22 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               }
             >
-              {/* Main sections */}
-              <Route index element={<DashboardPage />} />
-              <Route path="orders" element={<OrdersPage />} />
-              <Route path="new-order" element={<CreateOrderPage />} />
-              <Route path="catalog" element={<CatalogPage />} />
-              <Route path="finance" element={<FinancePage />} />
-              <Route path="profile" element={<ProfilePage />} />
-              <Route path="settings" element={<SettingsPage />} />
-              <Route path="branches" element={<BranchesPage />} />
-              <Route path="delivery-zones" element={<DeliveryZonesPage />} />
-              <Route path="all-orders" element={<AllOrdersPage />} />
-              <Route path="staff" element={<StaffPage />} />
-              <Route path="shift" element={<ShiftPage />} />
-              <Route path="tables" element={<TablesPage />} />
-              <Route path="promotions" element={<PromotionsPage />} />
+              <Route index element={page(<DashboardPage />)} />
+              <Route path="orders" element={page(<OrdersPage />)} />
+              <Route path="new-order" element={page(<CreateOrderPage />)} />
+              <Route path="catalog" element={page(<CatalogPage />)} />
+              <Route path="promotions" element={page(<PromotionsPage />)} />
+              <Route path="finance" element={<OwnerOnly>{page(<FinancePage />)}</OwnerOnly>} />
+              <Route path="branches" element={<OwnerOnly>{page(<BranchesPage />)}</OwnerOnly>} />
+              <Route path="delivery-zones" element={<OwnerOnly>{page(<DeliveryZonesPage />)}</OwnerOnly>} />
+              <Route path="profile" element={page(<ProfilePage />)} />
+              <Route path="settings" element={page(<SettingsPage />)} />
+              <Route path="all-orders" element={page(<AllOrdersPage />)} />
+              <Route path="staff" element={page(<StaffPage />)} />
+              <Route path="shift" element={page(<ShiftPage />)} />
+              <Route path="tables" element={page(<TablesPage />)} />
             </Route>
 
-            {/* Fallback redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </HashRouter>

@@ -1,30 +1,46 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  TrendingUp, 
-  DollarSign, 
+import {
+  BarChart3,
+  CheckCircle2,
+  DollarSign,
   Download,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  ArrowDownLeft,
-  RefreshCw,
-  ShoppingBag,
   Percent,
-  Truck,
   Phone,
-  Calendar,
-  Layers,
-  Sparkles,
-  XCircle,
-  Info
+  Receipt,
+  ShoppingBag,
+  TrendingUp,
+  Truck,
+  Wallet,
 } from 'lucide-react';
 import apiClient from '../../../core/api/client';
-import { ENDPOINTS, STORAGE_KEYS } from '../../../core/config/constants';
+import { ENDPOINTS } from '../../../core/config/constants';
 import { ordersApi } from '../../orders/services/ordersApi';
 import type { Order } from '../../orders/services/ordersApi';
 import { financeApi } from '../services/financeApi';
+import type { FinancePeriod } from '../services/financeApi';
 import { useToast } from '../../../core/components/ToastProvider';
+import { isManager as isManagerRole } from '../../../core/lib/session';
+import { getErrorMessage } from '../../../core/lib/errors';
+import { formatDate, formatDateTime, formatMoney, formatPhone, parseDate } from '../../../core/lib/format';
+import { saveBlob } from '../../../core/platform';
+import {
+  ApiGap,
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  DataList,
+  EmptyState,
+  ErrorState,
+  PageHeader,
+  Segmented,
+  SkeletonList,
+  StatCard,
+  Tabs,
+} from '../../../core/ui';
+import type { Column } from '../../../core/ui';
+import { paymentLabel, statusGroup, statusLabel, statusTone } from '../../orders/utils/status';
 
 interface TopProduct {
   name: string;
@@ -32,807 +48,485 @@ interface TopProduct {
   revenue: number;
 }
 
-interface DashboardStats {
-  partner: {
-    name: string;
-    phone: string;
-    is_open: boolean;
-    min_order_amount: number;
-    delivery_fee: number;
-    free_delivery_threshold: number;
-  };
-  overall: {
-    total_orders: number;
-    delivered: number;
-    cancelled: number;
-    total_revenue: number;
-    total_delivery_fees: number;
-    net_revenue: number;
-  };
-  today: {
-    orders_count: number;
-    delivered: number;
-    cancelled: number;
-    revenue: number;
-    delivery_fees: number;
-    cancelled_revenue: number;
-    net_revenue: number;
-    average_check: number;
-    top_products?: TopProduct[];
-  };
-  this_week: {
-    orders_count: number;
-    delivered: number;
-    revenue: number;
-    delivery_fees: number;
-    net_revenue: number;
-    average_check: number;
-  };
-  this_month: {
-    orders_count: number;
-    delivered: number;
-    revenue: number;
-    delivery_fees: number;
-    net_revenue: number;
-    average_check: number;
-    top_products?: TopProduct[];
-  };
-  commission: {
-    type: string;
-    rate: number;
-    total_commission: number;
-    month_commission: number;
-  };
-  daily_chart: Array<{
-    date: string;
-    orders: number;
-    revenue: number;
-  }>;
+interface PeriodStats {
+  orders_count?: number;
+  total_orders?: number;
+  delivered?: number;
+  cancelled?: number;
+  revenue?: number;
+  total_revenue?: number;
+  delivery_fees?: number;
+  total_delivery_fees?: number;
+  cancelled_revenue?: number;
+  net_revenue?: number;
+  average_check?: number;
+  top_products?: TopProduct[];
 }
 
-interface Transaction {
-  id: string;
-  orderId: number;
-  date: string;
-  amount: number;
-  paymentMethod: string;
-  status: 'PAID' | 'REFUNDED' | 'PENDING';
+interface DashboardStats {
+  partner?: {
+    name?: string;
+    phone?: string;
+    is_open?: boolean;
+    min_order_amount?: number;
+    delivery_fee?: number;
+    free_delivery_threshold?: number;
+  };
+  overall?: PeriodStats;
+  today?: PeriodStats;
+  this_week?: PeriodStats;
+  this_month?: PeriodStats;
+  commission?: {
+    type?: string;
+    rate?: number;
+    total_commission?: number;
+    month_commission?: number;
+  };
+  daily_chart?: Array<{ date: string; orders: number; revenue: number }>;
 }
+
+const PERIOD_OPTIONS: { value: FinancePeriod; label: string }[] = [
+  { value: 'today', label: 'Bugun' },
+  { value: 'this_week', label: 'Hafta' },
+  { value: 'this_month', label: 'Oy' },
+  { value: 'overall', label: 'Barchasi' },
+];
+
+type TxFilter = 'all' | 'done' | 'cancelled' | 'active';
+
+const num = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/** Start of the period in local time (week starts on Monday). */
+const periodStart = (p: FinancePeriod): Date | null => {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (p === 'today') return d;
+  if (p === 'this_week') {
+    const dow = (d.getDay() + 6) % 7; // Monday = 0
+    d.setDate(d.getDate() - dow);
+    return d;
+  }
+  if (p === 'this_month') return new Date(now.getFullYear(), now.getMonth(), 1);
+  return null;
+};
 
 const FinancePage: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
-  
-  // Check if role is manager synchronously to prevent UI flash or unauthorized API requests
-  const isManager = (() => {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
-      return data ? JSON.parse(data).role === 'manager' : false;
-    } catch {
-      return false;
-    }
-  })();
+  const manager = isManagerRole();
 
-  const [filter, setFilter] = useState<'all' | 'paid' | 'refunded'>('all');
-  const [activeTab, setActiveTab] = useState<'today' | 'this_week' | 'this_month' | 'overall'>('today');
+  const [period, setPeriod] = useState<FinancePeriod>('today');
+  const [txFilter, setTxFilter] = useState<TxFilter>('all');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(!isManager);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(!manager);
   const [error, setError] = useState<string | null>(null);
-  const [exportingExcel, setExportingExcel] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
-  const fetchFinanceData = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const [statsRes, ordersRes] = await Promise.all([
-        apiClient.get(ENDPOINTS.DASHBOARD.STATS),
-        ordersApi.getOrders()
-      ]);
-      
-      if (statsRes.data.success && statsRes.data.data) {
-        setStats(statsRes.data.data);
-      } else {
-        throw new Error("Ma'lumotlar formati noto'g'ri");
-      }
-      
-      setOrders(ordersRes);
-    } catch (err: any) {
-      console.error("Failed to load finance data:", err);
-      setError(
-        err.response?.data?.message ||
-        err.message ||
-        "Moliya ma'lumotlarini yuklashda xatolik yuz berdi. Internet aloqasini tekshiring."
-      );
-    } finally {
-      setLoading(false);
+    setOrdersError(null);
+    // Stats and orders are loaded independently: a failing orders list must not
+    // hide the KPI cards (previously Promise.all failed the whole page).
+    const [statsRes, ordersRes] = await Promise.allSettled([apiClient.get(ENDPOINTS.DASHBOARD.STATS), ordersApi.getOrders()]);
+    if (statsRes.status === 'fulfilled') {
+      const data = statsRes.value.data?.data ?? (statsRes.value.data?.success === undefined ? statsRes.value.data : null);
+      if (data && typeof data === 'object') setStats(data);
+      else setError("Statistika ma'lumotlari formati noto'g'ri.");
+    } else {
+      setError(getErrorMessage(statsRes.reason, "Moliya ma'lumotlarini yuklab bo'lmadi."));
     }
-  };
-
-  const handleExportExcel = async (period: 'today' | 'this_week' | 'this_month' | 'overall') => {
-    setExportingExcel(true);
-    try {
-      const blob = await financeApi.exportFinanceExcel(period);
-      const isCsv = blob.type === 'text/csv';
-      const fileName = `Moliya_Hisoboti_${period}_${new Date().toISOString().slice(0, 10)}.${isCsv ? 'csv' : 'xlsx'}`;
-      
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', fileName);
-      document.body.appendChild(link);
-      link.click();
-      
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (err: any) {
-      console.error("Failed to export Excel:", err);
-      toast.error("Excel hisobotini yuklab olishda xatolik yuz berdi.");
-    } finally {
-      setExportingExcel(false);
-    }
-  };
+    if (ordersRes.status === 'fulfilled') setOrders(Array.isArray(ordersRes.value) ? ordersRes.value : []);
+    else setOrdersError(getErrorMessage(ordersRes.reason, "Buyurtmalar ro'yxatini yuklab bo'lmadi."));
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    if (isManager) {
-      navigate('/orders', { replace: true });
-    } else {
-      fetchFinanceData();
-    }
-  }, [isManager, navigate]);
+    if (manager) navigate('/orders', { replace: true });
+    else load();
+  }, [manager, navigate, load]);
 
-  if (isManager) {
-    return null;
-  }
-
-  const formatUzS = (amount: number | string | null | undefined) => {
-    const num = Number(amount);
-    if (isNaN(num)) {
-      return "0 UZS";
-    }
-    return num.toLocaleString('uz-UZ') + " UZS";
-  };
-
-  const formatPhone = (phoneStr: string | undefined) => {
-    if (!phoneStr) return '';
-    const clean = phoneStr.replace(/\D/g, '');
-    if (clean.length === 12) {
-      return `+${clean.slice(0, 3)} (${clean.slice(3, 5)}) ${clean.slice(5, 8)}-${clean.slice(8, 10)}-${clean.slice(10, 12)}`;
-    }
-    return phoneStr;
-  };
-
-  const formatChartDate = (dateStr: string) => {
+  const handleExport = async () => {
+    setExporting(true);
     try {
-      const dateObj = new Date(dateStr);
-      const months = ['Yan', 'Feb', 'Mar', 'Apr', 'May', 'Iyun', 'Iyul', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
-      return `${dateObj.getDate()}-${months[dateObj.getMonth()]}`;
-    } catch {
-      return dateStr;
+      const blob = await financeApi.exportFinanceExcel(period);
+      const ext = blob.type.includes('csv') ? 'csv' : 'xlsx';
+      saveBlob(blob, `Moliya_hisoboti_${period}_${new Date().toISOString().slice(0, 10)}.${ext}`);
+      toast.success('Hisobot yuklab olindi');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Excel hisobotini yuklab olishda xatolik yuz berdi.'));
+    } finally {
+      setExporting(false);
     }
   };
 
-  const transactions: Transaction[] = orders.map((order) => {
-    let status: 'PAID' | 'REFUNDED' | 'PENDING' = 'PENDING';
-    const orderStatus = order.status?.toUpperCase();
-    if (orderStatus === 'COMPLETED' || orderStatus === 'DELIVERED') {
-      status = 'PAID';
-    } else if (orderStatus === 'REJECTED' || orderStatus === 'CANCELLED') {
-      status = 'REFUNDED';
-    }
-    
-    return {
-      id: `TXN-${order.id}`,
-      orderId: order.id,
-      date: order.created_at,
-      amount: Number(order.total_price),
-      paymentMethod: order.payment || 'CASH',
-      status
-    };
-  });
+  /* --------------------------------------------------- derived KPIs */
+  const kpi = useMemo(() => {
+    const p: PeriodStats | undefined = stats?.[period];
+    const revenue = num(p?.revenue ?? p?.total_revenue);
+    const ordersCount = num(p?.orders_count ?? p?.total_orders);
+    const delivered = num(p?.delivered);
+    const cancelled = num(p?.cancelled);
+    const deliveryFees = num(p?.delivery_fees ?? p?.total_delivery_fees);
+    const net = num(p?.net_revenue);
+    let avg = num(p?.average_check);
+    if (avg === null && revenue !== null && ordersCount) avg = Math.round(revenue / ordersCount);
+    // Commission is only returned for month / overall. We no longer derive it
+    // as revenue - net_revenue (that difference is not documented as commission).
+    const commission =
+      period === 'this_month' ? num(stats?.commission?.month_commission) : period === 'overall' ? num(stats?.commission?.total_commission) : null;
+    const ownTop = p?.top_products;
+    const top = ownTop && ownTop.length ? ownTop : null;
+    return { revenue, ordersCount, delivered, cancelled, deliveryFees, net, avg, commission, top, cancelledRevenue: num(p?.cancelled_revenue) };
+  }, [stats, period]);
 
-  const getFilteredTransactions = () => {
-    switch (filter) {
-      case 'paid':
-        return transactions.filter((t) => t.status === 'PAID');
-      case 'refunded':
-        return transactions.filter((t) => t.status === 'REFUNDED');
-      case 'all':
-      default:
-        return transactions;
-    }
-  };
+  const periodOrders = useMemo(() => {
+    const start = periodStart(period);
+    if (!start) return orders;
+    return orders.filter((o) => {
+      const d = parseDate(o.created_at);
+      return d ? d >= start : false;
+    });
+  }, [orders, period]);
 
-  const getPaymentBadge = (method: string) => {
-    switch (method) {
-      case 'CLICK':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/10">CLICK</span>;
-      case 'PAYME':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/10">Payme</span>;
-      case 'CASH':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-400 border border-slate-500/10">CASH</span>;
-      case 'UZCARD':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/10">Uzcard</span>;
-      default:
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-300">{method}</span>;
-    }
-  };
+  const txRows = useMemo(() => {
+    return periodOrders.filter((o) => {
+      const g = statusGroup(o.status);
+      if (txFilter === 'all') return true;
+      if (txFilter === 'cancelled') return o.status === 'CANCELLED' || o.status === 'REJECTED';
+      if (txFilter === 'done') return g === 'DONE' && o.status !== 'CANCELLED' && o.status !== 'REJECTED';
+      return g !== 'DONE';
+    });
+  }, [periodOrders, txFilter]);
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'PAID':
-        return <span className="flex items-center gap-1 text-xs font-semibold text-emerald-400"><CheckCircle className="w-3.5 h-3.5" /> To'landi</span>;
-      case 'REFUNDED':
-        return <span className="flex items-center gap-1 text-xs font-semibold text-rose-400"><ArrowDownLeft className="w-3.5 h-3.5" /> Qaytarildi</span>;
-      case 'PENDING':
-        return <span className="flex items-center gap-1 text-xs font-semibold text-amber-400"><Clock className="w-3.5 h-3.5 animate-pulse" /> Kutilmoqda</span>;
-      default:
-        return <span>{status}</span>;
-    }
-  };
+  const txCounts = useMemo(() => {
+    let done = 0;
+    let cancelled = 0;
+    let active = 0;
+    periodOrders.forEach((o) => {
+      if (o.status === 'CANCELLED' || o.status === 'REJECTED') cancelled++;
+      else if (statusGroup(o.status) === 'DONE') done++;
+      else active++;
+    });
+    return { all: periodOrders.length, done, cancelled, active };
+  }, [periodOrders]);
+
+  const columns: Column<Order>[] = [
+    {
+      key: 'order',
+      header: 'Buyurtma',
+      primary: true,
+      render: (o) => (
+        <div className="min-w-0">
+          <div className="font-bold text-ink">#{o.order_number || o.id}</div>
+          <div className="text-[12px] text-muted md:hidden">{formatDateTime(o.created_at)}</div>
+        </div>
+      ),
+    },
+    { key: 'date', header: 'Sana', mobileHidden: true, render: (o) => <span className="text-muted whitespace-nowrap">{formatDateTime(o.created_at)}</span> },
+    {
+      key: 'payment',
+      header: "To'lov",
+      render: (o) => (
+        <span className="inline-flex items-center gap-1.5 flex-wrap">
+          <span>{o.payment_method_display || paymentLabel(o.payment_method || o.payment)}</span>
+          {o.is_paid !== undefined && <Badge tone={o.is_paid ? 'success' : 'neutral'}>{o.is_paid ? "To'langan" : "To'lanmagan"}</Badge>}
+        </span>
+      ),
+    },
+    { key: 'source', header: 'Manba', render: (o) => <span className="text-muted">{o.order_source_display || o.order_source || '—'}</span> },
+    { key: 'status', header: 'Holat', mobileAside: true, render: (o) => <Badge tone={statusTone(o.status)}>{statusLabel(o.status)}</Badge> },
+    {
+      key: 'amount',
+      header: 'Summa',
+      align: 'right',
+      mobileAside: true,
+      render: (o) => <span className="font-extrabold text-ink tabular-nums whitespace-nowrap">{formatMoney(o.total_price)}</span>,
+    },
+  ];
+
+  /* ----------------------------------------------------------- render */
+  if (manager) return null;
+
+  const header = (
+    <PageHeader
+      title="Moliya"
+      subtitle="Tushum, komissiya va buyurtmalar bo'yicha hisobot"
+      actions={
+        <Button variant="outline" icon={<Download className="w-4 h-4" />} loading={exporting} onClick={handleExport} disabled={loading || !!error}>
+          <span className="hidden sm:inline">Excel</span>
+        </Button>
+      }
+    >
+      <Segmented options={PERIOD_OPTIONS} value={period} onChange={(v) => { setPeriod(v); setSelectedDay(null); }} />
+    </PageHeader>
+  );
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-        <div className="w-10 h-10 border-4 border-brand/30 border-t-brand rounded-full animate-spin" />
-        <p className="text-slate-400 font-Outfit text-sm">Moliya ma'lumotlari yuklanmoqda...</p>
+      <div>
+        {header}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-[104px] rounded-2xl bg-surface border border-edge animate-pulse" />
+          ))}
+        </div>
+        <SkeletonList rows={4} className="mt-4" />
       </div>
     );
   }
 
   if (error || !stats) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 font-Outfit">
-        <AlertCircle className="w-12 h-12 text-rose-500 animate-pulse" />
-        <h3 className="text-xl font-bold text-ink">Xatolik yuz berdi</h3>
-        <p className="text-slate-400 text-sm max-w-md text-center">{error || "Statistika yuklanmadi"}</p>
-        <button
-          onClick={fetchFinanceData}
-          className="mt-2 flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-semibold transition cursor-pointer"
-        >
-          <RefreshCw className="w-4 h-4" />
-          <span>Qayta urinish</span>
-        </button>
+      <div>
+        {header}
+        <Card className="mt-2">
+          <ErrorState message={error || "Statistika yuklanmadi"} onRetry={load} />
+        </Card>
       </div>
     );
   }
 
-  // Calculate stats based on active period tab
-  const activeStats = (() => {
-    switch (activeTab) {
-      case 'today':
-        return {
-          title: "Bugun",
-          ordersCount: stats.today.orders_count,
-          deliveredCount: stats.today.delivered,
-          cancelledCount: stats.today.cancelled,
-          revenue: stats.today.revenue,
-          deliveryFees: stats.today.delivery_fees,
-          cancelledRevenue: stats.today.cancelled_revenue || 0,
-          netRevenue: stats.today.net_revenue,
-          averageCheck: stats.today.average_check,
-          commission: stats.today.revenue - stats.today.net_revenue,
-          topProducts: stats.today.top_products || [],
-          isFallbackProducts: false
-        };
-      case 'this_week':
-        return {
-          title: "Shu hafta",
-          ordersCount: stats.this_week.orders_count,
-          deliveredCount: stats.this_week.delivered,
-          cancelledCount: Math.max(0, stats.this_week.orders_count - stats.this_week.delivered),
-          revenue: stats.this_week.revenue,
-          deliveryFees: stats.this_week.delivery_fees,
-          cancelledRevenue: 0, // Not explicitly in API
-          netRevenue: stats.this_week.net_revenue,
-          averageCheck: stats.this_week.average_check,
-          commission: stats.this_week.revenue - stats.this_week.net_revenue,
-          topProducts: stats.this_month.top_products || [], // Fallback to month
-          isFallbackProducts: true
-        };
-      case 'this_month':
-        return {
-          title: "Shu oy",
-          ordersCount: stats.this_month.orders_count,
-          deliveredCount: stats.this_month.delivered,
-          cancelledCount: Math.max(0, stats.this_month.orders_count - stats.this_month.delivered),
-          revenue: stats.this_month.revenue,
-          deliveryFees: stats.this_month.delivery_fees,
-          cancelledRevenue: 0, // Not explicitly in API
-          netRevenue: stats.this_month.net_revenue,
-          averageCheck: stats.this_month.average_check,
-          commission: stats.commission?.month_commission ?? 0,
-          topProducts: stats.this_month.top_products || [],
-          isFallbackProducts: false
-        };
-      case 'overall':
-      default:
-        return {
-          title: "Barcha davr",
-          ordersCount: stats.overall.total_orders,
-          deliveredCount: stats.overall.delivered,
-          cancelledCount: stats.overall.cancelled,
-          revenue: stats.overall.total_revenue,
-          deliveryFees: stats.overall.total_delivery_fees,
-          cancelledRevenue: 0, // Not explicitly in API
-          netRevenue: stats.overall.net_revenue,
-          averageCheck: stats.overall.total_orders > 0 ? Math.round(stats.overall.total_revenue / stats.overall.total_orders) : 0,
-          commission: stats.commission?.total_commission ?? 0,
-          topProducts: stats.this_month.top_products || [], // Fallback to month
-          isFallbackProducts: true
-        };
-    }
-  })();
-
-  const dailyChart = stats.daily_chart || [];
-  const maxWeeklyAmount = Math.max(...dailyChart.map(d => d.revenue), 1);
-  const filteredTxns = getFilteredTransactions();
-
-  // Compute percentages for dynamic visual bars
-  const deliveredPercentage = activeStats.ordersCount > 0 
-    ? Math.round((activeStats.deliveredCount / activeStats.ordersCount) * 100)
-    : 0;
-  
-  const cancelledPercentage = activeStats.ordersCount > 0 
-    ? Math.round((activeStats.cancelledCount / activeStats.ordersCount) * 100)
-    : 0;
-
-  const maxProductQty = activeStats.topProducts && activeStats.topProducts.length > 0
-    ? Math.max(...activeStats.topProducts.map(p => p.qty))
-    : 1;
+  const dash = (v: number | null, fmt: (n: number) => string = (n) => formatMoney(n)) => (v === null ? '—' : fmt(v));
+  const chart = stats.daily_chart || [];
+  const chartMax = Math.max(1, ...chart.map((d) => Number(d.revenue) || 0));
+  const selected = selectedDay !== null ? chart[selectedDay] : null;
+  const deliveredPct = kpi.ordersCount && kpi.delivered !== null ? Math.round((kpi.delivered / kpi.ordersCount) * 100) : null;
+  const topMax = Math.max(1, ...(kpi.top || []).map((p) => p.qty || 0));
+  const partner = stats.partner;
 
   return (
-    <div className="space-y-8 font-Outfit">
-      {/* Header section with period filter */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-2">
-            Moliya & Statistika <Sparkles className="w-6 h-6 text-brand animate-pulse" />
-          </h1>
-          <p className="text-slate-400">Do'koningiz moliyaviy hisobotlari, tushumlar va komissiyalar tahlili</p>
-        </div>
+    <div className="space-y-5">
+      {header}
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Segmented Period Tabs */}
-          <div className="flex items-center gap-1 bg-slate-900/50 p-1.5 rounded-xl border border-edge shadow-inner">
-            {(['today', 'this_week', 'this_month', 'overall'] as const).map((tab) => {
-              const label = {
-                today: "Bugun",
-                this_week: "Hafta",
-                this_month: "Oy",
-                overall: "Barchasi"
-              }[tab];
-              const isActive = activeTab === tab;
-              return (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold transition duration-200 cursor-pointer ${
-                    isActive 
-                      ? 'bg-brand text-white shadow-lg shadow-brand/20' 
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-overlay'
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
+      {/* KPI grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label="Umumiy tushum" value={dash(kpi.revenue)} icon={<DollarSign className="w-4 h-4" />} hint="Yetkazish va komissiya bilan" />
+        <StatCard label="Sof tushum" value={dash(kpi.net)} icon={<TrendingUp className="w-4 h-4" />} hint="Server hisoblagan net_revenue" />
+        <StatCard
+          label={`Komissiya${stats.commission?.rate !== undefined ? ` (${stats.commission.rate}%)` : ''}`}
+          tone="danger"
+          icon={<Percent className="w-4 h-4" />}
+          value={
+            kpi.commission === null ? (
+              <span className="inline-flex items-center gap-2">
+                — <ApiGap title="partner/statistics/ faqat oy (month_commission) va umumiy (total_commission) komissiyani qaytaradi; kunlik/haftalik komissiya maydoni yo'q" />
+              </span>
+            ) : (
+              formatMoney(kpi.commission)
+            )
+          }
+          hint="MilliyGo xizmat haqi"
+        />
+        <StatCard label="Yetkazish haqlari" tone="info" value={dash(kpi.deliveryFees)} icon={<Truck className="w-4 h-4" />} hint="Kuryer xizmati uchun" />
+        <StatCard
+          label="Buyurtmalar"
+          tone="neutral"
+          icon={<ShoppingBag className="w-4 h-4" />}
+          value={kpi.ordersCount === null ? '—' : `${kpi.ordersCount} ta`}
+          hint={
+            <span className="inline-flex items-center gap-2">
+              <span className="text-brand font-semibold">{kpi.delivered ?? '—'} yakunlangan</span>
+              <span className="text-danger-ink font-semibold">
+                {kpi.cancelled ?? '—'} bekor
+              </span>
+              {kpi.cancelled === null && <ApiGap title="partner/statistics/ this_week / this_month uchun 'cancelled' maydonini qaytarmaydi" />}
+            </span>
+          }
+        />
+        <StatCard label="O'rtacha chek" tone="gold" value={dash(kpi.avg)} icon={<Receipt className="w-4 h-4" />} hint="Bitta buyurtmaga" />
+        <StatCard
+          label="Yakunlanish ulushi"
+          tone="brand"
+          icon={<CheckCircle2 className="w-4 h-4" />}
+          value={deliveredPct === null ? '—' : `${deliveredPct}%`}
+          hint={kpi.cancelledRevenue ? `Bekor qilingan summa: ${formatMoney(kpi.cancelledRevenue)}` : 'Yakunlangan / jami'}
+        />
+        <Card className="flex flex-col justify-between gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[13px] font-semibold text-muted">To'lovlar (payout)</span>
+            <span className="w-8 h-8 rounded-xl bg-field text-muted flex items-center justify-center">
+              <Wallet className="w-4 h-4" />
+            </span>
           </div>
-
-          <button
-            onClick={() => handleExportExcel(activeTab)}
-            disabled={exportingExcel}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-overlay border border-edge-strong hover:bg-overlay-strong hover:text-ink transition text-slate-300 text-sm font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          <ApiGap
+            block
+            title="Hamkorga o'tkazilgan / kutilayotgan to'lovlar (payout, settlement) uchun endpoint yo'q. Taklif: GET partner/finance/payouts/?period="
           >
-            {exportingExcel ? (
-              <>
-                <div className="w-4 h-4 border-2 border-edge-strong border-t-white rounded-full animate-spin" />
-                <span>Yuklanmoqda...</span>
-              </>
-            ) : (
-              <>
-                <Download className="w-4 h-4" />
-                <span>Hisobotni yuklash</span>
-              </>
-            )}
-          </button>
-        </div>
+            Kutilayotgan va o'tkazilgan to'lovlar
+          </ApiGap>
+        </Card>
       </div>
 
-      {/* Partner Info and Agreement Settings */}
-      <div className="p-6 rounded-2xl bg-gradient-to-br from-darkCard to-slate-900/90 border border-edge shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-brand/5 rounded-bl-full pointer-events-none filter blur-2xl" />
-        
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-brand/10 border border-brand/20 rounded-2xl text-brand text-xl font-black shrink-0">
-              {stats.partner.name.slice(0, 2).toUpperCase()}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-bold text-ink">{stats.partner.name}</h2>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                  stats.partner.is_open 
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                    : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${stats.partner.is_open ? 'bg-emerald-400 animate-ping' : 'bg-rose-400'}`} />
-                  {stats.partner.is_open ? "Hamkor Ochiq" : "Hamkor Yopiq"}
-                </span>
-              </div>
-              <p className="text-slate-400 text-sm flex items-center gap-1.5 mt-0.5">
-                <Phone className="w-3.5 h-3.5 text-slate-500" />
-                <a href={`tel:${stats.partner.phone}`} className="hover:text-brand transition">{formatPhone(stats.partner.phone)}</a>
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 lg:gap-12 pt-4 lg:pt-0 border-t lg:border-t-0 lg:border-l border-edge lg:pl-12">
-            <div>
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">Minimal buyurtma</span>
-              <span className="text-sm font-bold text-slate-200 mt-0.5 block">{formatUzS(stats.partner.min_order_amount)}</span>
-            </div>
-            <div>
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">Yetkazib berish</span>
-              <span className="text-sm font-bold text-slate-200 mt-0.5 block">{formatUzS(stats.partner.delivery_fee)}</span>
-            </div>
-            <div>
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">Bepul kuryer</span>
-              <span className="text-sm font-bold text-brand mt-0.5 block">{formatUzS(stats.partner.free_delivery_threshold)} dan</span>
-            </div>
-            <div>
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block">Tizim komissiyasi</span>
-              <span className="text-sm font-bold text-rose-400 mt-0.5 block flex items-center gap-1">
-                <Percent className="w-3.5 h-3.5 shrink-0" /> {stats.commission?.rate ?? 0}% ({stats.commission?.type === 'percentage' ? "Foizda" : (stats.commission?.type ?? '')})
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main KPI Statistics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-        {/* Card 1: Gross Revenue */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-brand/20 transition-all duration-300 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <span className="p-2.5 rounded-xl bg-brand/10 text-brand"><DollarSign className="w-5 h-5" /></span>
-              <span className="text-[10px] font-bold px-2 py-0.5 bg-brand/10 text-brand rounded uppercase">Tushum</span>
-            </div>
-            <p className="text-xs font-semibold text-slate-400">Umumiy savdo tushumi</p>
-            <h3 className="text-xl font-bold text-ink mt-1.5 tracking-tight">{formatUzS(activeStats.revenue)}</h3>
-          </div>
-          <div className="mt-4 pt-3 border-t border-edge flex items-center gap-1.5 text-[10px] text-slate-500">
-            <Info className="w-3.5 h-3.5 shrink-0 text-slate-500" />
-            <span>Kuryer va komissiyani o'z ichiga olgan</span>
-          </div>
-        </div>
-
-        {/* Card 2: Net Payout */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-emerald-500/20 transition-all duration-300 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <span className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400"><CheckCircle className="w-5 h-5" /></span>
-              <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded uppercase">Sof foyda</span>
-            </div>
-            <p className="text-xs font-semibold text-slate-400">Hisobingizga to'lanadigan</p>
-            <h3 className="text-xl font-bold text-emerald-400 mt-1.5 tracking-tight">{formatUzS(activeStats.netRevenue)}</h3>
-          </div>
-          <div className="mt-4 pt-3 border-t border-edge flex items-center gap-1.5 text-[10px] text-emerald-400/80">
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>Sof foyda sizning hisobingiz</span>
-          </div>
-        </div>
-
-        {/* Card 3: Platform Fee */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-rose-500/20 transition-all duration-300 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <span className="p-2.5 rounded-xl bg-rose-500/10 text-rose-400"><Percent className="w-5 h-5" /></span>
-              <span className="text-[10px] font-bold px-2 py-0.5 bg-rose-500/10 text-rose-400 rounded uppercase">Komissiya</span>
-            </div>
-            <p className="text-xs font-semibold text-slate-400">Platforma haqi ({stats.commission?.rate ?? 0}%)</p>
-            <h3 className="text-xl font-bold text-rose-400 mt-1.5 tracking-tight">{formatUzS(activeStats.commission)}</h3>
-          </div>
-          <div className="mt-4 pt-3 border-t border-edge flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span>MilliyGo xizmat ko'rsatish haqi</span>
-          </div>
-        </div>
-
-        {/* Card 4: Delivery Fees */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-cyan-500/20 transition-all duration-300 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <span className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-400"><Truck className="w-5 h-5" /></span>
-              <span className="text-[10px] font-bold px-2 py-0.5 bg-cyan-500/10 text-cyan-400 rounded uppercase">Yetkazish</span>
-            </div>
-            <p className="text-xs font-semibold text-slate-400">Jami yetkazib berish haqi</p>
-            <h3 className="text-xl font-bold text-cyan-400 mt-1.5 tracking-tight">{formatUzS(activeStats.deliveryFees)}</h3>
-          </div>
-          <div className="mt-4 pt-3 border-t border-edge flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span>Kuryerlar xizmati uchun hisoblangan</span>
-          </div>
-        </div>
-
-        {/* Card 5: Orders Count & Ratios */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-violet-500/20 transition-all duration-300 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <span className="p-2.5 rounded-xl bg-violet-500/10 text-violet-400"><ShoppingBag className="w-5 h-5" /></span>
-              <span className="text-[10px] font-bold px-2 py-0.5 bg-violet-500/10 text-violet-400 rounded uppercase">Buyurtmalar</span>
-            </div>
-            <p className="text-xs font-semibold text-slate-400">Jami buyurtmalar soni</p>
-            <h3 className="text-xl font-bold text-ink mt-1.5 tracking-tight">{activeStats.ordersCount} ta</h3>
-          </div>
-
-          <div className="mt-4 space-y-2 pt-2">
-            <div className="flex items-center justify-between text-[10px] text-slate-400">
-              <span className="flex items-center gap-1 font-semibold text-emerald-400">
-                <CheckCircle className="w-3 h-3" /> {activeStats.deliveredCount} ta
-              </span>
-              <span className="flex items-center gap-1 font-semibold text-rose-400">
-                <XCircle className="w-3 h-3" /> {activeStats.cancelledCount} ta
-              </span>
-            </div>
-            {/* Visual ratio bar */}
-            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden flex">
-              <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${deliveredPercentage}%` }} />
-              <div className="bg-rose-500 h-full transition-all duration-500" style={{ width: `${cancelledPercentage}%` }} />
-            </div>
-            {activeStats.cancelledRevenue > 0 && (
-              <span className="text-[9px] text-slate-500 block truncate">
-                Bekor qilingan tushum: {formatUzS(activeStats.cancelledRevenue)}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Card 6: Average Check */}
-        <div className="p-5 rounded-2xl bg-darkCard border border-edge relative overflow-hidden group hover:border-amber-500/20 transition-all duration-300 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <span className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400"><TrendingUp className="w-5 h-5" /></span>
-              <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-500/10 text-amber-400 rounded uppercase">O'rtacha</span>
-            </div>
-            <p className="text-xs font-semibold text-slate-400">O'rtacha chek summasi</p>
-            <h3 className="text-xl font-bold text-ink mt-1.5 tracking-tight">{formatUzS(activeStats.averageCheck)}</h3>
-          </div>
-          <div className="mt-4 pt-3 border-t border-edge flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span>Bitta savdoga to'g'ri keladigan chek</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Grid: Graphical Chart & Top Products */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        
-        {/* CSS Chart: Daily income and orders */}
-        <div className="lg:col-span-2 p-6 rounded-2xl bg-darkCard border border-edge space-y-6 flex flex-col justify-between min-h-[420px]">
-          <div>
-            <h3 className="text-lg font-bold text-ink flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-brand" />
-                Daromadlar va buyurtmalar grafigi
-              </span>
-              <span className="text-xs font-normal text-slate-400">Kunlik ko'rsatkichlar</span>
-            </h3>
-            <p className="text-xs text-slate-400 mt-1">Diagramma ustuniga sichqonchani olib borib batafsil ma'lumotni ko'ring</p>
-          </div>
-
-          {/* Graphical CSS Chart Area */}
-          <div className="flex items-end justify-between gap-6 h-60 pt-6 px-2 relative border-b border-edge">
-            {/* Guide line indicators */}
-            <div className="absolute inset-x-0 top-1/4 border-b border-edge pointer-events-none" />
-            <div className="absolute inset-x-0 top-2/4 border-b border-edge pointer-events-none" />
-            <div className="absolute inset-x-0 top-3/4 border-b border-edge pointer-events-none" />
-
-            {dailyChart.map((item, idx) => {
-              const pct = (item.revenue / maxWeeklyAmount) * 80; // Max height 80%
-              const isPeak = item.revenue === maxWeeklyAmount;
-              
-              return (
-                <div key={idx} className="flex-1 flex flex-col items-center gap-3 group relative cursor-pointer min-w-0">
-                  
-                  {/* Premium Glowing Tooltip on Hover */}
-                  <div className="absolute bottom-full mb-3 bg-slate-950 text-ink border border-edge-strong rounded-xl p-3 shadow-2xl text-xs space-y-1.5 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20 min-w-[150px] -translate-x-1/2 left-1/2">
-                    <div className="font-bold border-b border-edge-strong pb-1 mb-1 text-[10px] text-slate-400 flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5" /> {item.date}
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-slate-400">Tushum:</span>
-                      <span className="font-bold text-brand">{formatUzS(item.revenue)}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-slate-400">Buyurtmalar:</span>
-                      <span className="font-bold text-emerald-400">{item.orders} ta</span>
-                    </div>
-                  </div>
-
-                  {/* Orders count bubble directly above bar */}
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md transition duration-300 ${
-                    isPeak 
-                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/20' 
-                      : 'bg-overlay text-slate-400 group-hover:text-slate-200'
-                  }`}>
-                    {item.orders} ta
-                  </span>
-                  
-                  {/* Visual Bar with Gradient */}
-                  <div className="w-full relative flex flex-col justify-end h-36">
-                    <div 
-                      style={{ height: `${pct || 5}%` }} 
-                      className={`w-full rounded-t-lg transition-all duration-300 relative ${
-                        isPeak 
-                          ? 'bg-gradient-to-t from-brand/40 to-brand border-t border-brand-light shadow-[0_0_15px_rgba(14,165,233,0.3)]' 
-                          : 'bg-gradient-to-t from-slate-800 to-slate-700 group-hover:from-brand/30 group-hover:to-brand/70'
-                      }`}
-                    />
-                  </div>
-                  
-                  {/* Date Label */}
-                  <span className="text-slate-400 text-[10px] font-bold tracking-wider truncate w-full text-center">
-                    {formatChartDate(item.date)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="pt-4 flex items-center justify-between text-xs text-slate-400">
-            <span className="flex items-center gap-1">
-              <Sparkles className="w-4 h-4 text-amber-500" />
-              Eng yuqori savdoli kun
-            </span>
-            <span className="font-bold text-ink flex items-center gap-1">
-              {formatUzS(maxWeeklyAmount)} 
-              <span className="text-[10px] text-slate-500">({dailyChart.find(d => d.revenue === maxWeeklyAmount)?.date})</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Top selling products list */}
-        <div className="lg:col-span-1 p-6 rounded-2xl bg-darkCard border border-edge space-y-6 flex flex-col justify-between min-h-[420px]">
-          <div>
-            <h3 className="text-lg font-bold text-ink flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <Layers className="w-5 h-5 text-brand" />
-                Top mahsulotlar
-              </span>
-              <span className="text-[10px] font-bold text-brand bg-brand/10 px-2 py-0.5 rounded uppercase">
-                {activeStats.title}
-              </span>
-            </h3>
-            {activeStats.isFallbackProducts && (
-              <p className="text-[10px] text-amber-400 mt-1 flex items-center gap-1">
-                <Info className="w-3 h-3 shrink-0" />
-                Shu oy uchun top mahsulotlar ko'rsatilmoqda
-              </p>
-            )}
-          </div>
-
-          <div className="flex-1 space-y-5 py-2 overflow-y-auto max-h-[280px] pr-1 scrollbar-thin">
-            {activeStats.topProducts && activeStats.topProducts.length > 0 ? (
-              activeStats.topProducts.map((product, idx) => {
-                const ratio = (product.qty / maxProductQty) * 100;
-                
-                return (
-                  <div key={idx} className="space-y-1.5 group">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-slate-200 truncate pr-4">{product.name}</span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="font-black text-slate-400">{product.qty} ta</span>
-                        <span className="font-bold text-emerald-400">{formatUzS(product.revenue)}</span>
-                      </div>
-                    </div>
-
-                    {/* Progress indicator */}
-                    <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <div 
-                        style={{ width: `${ratio}%` }} 
-                        className={`h-full rounded-full transition-all duration-500 bg-gradient-to-r ${
-                          idx === 0 
-                            ? 'from-brand to-cyan-400 shadow-[0_0_10px_rgba(14,165,233,0.2)]' 
-                            : 'from-slate-600 to-slate-500'
-                        }`}
-                      />
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="flex flex-col items-center justify-center py-16 text-slate-500 text-center">
-                <ShoppingBag className="w-12 h-12 stroke-[1] mb-2 text-slate-600" />
-                <p className="text-sm">Ushbu davr bo'yicha mahsulotlar sotilmagan</p>
+      {/* Partner terms */}
+      {partner && (
+        <Card>
+          <CardHeader title={partner.name || 'Hamkor'} subtitle="Shartnoma shartlari" icon={<BarChart3 className="w-4 h-4" />} />
+          <dl className="grid grid-cols-2 md:grid-cols-5 gap-x-4 gap-y-3 text-[14px]">
+            {partner.phone && (
+              <div className="min-w-0">
+                <dt className="text-[12px] text-muted">Telefon</dt>
+                <dd className="font-semibold">
+                  <a href={`tel:${partner.phone}`} className="inline-flex items-center gap-1 hover:text-brand">
+                    <Phone className="w-3.5 h-3.5" />
+                    <span className="truncate">{formatPhone(partner.phone)}</span>
+                  </a>
+                </dd>
               </div>
             )}
-          </div>
+            <div>
+              <dt className="text-[12px] text-muted">Minimal buyurtma</dt>
+              <dd className="font-semibold">{partner.min_order_amount !== undefined ? formatMoney(partner.min_order_amount) : '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-[12px] text-muted">Yetkazish narxi</dt>
+              <dd className="font-semibold">{partner.delivery_fee !== undefined ? formatMoney(partner.delivery_fee) : '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-[12px] text-muted">Bepul yetkazish</dt>
+              <dd className="font-semibold">
+                {partner.free_delivery_threshold ? `${formatMoney(partner.free_delivery_threshold)} dan` : '—'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[12px] text-muted">Komissiya</dt>
+              <dd className="font-semibold">
+                {stats.commission?.rate !== undefined ? `${stats.commission.rate}%` : '—'}
+                {stats.commission?.type && stats.commission.type !== 'percentage' ? ` (${stats.commission.type})` : ''}
+              </dd>
+            </div>
+          </dl>
+        </Card>
+      )}
 
-          <div className="pt-4 border-t border-edge flex items-center justify-between text-xs text-slate-500">
-            <span>Ushbu davrdagi jami taomlar soni:</span>
-            <span className="font-bold text-ink">
-              {activeStats.topProducts.reduce((acc, p) => acc + p.qty, 0)} ta
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Transactions list */}
-      <div className="p-6 rounded-2xl bg-darkCard border border-edge flex flex-col shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <h3 className="text-lg font-bold text-ink flex items-center gap-1.5">
-              <span>Tranzaksiyalar tarixi</span>
-            </h3>
-            <p className="text-xs text-slate-400">Buyurtmalar bo'yicha to'lov usullari va tranzaksiya holatlari</p>
-          </div>
-          
-          {/* Action filters */}
-          <div className="flex items-center gap-1.5 bg-slate-900 p-1.5 rounded-xl border border-edge self-start shadow-inner">
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition duration-200 cursor-pointer ${
-                filter === 'all' ? 'bg-overlay text-ink' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Barchasi
-            </button>
-            <button
-              onClick={() => setFilter('paid')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition duration-200 cursor-pointer ${
-                filter === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              To'langanlar
-            </button>
-            <button
-              onClick={() => setFilter('refunded')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition duration-200 cursor-pointer ${
-                filter === 'refunded' ? 'bg-rose-500/10 text-rose-400' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Qaytarilganlar
-            </button>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          {filteredTxns.length > 0 ? (
-            <table className="w-full text-left border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-edge text-slate-500 text-xs uppercase tracking-wider font-bold">
-                  <th className="pb-3.5 pl-2">ID / Sana</th>
-                  <th className="pb-3.5 text-center">To'lov Turi</th>
-                  <th className="pb-3.5 text-center">Tranzaksiya Holati</th>
-                  <th className="pb-3.5 text-right pr-2">Summa</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-edge text-slate-300">
-                {filteredTxns.map((txn) => (
-                  <tr key={txn.id} className="hover:bg-overlay transition-colors">
-                    <td className="py-3.5 pl-2">
-                      <div className="font-bold text-ink text-xs">{txn.id}</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">Buyurtma #{txn.orderId} • {txn.date}</div>
-                    </td>
-                    <td className="py-3.5 text-center">{getPaymentBadge(txn.paymentMethod)}</td>
-                    <td className="py-3.5 text-center">{getStatusBadge(txn.status)}</td>
-                    <td className={`py-3.5 text-right pr-2 font-bold ${txn.status === 'REFUNDED' ? 'text-rose-400 line-through' : 'text-ink'}`}>
-                      {formatUzS(txn.amount)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        {/* Daily chart */}
+        <Card className="lg:col-span-2 min-w-0">
+          <CardHeader title="Kunlik tushum" subtitle="Ustunni bosing — kun bo'yicha batafsil" />
+          {chart.length === 0 ? (
+            <EmptyState title="Grafik uchun ma'lumot yo'q" description="Server daily_chart ma'lumotini qaytarmadi." className="py-8" />
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-slate-500">
-              <AlertCircle className="w-12 h-12 stroke-[1] mb-2 text-slate-600" />
-              <p className="text-sm">Mos keladigan tranzaksiyalar topilmadi</p>
+            <>
+              <div className="flex items-end gap-1 sm:gap-2 h-44 border-b border-edge" role="list">
+                {chart.map((d, i) => {
+                  const h = Math.max(2, Math.round(((Number(d.revenue) || 0) / chartMax) * 100));
+                  const active = selectedDay === i;
+                  return (
+                    <button
+                      key={`${d.date}-${i}`}
+                      type="button"
+                      role="listitem"
+                      title={`${formatDate(d.date)}: ${formatMoney(d.revenue)}, ${d.orders} ta`}
+                      onClick={() => setSelectedDay(active ? null : i)}
+                      className="flex-1 min-w-0 h-full flex items-end cursor-pointer group"
+                    >
+                      <span
+                        className={`w-full rounded-t-lg transition-colors ${active ? 'bg-brand' : 'bg-brand-bright/40 group-hover:bg-brand-bright/70'}`}
+                        style={{ height: `${h}%` }}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between text-[11px] text-muted mt-1.5">
+                <span>{formatDate(chart[0]?.date)}</span>
+                <span>{formatDate(chart[chart.length - 1]?.date)}</span>
+              </div>
+              <div className="mt-3 rounded-xl bg-field px-3.5 py-2.5 text-[14px] flex flex-wrap items-center justify-between gap-2">
+                {selected ? (
+                  <>
+                    <span className="font-semibold">{formatDate(selected.date)}</span>
+                    <span className="text-muted">{selected.orders} ta buyurtma</span>
+                    <span className="font-extrabold">{formatMoney(selected.revenue)}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-muted">Davr jami</span>
+                    <span className="font-extrabold">{formatMoney(chart.reduce((s, d) => s + (Number(d.revenue) || 0), 0))}</span>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </Card>
+
+        {/* Top products */}
+        <Card className="min-w-0">
+          <CardHeader title="Eng ko'p sotilganlar" subtitle={PERIOD_OPTIONS.find((p) => p.value === period)?.label} />
+          {kpi.top ? (
+            <ol className="space-y-3">
+              {kpi.top.slice(0, 8).map((p, i) => (
+                <li key={`${p.name}-${i}`} className="min-w-0">
+                  <div className="flex items-center justify-between gap-2 text-[14px]">
+                    <span className="font-semibold truncate">
+                      {i + 1}. {p.name}
+                    </span>
+                    <span className="text-muted shrink-0 tabular-nums">{p.qty} ta</span>
+                  </div>
+                  <div className="mt-1 h-1.5 rounded-full bg-field overflow-hidden">
+                    <div className="h-full bg-brand-bright rounded-full" style={{ width: `${Math.round(((p.qty || 0) / topMax) * 100)}%` }} />
+                  </div>
+                  <div className="text-[12px] text-muted mt-0.5">{formatMoney(p.revenue)}</div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="space-y-3">
+              <EmptyState title="Ma'lumot yo'q" description="Bu davr uchun top mahsulotlar qaytarilmadi." className="py-6" />
+              {(period === 'this_week' || period === 'overall') && (
+                <ApiGap block title="partner/statistics/ top_products faqat 'today' va 'this_month' uchun qaytaradi">
+                  Hafta / umumiy davr uchun top mahsulotlar yo'q
+                </ApiGap>
+              )}
             </div>
           )}
-        </div>
+        </Card>
       </div>
+
+      {/* Orders ledger built only from real orders */}
+      <section>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h2 className="text-[17px] font-extrabold tracking-tightest">Buyurtmalar bo'yicha tushum</h2>
+        </div>
+        <Tabs<TxFilter>
+          size="sm"
+          className="mb-3"
+          value={txFilter}
+          onChange={setTxFilter}
+          options={[
+            { value: 'all', label: 'Barchasi', count: txCounts.all },
+            { value: 'done', label: 'Yakunlangan', count: txCounts.done },
+            { value: 'active', label: 'Jarayonda', count: txCounts.active },
+            { value: 'cancelled', label: 'Bekor qilingan', count: txCounts.cancelled },
+          ]}
+        />
+        {ordersError ? (
+          <Card>
+            <ErrorState message={ordersError} onRetry={load} />
+          </Card>
+        ) : (
+          <DataList
+            rows={txRows.slice(0, 200)}
+            columns={columns}
+            rowKey={(o) => o.uuid || String(o.id)}
+            empty={
+              <Card>
+                <EmptyState title="Buyurtmalar yo'q" description="Tanlangan davr va filtr bo'yicha buyurtma topilmadi." />
+              </Card>
+            }
+          />
+        )}
+        {txRows.length > 200 && <p className="text-[12px] text-muted mt-2">Faqat oxirgi 200 ta ko'rsatildi. To'liq ro'yxat uchun Excel hisobotini yuklang.</p>}
+      </section>
     </div>
   );
 };
 
 export default FinancePage;
-

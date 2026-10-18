@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { CheckCircle, XCircle, Info, X } from 'lucide-react';
 
 interface ToastItem {
@@ -42,11 +42,14 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setTimeout(() => remove(id), 6000);
   }, [remove]);
 
-  const value: ToastContextValue = {
-    success: (m) => push('success', m),
-    error: (m) => push('error', m),
-    info: (m) => push('info', m),
-  };
+  const value = useMemo<ToastContextValue>(
+    () => ({
+      success: (m) => push('success', m),
+      error: (m) => push('error', m),
+      info: (m) => push('info', m),
+    }),
+    [push],
+  );
 
   return (
     <ToastContext.Provider value={value}>

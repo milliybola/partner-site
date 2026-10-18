@@ -35,7 +35,8 @@ export interface PartnerFilial {
 export const filialApi = {
   getFilials: async (): Promise<PartnerFilial[]> => {
     const response = await apiClient.get(ENDPOINTS.FILIALS.BASE);
-    if (response.data?.success && Array.isArray(response.data?.data)) {
+    // BUGFIX: accept {data:[...]} even when the envelope has no `success` flag.
+    if (Array.isArray(response.data?.data)) {
       return response.data.data;
     }
     if (Array.isArray(response.data)) {

@@ -42,11 +42,29 @@ const flipValidRings = (rings: unknown): number[][][] | null => {
 };
 
 const POLYGON_STYLES = {
-  idle: { fillColor: '#64748b', fillOpacity: 0.15, strokeColor: '#64748b', strokeWidth: 1, strokeOpacity: 0.6, cursor: 'pointer' },
-  pending: { fillColor: '#38bdf8', fillOpacity: 0.35, strokeColor: '#0ea5e9', strokeWidth: 2, strokeOpacity: 0.9, cursor: 'pointer' },
-  active: { fillColor: '#22c55e', fillOpacity: 0.35, strokeColor: '#16a34a', strokeWidth: 2, strokeOpacity: 0.9, cursor: 'pointer' },
-  inactive: { fillColor: '#f59e0b', fillOpacity: 0.25, strokeColor: '#d97706', strokeWidth: 2, strokeOpacity: 0.9, strokeStyle: 'shortdash' as const, cursor: 'pointer' },
+  idle: { fillColor: '#9CA3AF', fillOpacity: 0.12, strokeColor: '#6B7280', strokeWidth: 1, strokeOpacity: 0.6, cursor: 'pointer' },
+  pending: { fillColor: '#F5B400', fillOpacity: 0.35, strokeColor: '#D97706', strokeWidth: 2, strokeOpacity: 0.9, cursor: 'pointer' },
+  active: { fillColor: '#16A34A', fillOpacity: 0.35, strokeColor: '#15803D', strokeWidth: 2, strokeOpacity: 0.9, cursor: 'pointer' },
+  inactive: { fillColor: '#EF4444', fillOpacity: 0.18, strokeColor: '#EF4444', strokeWidth: 2, strokeOpacity: 0.9, strokeStyle: 'shortdash' as const, cursor: 'pointer' },
 };
+
+const LEGEND: { color: string; label: string }[] = [
+  { color: '#16A34A', label: 'Faol hudud' },
+  { color: '#EF4444', label: 'Nofaol' },
+  { color: '#F5B400', label: 'Tanlangan' },
+  { color: '#9CA3AF', label: "Qo'shilmagan" },
+];
+
+const MapLegend: React.FC = () => (
+  <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-4 py-2.5 border-t border-edge text-[12px] text-muted">
+    {LEGEND.map((l) => (
+      <span key={l.label} className="inline-flex items-center gap-1.5">
+        <span className="w-3 h-3 rounded" style={{ background: l.color, opacity: 0.75 }} />
+        {l.label}
+      </span>
+    ))}
+  </div>
+);
 
 export const NeighborhoodMap: React.FC<NeighborhoodMapProps> = ({
   neighborhoods,
@@ -64,7 +82,7 @@ export const NeighborhoodMap: React.FC<NeighborhoodMapProps> = ({
       if (rings) {
         result.push({ neighborhood: n, rings });
       } else {
-        console.warn('Skipping neighborhood with invalid polygon coordinates:', n.uuid, n.name);
+        if (import.meta.env.DEV) console.warn('Skipping neighborhood with invalid polygon coordinates:', n.uuid, n.name);
       }
     });
     return result;
@@ -97,13 +115,14 @@ export const NeighborhoodMap: React.FC<NeighborhoodMapProps> = ({
   }, [mapInstance, flipped]);
 
   return (
-    <div className="rounded-2xl overflow-hidden border border-edge">
-      {/* react-yandex-maps' bundled types omit 'uz_UZ', but the underlying Yandex Maps API accepts it (same as ProfilePage.tsx's raw script usage) */}
+    <div className="rounded-2xl overflow-hidden border border-edge bg-surface">
+      {/* Height comes from this wrapper (45vh on phones, 560px on desktop); width 100% keeps the map from causing horizontal scroll. */}
+      <div className="relative isolate w-full h-[45vh] min-h-[280px] md:h-[560px] bg-field">
       <YMaps query={YMAPS_QUERY}>
         <YandexMap
           defaultState={{ center: centerFallback, zoom: 12 }}
           width="100%"
-          height="560px"
+          height="100%"
           instanceRef={(inst: any) => { if (inst) setMapInstance(inst); }}
         >
           {flipped.map(({ neighborhood, rings }) => {
@@ -125,8 +144,10 @@ export const NeighborhoodMap: React.FC<NeighborhoodMapProps> = ({
           })}
         </YandexMap>
       </YMaps>
+      </div>
+      <MapLegend />
       {neighborhoods.length === 0 && (
-        <div className="p-6 text-center text-xs text-slate-500 bg-darkCard border-t border-edge">
+        <div className="p-4 text-center text-[13px] text-muted border-t border-edge">
           Ushbu tumanda mahallalar topilmadi.
         </div>
       )}

@@ -1,1175 +1,428 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  Plus,
-  Trash2,
-  Edit,
-  AlertCircle,
-  RefreshCw,
-  Users,
-  Info,
-  CheckCircle,
-  HelpCircle,
-  ShieldAlert,
-  Loader2,
-  FileSpreadsheet,
-  Table2,
-  QrCode,
-  Download,
-  X
-} from 'lucide-react';
-import { QRCodeCanvas } from 'qrcode.react';
-import { STORAGE_KEYS } from '../../../core/config/constants';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Clock, FileSpreadsheet, MoreVertical, Plus, QrCode, RefreshCw, Table2, Users } from 'lucide-react';
 import { tablesApi } from '../services/tablesApi';
-import type { TableModel, TableStatus } from '../services/tablesApi';
+import type { TableModel } from '../services/tablesApi';
 import { filialApi } from '../../orders/services/filialApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
 import { TableOrderModal } from '../components/TableOrderModal';
+import { BulkImportSheet, QrSheet, TableActionsSheet, TableFormSheet, TABLE_STATUS_LABEL } from '../components/TableSheets';
 import { useToast } from '../../../core/components/ToastProvider';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
-import { useWebSocket } from '../../../core/hooks/useWebSocket';
+import { useRealtime } from '../../../core/realtime/RealtimeProvider';
+import type { RealtimeEvent } from '../../../core/realtime/RealtimeProvider';
+import { getPartner, isManager as isManagerRole } from '../../../core/lib/session';
+import { getErrorMessage } from '../../../core/lib/errors';
+import { formatMoney, minutesSince } from '../../../core/lib/format';
+import { Button, EmptyState, ErrorState, IconButton, PageHeader, SearchInput, Skeleton, Tabs } from '../../../core/ui';
+
+type Filter = 'ALL' | 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'INACTIVE';
+
+// display_order first, then natural sort ("ZAL 2" before "ZAL 10")
+const sortTables = (list: TableModel[]): TableModel[] =>
+  [...list].sort((a, b) => {
+    const oa = a.display_order ?? 0;
+    const ob = b.display_order ?? 0;
+    if (oa !== ob) return oa - ob;
+    return String(a.table_number).localeCompare(String(b.table_number), undefined, { numeric: true, sensitivity: 'base' });
+  });
+
+const TILE_THEME: Record<string, { tile: string; chip: string; dot: string }> = {
+  AVAILABLE: { tile: 'bg-brand-soft border-brand/20', chip: 'bg-surface/80 text-brand', dot: 'bg-brand-bright' },
+  OCCUPIED: { tile: 'bg-gold-soft border-gold/50', chip: 'bg-surface/80 text-gold-ink', dot: 'bg-gold' },
+  RESERVED: { tile: 'bg-info-soft border-info/25', chip: 'bg-surface/80 text-info', dot: 'bg-info' },
+};
+
+const TableTile: React.FC<{
+  table: TableModel;
+  now: number;
+  canManage: boolean;
+  onOpen: () => void;
+  onMenu: () => void;
+}> = ({ table, now, canManage, onOpen, onMenu }) => {
+  const inactive = table.is_active === false;
+  const theme = TILE_THEME[table.status] || TILE_THEME.AVAILABLE;
+  const order = table.current_order;
+  const mins = order?.created_at ? minutesSince(order.created_at, now) : null;
+  return (
+    <div
+      className={`relative rounded-2xl border min-h-[148px] flex flex-col transition hover:shadow-card ${
+        inactive ? 'border-dashed border-edge-strong bg-surface opacity-60' : theme.tile
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex-1 text-left p-3.5 pr-12 flex flex-col gap-2 cursor-pointer rounded-2xl"
+        aria-label={`Stol ${table.table_number}`}
+      >
+        <span className={`inline-flex self-start items-center gap-1.5 h-6 px-2 rounded-lg text-[11px] font-extrabold ${inactive ? 'bg-field text-muted' : theme.chip}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${inactive ? 'bg-subtle' : theme.dot}`} />
+          {inactive ? 'Nofaol' : TABLE_STATUS_LABEL[table.status] || table.status}
+        </span>
+        <span className="text-[26px] font-black text-ink tracking-tightest leading-none break-words">{table.table_number}</span>
+        <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-muted">
+          <Users className="w-3.5 h-3.5" /> {table.capacity} kishi
+        </span>
+        <span className="mt-auto">
+          {order ? (
+            <span className="flex items-end justify-between gap-2">
+              <span className="text-[15px] font-extrabold text-ink tabular-nums">{formatMoney(order.total_price)}</span>
+              {mins !== null && (
+                <span className={`inline-flex items-center gap-1 text-[12px] font-bold tabular-nums ${mins >= 60 ? 'text-danger-ink' : 'text-muted'}`}>
+                  <Clock className="w-3.5 h-3.5" />
+                  {mins} daq
+                </span>
+              )}
+            </span>
+          ) : table.notes ? (
+            <span className="block text-[12px] text-muted truncate">{table.notes}</span>
+          ) : null}
+        </span>
+      </button>
+      {canManage && (
+        <IconButton label="Amallar" onClick={onMenu} className="absolute top-1 right-1">
+          <MoreVertical className="w-5 h-5" />
+        </IconButton>
+      )}
+    </div>
+  );
+};
 
 const TablesPage: React.FC = () => {
   const toast = useToast();
   const confirm = useConfirm();
-  // Authentication & Roles
-  const partnerData = (() => {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
-      return data ? JSON.parse(data) : null;
-    } catch {
-      return null;
-    }
-  })();
+  const partner = useMemo(() => getPartner(), []);
+  const manager = isManagerRole(partner);
+  // Waiters are blocked at login, so everyone who reaches this page can manage tables.
+  const canManage = partner?.role !== ('waiter' as any);
 
-  const isWaiter = partnerData?.role === 'waiter';
-  const isManagerOrOwner = partnerData?.role === 'manager' || !isWaiter;
-
-  // State Management
   const [tables, setTables] = useState<TableModel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>('ALL');
+  const [search, setSearch] = useState('');
+  const [now, setNow] = useState(() => Date.now());
 
-  // UI Display Preference
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  console.log(setViewMode);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [activeFilter, setActiveFilter] = useState<string>('ALL');
-
-  // Modals state
-  const [isCrudModalOpen, setIsCrudModalOpen] = useState(false);
-  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
-  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-  const [qrDownloading, setQrDownloading] = useState(false);
-  const [selectedTable, setSelectedTable] = useState<TableModel | null>(null);
+  const [filials, setFilials] = useState<PartnerFilial[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<TableModel | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [menuTable, setMenuTable] = useState<TableModel | null>(null);
   const [orderingTable, setOrderingTable] = useState<TableModel | null>(null);
 
-  // Form states for Single Table CRUD
-  const [tableNumber, setTableNumber] = useState('');
-  const [capacity, setCapacity] = useState('4');
-  const [tableStatus, setTableStatus] = useState<TableStatus>('AVAILABLE');
-  const [notes, setNotes] = useState('');
-  const [isActive, setIsActive] = useState(true);
-  const [displayOrder, setDisplayOrder] = useState('0');
-  const [formError, setFormError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  // Filial States for Superadmin
-  const [filialList, setFilialList] = useState<PartnerFilial[]>([]);
-  const [filialUuid, setFilialUuid] = useState('');
-
-  // Form states for Bulk Import
-  const [bulkMethod, setBulkMethod] = useState<'generator' | 'raw'>('generator');
-  // Generator values
-  const [bulkPrefix, setBulkPrefix] = useState('');
-  const [bulkStart, setBulkStart] = useState('1');
-  const [bulkEnd, setBulkEnd] = useState('5');
-  const [bulkCapacity, setBulkCapacity] = useState('4');
-  // Raw values
-  const [bulkRawText, setBulkRawText] = useState('1, 4\n2, 4\nVIP-1, 8, VIP Kabina');
-  const [bulkSubmitting, setBulkSubmitting] = useState(false);
-  const [bulkError, setBulkError] = useState<string | null>(null);
-  const [bulkSuccessMsg, setBulkSuccessMsg] = useState<string | null>(null);
-
-  // Sort by display_order first, then a natural (numeric-aware) sort of the table
-  // name/number — the backend returns rows in insertion order, so "ZAL | 10" would
-  // otherwise sort right after "ZAL | 1" as plain text instead of after "ZAL | 9".
-  const sortTables = (list: TableModel[]): TableModel[] => {
-    return [...list].sort((a, b) => {
-      const orderA = a.display_order ?? 0;
-      const orderB = b.display_order ?? 0;
-      if (orderA !== orderB) return orderA - orderB;
-      return String(a.table_number).localeCompare(String(b.table_number), undefined, { numeric: true, sensitivity: 'base' });
-    });
-  };
-
-  // Fetch Tables (full data, including active order info, for all roles —
-  // waiters need to see occupied tables too in order to manage their live orders)
-  const fetchTables = useCallback(async () => {
-    setLoading(true);
+  // BUGFIX: every refresh used to flip the whole grid to a spinner. Only the
+  // first load shows skeletons now; later refreshes are silent.
+  const fetchTables = useCallback(async (silent = false) => {
+    if (silent) setRefreshing(true);
+    else setLoading(true);
     setError(null);
     try {
       const data = await tablesApi.getTables();
-      setTables(sortTables(data));
-    } catch (err: any) {
-      console.error("Failed to fetch tables:", err);
-      setError(
-        err.response?.data?.message ||
-        err.message ||
-        "Stollar ma'lumotlarini yuklashda xatolik yuz berdi."
-      );
+      setTables(sortTables(Array.isArray(data) ? data : []));
+    } catch (err) {
+      if (!silent) setError(getErrorMessage(err, "Stollar ma'lumotlarini yuklashda xatolik yuz berdi."));
+      else toast.error(getErrorMessage(err, 'Stollarni yangilab bo‘lmadi.'));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchTables();
-    if (partnerData?.role !== 'manager') {
-      filialApi.getFilials()
-        .then(res => setFilialList(res))
-        .catch(err => console.error("Failed to load filials in TablesPage:", err));
+    if (!manager) {
+      filialApi
+        .getFilials()
+        .then(setFilials)
+        .catch(() => setFilials([]));
     }
-  }, [fetchTables]);
-
-  // Live table status updates over WebSocket (table_status_update events),
-  // so the floor map reflects AVAILABLE/OCCUPIED/RESERVED changes made by
-  // other staff/devices without needing a manual refresh.
-  const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-  const wsFilialUuid = partnerData?.current_filial?.uuid ||
-    partnerData?.home_filial?.uuid ||
-    partnerData?.current_filial_uuid ||
-    partnerData?.home_filial_uuid;
-
-  const handleWsEvent = useCallback((event: any) => {
-    if (event?.type !== 'table_status_update') return;
-    const tableData = event.table_data;
-    if (!tableData?.uuid) return;
-
-    setTables(prev => {
-      const exists = prev.some(t => t.uuid === tableData.uuid);
-      if (!exists) return prev;
-      return prev.map(t => t.uuid === tableData.uuid
-        ? {
-          ...t,
-          status: tableData.status ?? t.status,
-          status_display: tableData.status_display ?? t.status_display,
-          capacity: tableData.capacity ?? t.capacity,
-          notes: tableData.notes ?? t.notes,
-          is_active: tableData.is_active ?? t.is_active,
-          display_order: tableData.display_order ?? t.display_order,
-        }
-        : t
-      );
-    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { isConnected: isWsConnected } = useWebSocket(
-    partnerData?.uuid,
-    token,
-    handleWsEvent,
-    wsFilialUuid
-  );
-  console.log(isWsConnected);
+  // Elapsed-time ticker for occupied tables
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
-  // Open Form modal for editing or creating
-  const openCrudModal = (table: TableModel | null = null) => {
-    if (!isManagerOrOwner) return;
-    setFormError(null);
-    if (table) {
-      setSelectedTable(table);
-      setTableNumber(table.table_number);
-      setCapacity(String(table.capacity));
-      setTableStatus(table.status);
-      setNotes(table.notes || '');
-      setIsActive(table.is_active ?? true);
-      setDisplayOrder(String(table.display_order ?? 0));
-      setFilialUuid(table.filial_uuid || '');
-    } else {
-      setSelectedTable(null);
-      setTableNumber('');
-      setCapacity('4');
-      setTableStatus('AVAILABLE');
-      setNotes('');
-      setIsActive(true);
-      setDisplayOrder(String(tables.length + 1));
-      setFilialUuid('');
-    }
-    setIsCrudModalOpen(true);
-  };
+  // Realtime: the Layout owns the socket; we just listen.
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRefetch = useCallback(() => {
+    if (refetchTimer.current) clearTimeout(refetchTimer.current);
+    refetchTimer.current = setTimeout(() => fetchTables(true), 600);
+  }, [fetchTables]);
+  useEffect(() => () => {
+    if (refetchTimer.current) clearTimeout(refetchTimer.current);
+  }, []);
 
-  // Submit Single Table Form (Create or Update)
-  const handleCrudSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isManagerOrOwner) return;
-    setFormError(null);
-
-    const capNum = Number(capacity);
-    if (!tableNumber.trim()) {
-      setFormError("Stol raqami yoki nomi majburiy.");
+  useRealtime((event: RealtimeEvent) => {
+    if (event.type === 'table_status_update') {
+      const td = event.table_data;
+      if (!td?.uuid) return;
+      let known = false;
+      setTables((prev) => {
+        known = prev.some((t) => t.uuid === td.uuid);
+        if (!known) return prev;
+        return prev.map((t) =>
+          t.uuid === td.uuid
+            ? {
+                ...t,
+                status: td.status ?? t.status,
+                status_display: td.status_display ?? t.status_display,
+                capacity: td.capacity ?? t.capacity,
+                notes: td.notes ?? t.notes,
+                is_active: td.is_active ?? t.is_active,
+                display_order: td.display_order ?? t.display_order,
+              }
+            : t,
+        );
+      });
+      // Status payload has no current_order; refresh to pick up totals / new tables.
+      scheduleRefetch();
       return;
     }
-    if (isNaN(capNum) || capNum < 1 || capNum > 100) {
-      setFormError("Sig'im 1 dan 100 gacha son bo'lishi kerak.");
-      return;
+    if (event.type === 'new_order_alert' || event.type === 'order_status_update') {
+      scheduleRefetch();
     }
-
-    setSubmitting(true);
-    try {
-      const payload: Partial<TableModel> = {
-        table_number: tableNumber,
-        capacity: capNum,
-        status: tableStatus,
-        notes: notes,
-        is_active: isActive,
-        display_order: Number(displayOrder) || 0,
-        filial_uuid: partnerData?.role === 'manager' ? undefined : (filialUuid || undefined)
-      };
-
-      if (selectedTable) {
-        await tablesApi.updateTable(selectedTable.uuid, payload);
-      } else {
-        await tablesApi.createTable(payload);
-      }
-      setIsCrudModalOpen(false);
-      fetchTables();
-    } catch (err: any) {
-      console.error("CRUD Submit Error:", err);
-      setFormError(
-        err.response?.data?.message ||
-        err.response?.data?.table_number?.[0] ||
-        err.message ||
-        "Stol ma'lumotlarini saqlashda xatolik."
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // Delete / Deactivate Table
-  const handleDeleteTable = async (uuid: string, tableNumber: string) => {
-    if (!isManagerOrOwner) return;
-    const ok = await confirm(`Haqiqatan ham ${tableNumber}-stolni o'chirmoqchimisiz? (U tizimda faol emas holatiga o'tkaziladi)`, { danger: true, confirmText: "O'chirish" });
-    if (ok) {
-      try {
-        await tablesApi.deleteTable(uuid);
-        fetchTables();
-      } catch (err: any) {
-        console.error("Delete table error:", err);
-        toast.error(err.response?.data?.message || "Stolni o'chirishda xatolik yuz berdi.");
-      }
-    }
-  };
-
-  // Toggle active/inactive quick switch
-  const handleToggleActive = async (table: TableModel) => {
-    if (!isManagerOrOwner) return;
-    const updatedState = !(table.is_active ?? true);
-
-    // Optimistic UI update
-    setTables(prev => prev.map(t => t.uuid === table.uuid ? { ...t, is_active: updatedState } : t));
-
-    try {
-      await tablesApi.updateTable(table.uuid, { is_active: updatedState });
-      fetchTables();
-    } catch (err: any) {
-      console.error("Toggle active error:", err);
-      setTables(prev => prev.map(t => t.uuid === table.uuid ? { ...t, is_active: !updatedState } : t));
-      toast.error(err.response?.data?.message || "Stol faolligini o'zgartirishda xatolik.");
-    }
-  };
-
-  // The link encoded into the QR code — scanning it takes the customer to this restaurant's menu.
-  const qrCodeUrl = partnerData?.uuid ? `https://qr-code.milliyapp.uz/${partnerData.uuid}` : null;
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
-
-  // Export the client-side-generated QR canvas as a downloadable PNG.
-  const handleDownloadQrCode = () => {
-    const canvas = qrCanvasRef.current;
-    if (!canvas) return;
-    setQrDownloading(true);
-    try {
-      const dataUrl = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = `${partnerData?.name || partnerData?.partner_name || 'restaurant'}-qr-code.png`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (err) {
-      console.error("Failed to download QR code:", err);
-      toast.error("QR-kodni yuklab olishda xatolik yuz berdi.");
-    } finally {
-      setQrDownloading(false);
-    }
-  };
-
-  // Submit Bulk Import
-  const handleBulkSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isManagerOrOwner) return;
-    setBulkError(null);
-    setBulkSuccessMsg(null);
-    setBulkSubmitting(true);
-
-    try {
-      const tablesPayload: Array<{
-        table_number: string;
-        capacity: number;
-        notes?: string;
-        is_active?: boolean;
-      }> = [];
-
-      if (bulkMethod === 'generator') {
-        const start = parseInt(bulkStart);
-        const end = parseInt(bulkEnd);
-        const cap = parseInt(bulkCapacity);
-
-        if (isNaN(start) || isNaN(end) || start > end || start < 1) {
-          throw new Error("Boshlang'ich va yakuniy raqamlar noto'g'ri.");
-        }
-        if (isNaN(cap) || cap < 1 || cap > 100) {
-          throw new Error("Sig'im 1 dan 100 gacha bo'lishi kerak.");
-        }
-
-        for (let i = start; i <= end; i++) {
-          tablesPayload.push({
-            table_number: `${bulkPrefix}${i}`,
-            capacity: cap,
-            is_active: true
-          });
-        }
-      } else {
-        // Raw parsing (CSV like: table_number, capacity, notes)
-        const lines = bulkRawText.split('\n');
-        lines.forEach((line, idx) => {
-          if (!line.trim()) return;
-          const parts = line.split(',');
-          if (parts.length < 2) {
-            throw new Error(`${idx + 1}-qatorda xatolik: Stol raqami va sig'imi vergul bilan ajratilgan bo'lishi kerak.`);
-          }
-          const num = parts[0].trim();
-          const cap = parseInt(parts[1].trim());
-          const note = parts[2] ? parts[2].trim() : undefined;
-
-          if (!num) {
-            throw new Error(`${idx + 1}-qatorda xatolik: Stol raqami bo'sh bo'lmasligi kerak.`);
-          }
-          if (isNaN(cap) || cap < 1 || cap > 100) {
-            throw new Error(`${idx + 1}-qatorda xatolik: Sig'im 1 dan 100 gacha bo'lishi kerak.`);
-          }
-
-          tablesPayload.push({
-            table_number: num,
-            capacity: cap,
-            notes: note,
-            is_active: true
-          });
-        });
-      }
-
-      if (tablesPayload.length === 0) {
-        throw new Error("Import qilinadigan stollar topilmadi.");
-      }
-
-      const res = await tablesApi.bulkImportTables({ tables: tablesPayload });
-
-      if (res.success) {
-        setBulkSuccessMsg(`${res.created} ta stol muvaffaqiyatli import qilindi!`);
-        setTimeout(() => {
-          setIsBulkModalOpen(false);
-          setBulkSuccessMsg(null);
-          fetchTables();
-        }, 1500);
-      } else {
-        setBulkError(res.message || "Import qilishda xatolik.");
-      }
-    } catch (err: any) {
-      console.error("Bulk Import Error:", err);
-      setBulkError(err.message || "Stollarni import qilishda kutilmagan xatolik.");
-    } finally {
-      setBulkSubmitting(false);
-    }
-  };
-
-  // Filtered and Searched Tables List
-  const filteredTables = (Array.isArray(tables) ? tables : []).filter(t => {
-    const tableNumStr = String(t?.table_number || '');
-    const matchesSearch = tableNumStr.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (t?.notes && String(t.notes).toLowerCase().includes(searchQuery.toLowerCase()));
-
-    const matchesStatus = statusFilter === 'ALL' || t?.status === statusFilter;
-
-    let matchesActive = true;
-    if (activeFilter === 'ACTIVE') {
-      matchesActive = t?.is_active !== false;
-    } else if (activeFilter === 'INACTIVE') {
-      matchesActive = t?.is_active === false;
-    }
-
-    return matchesSearch && matchesStatus && matchesActive;
   });
 
-  const getStatusBadge = (status: TableStatus) => {
-    switch (status) {
-      case 'AVAILABLE':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_8px_rgba(16,185,129,0.1)]">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            Mavjud
-          </span>
-        );
-      case 'OCCUPIED':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-[0_0_8px_rgba(244,67,54,0.1)] animate-pulse">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-            Band qilingan
-          </span>
-        );
-      case 'RESERVED':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-[0_0_8px_rgba(245,158,11,0.1)]">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            Rezerv
-          </span>
-        );
-      default:
-        return <span>{status}</span>;
+  const counts = useMemo(() => {
+    const active = tables.filter((t) => t.is_active !== false);
+    return {
+      ALL: tables.length,
+      AVAILABLE: active.filter((t) => t.status === 'AVAILABLE').length,
+      OCCUPIED: active.filter((t) => t.status === 'OCCUPIED').length,
+      RESERVED: active.filter((t) => t.status === 'RESERVED').length,
+      INACTIVE: tables.length - active.length,
+    };
+  }, [tables]);
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return tables.filter((t) => {
+      if (filter === 'INACTIVE' && t.is_active !== false) return false;
+      if (filter !== 'ALL' && filter !== 'INACTIVE' && (t.status !== filter || t.is_active === false)) return false;
+      if (!q) return true;
+      return String(t.table_number).toLowerCase().includes(q) || String(t.notes || '').toLowerCase().includes(q);
+    });
+  }, [tables, filter, search]);
+
+  const openForm = (t: TableModel | null) => {
+    setMenuTable(null);
+    setEditing(t);
+    setFormOpen(true);
+  };
+
+  // BUGFIX: the quick toggle used PUT with only {is_active}; PUT requires the
+  // full object so the request failed validation. Send the full record.
+  const toggleActive = async (t: TableModel) => {
+    setMenuTable(null);
+    const next = !(t.is_active ?? true);
+    setTables((prev) => prev.map((x) => (x.uuid === t.uuid ? { ...x, is_active: next } : x)));
+    try {
+      await tablesApi.updateTable(t.uuid, {
+        table_number: t.table_number,
+        capacity: t.capacity,
+        status: t.status,
+        notes: t.notes || '',
+        display_order: t.display_order ?? 0,
+        filial_uuid: manager ? undefined : t.filial_uuid || undefined,
+        is_active: next,
+      });
+      toast.success(next ? 'Stol faollashtirildi' : 'Stol nofaol qilindi');
+      fetchTables(true);
+    } catch (err) {
+      setTables((prev) => prev.map((x) => (x.uuid === t.uuid ? { ...x, is_active: !next } : x)));
+      toast.error(getErrorMessage(err, "Stol faolligini o'zgartirishda xatolik."));
     }
   };
 
-  // const tableStats = [
-  //   { label: 'Jami stollar', value: tables.length, icon: LayoutGrid, color: 'text-brand', bg: 'bg-brand/10' },
-  //   { label: 'Bo\'sh', value: tables.filter(t => t.status === 'AVAILABLE').length, icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-  //   { label: 'Band', value: tables.filter(t => t.status === 'OCCUPIED').length, icon: Users, color: 'text-rose-400', bg: 'bg-rose-500/10' },
-  //   { label: 'Rezerv', value: tables.filter(t => t.status === 'RESERVED').length, icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-  // ];
+  const deleteTable = async (t: TableModel) => {
+    setMenuTable(null);
+    if (t.current_order) {
+      toast.error("Bu stolda faol buyurtma bor. Avval buyurtmani yakunlang.");
+      return;
+    }
+    const ok = await confirm(`${t.table_number}-stolni o'chirmoqchimisiz?`, { title: "Stolni o'chirish", danger: true, confirmText: "O'chirish" });
+    if (!ok) return;
+    try {
+      await tablesApi.deleteTable(t.uuid);
+      toast.success("Stol o'chirildi");
+      fetchTables(true);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Stolni o'chirishda xatolik yuz berdi."));
+    }
+  };
+
+  const qrUrl = partner?.uuid ? `https://qr-code.milliyapp.uz/${partner.uuid}` : null;
+  const busy = counts.OCCUPIED;
 
   return (
-    <div className="space-y-6 font-Outfit text-slate-200">
-
-      {/* Title Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-edge pb-4">
-        <div>
-          <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-3">
-            Stollar <span className="bg-brand/10 text-brand p-1.5 rounded-xl"><Table2 className="w-6 h-6" /></span>
-          </h1>
-          <p className="text-slate-400 text-sm mt-1">Zallardagi stollar holatini va buyurtmalarni shu yerdan boshqaring</p>
-        </div>
-
-        {isManagerOrOwner && (
-          <div className="flex items-center gap-2.5">
-            {qrCodeUrl && (
-              <button
-                onClick={() => setIsQrModalOpen(true)}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 border border-edge-strong hover:bg-slate-800 text-slate-300 font-bold text-xs transition duration-200 cursor-pointer"
-              >
-                <QrCode className="w-4 h-4 text-brand" />
-                <span>QR-kod</span>
-              </button>
+    <div className="pb-4">
+      <PageHeader
+        title="Stollar"
+        subtitle={loading ? 'Yuklanmoqda...' : `${counts.ALL} ta stol · ${busy} ta band · ${counts.AVAILABLE} ta bo'sh`}
+        actions={
+          <>
+            <IconButton label="Yangilash" variant="outline" onClick={() => fetchTables(true)} disabled={refreshing}>
+              <RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} />
+            </IconButton>
+            {canManage && qrUrl && (
+              <IconButton label="QR-kod" variant="outline" onClick={() => setQrOpen(true)}>
+                <QrCode className="w-[18px] h-[18px]" />
+              </IconButton>
             )}
-            <button
-              onClick={() => setIsBulkModalOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 border border-edge-strong hover:bg-slate-800 text-slate-300 font-bold text-xs transition duration-200 cursor-pointer"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <span>Bulk Import</span>
-            </button>
-            <button
-              onClick={() => openCrudModal(null)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs shadow-lg shadow-brand/20 transition duration-200 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Stol Qo'shish</span>
-            </button>
+            {canManage && (
+              <>
+                <Button variant="outline" className="hidden sm:inline-flex" icon={<FileSpreadsheet className="w-4 h-4" />} onClick={() => setBulkOpen(true)}>
+                  Ko'plab qo'shish
+                </Button>
+                <IconButton label="Ko'plab qo'shish" variant="outline" className="sm:hidden" onClick={() => setBulkOpen(true)}>
+                  <FileSpreadsheet className="w-[18px] h-[18px]" />
+                </IconButton>
+                <Button icon={<Plus className="w-4 h-4" />} onClick={() => openForm(null)}>
+                  <span className="hidden sm:inline">Stol qo'shish</span>
+                  <span className="sm:hidden">Stol</span>
+                </Button>
+              </>
+            )}
+          </>
+        }
+      >
+        <div className="space-y-2.5">
+          <Tabs<Filter>
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: 'ALL', label: 'Barchasi', count: counts.ALL },
+              { value: 'AVAILABLE', label: "Bo'sh", count: counts.AVAILABLE },
+              { value: 'OCCUPIED', label: 'Band', count: counts.OCCUPIED },
+              { value: 'RESERVED', label: 'Rezerv', count: counts.RESERVED },
+              ...(counts.INACTIVE > 0 ? [{ value: 'INACTIVE' as Filter, label: 'Nofaol', count: counts.INACTIVE }] : []),
+            ]}
+          />
+          {tables.length > 8 && <SearchInput value={search} onChange={setSearch} placeholder="Stol raqami yoki izoh bo'yicha qidirish" className="md:max-w-sm" />}
+        </div>
+      </PageHeader>
+
+      <div className="mt-2">
+        {loading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-[148px] rounded-2xl" />
+            ))}
+          </div>
+        ) : error ? (
+          <ErrorState message={error} onRetry={() => fetchTables()} />
+        ) : visible.length === 0 ? (
+          tables.length === 0 ? (
+            <EmptyState
+              icon={<Table2 className="w-7 h-7" />}
+              title="Hali stol qo'shilmagan"
+              description="Zal stollarini qo'shing — keyin har bir stol uchun buyurtma ochishingiz mumkin."
+              action={
+                canManage && (
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button icon={<Plus className="w-4 h-4" />} onClick={() => openForm(null)}>
+                      Stol qo'shish
+                    </Button>
+                    <Button variant="outline" icon={<FileSpreadsheet className="w-4 h-4" />} onClick={() => setBulkOpen(true)}>
+                      Ko'plab qo'shish
+                    </Button>
+                  </div>
+                )
+              }
+            />
+          ) : (
+            <EmptyState
+              title="Mos stol topilmadi"
+              description="Filtr yoki qidiruv shartini o'zgartiring."
+              action={
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setFilter('ALL');
+                    setSearch('');
+                  }}
+                >
+                  Filtrni tozalash
+                </Button>
+              }
+            />
+          )
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+            {visible.map((t) => (
+              <TableTile
+                key={t.uuid}
+                table={t}
+                now={now}
+                canManage={canManage}
+                onOpen={() => {
+                  if (t.is_active === false) {
+                    if (canManage) setMenuTable(t);
+                    else toast.info('Bu stol nofaol.');
+                    return;
+                  }
+                  setOrderingTable(t);
+                }}
+                onMenu={() => setMenuTable(t)}
+              />
+            ))}
           </div>
         )}
       </div>
 
-      {/* Stats summary */}
-      {/* {!loading && !error && tables.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {tableStats.map((stat) => (
-            <div key={stat.label} className="flex items-center gap-3 p-4 rounded-2xl bg-darkCard border border-edge">
-              <div className={`p-2.5 rounded-xl ${stat.bg}`}>
-                <stat.icon className={`w-5 h-5 ${stat.color}`} />
-              </div>
-              <div>
-                <p className="text-2xl font-black text-ink leading-none">{stat.value}</p>
-                <p className="text-[11px] text-slate-400 font-semibold mt-1">{stat.label}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )} */}
+      <TableActionsSheet
+        table={menuTable}
+        onClose={() => setMenuTable(null)}
+        onEdit={openForm}
+        onToggleActive={toggleActive}
+        onDelete={deleteTable}
+        onOpenOrder={(t) => {
+          setMenuTable(null);
+          setOrderingTable(t);
+        }}
+      />
 
-      {/* Info Warning banner for waiters */}
-      {isWaiter && (
-        <div className="flex gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm items-start">
-          <Info className="w-5 h-5 shrink-0 mt-0.5" />
-          <div>
-            <span className="font-bold">Ofitsant rejimi:</span> Siz stollarni o'zgartira yoki yangilarini qo'sha olmaysiz. Bo'sh stolga bosib yangi buyurtma yarating, band stolga bosib esa mavjud buyurtmani boshqaring (mahsulot qo'shish, pre-chek, to'lov).
-          </div>
-        </div>
+      <TableFormSheet
+        open={formOpen}
+        table={editing}
+        defaultOrder={tables.length + 1}
+        isManager={manager}
+        filials={filials}
+        onClose={() => setFormOpen(false)}
+        onSaved={() => {
+          setFormOpen(false);
+          toast.success(editing ? 'Stol saqlandi' : "Stol qo'shildi");
+          fetchTables(true);
+        }}
+      />
+
+      <BulkImportSheet
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        onDone={() => {
+          toast.success('Stollar qo‘shildi');
+          fetchTables(true);
+        }}
+      />
+
+      {qrUrl && (
+        <QrSheet open={qrOpen} onClose={() => setQrOpen(false)} url={qrUrl} fileName={partner?.name || partner?.partner_name || 'menyu'} />
       )}
 
-      {/* Filtering and Toolbar */}
-      {/* <div className="p-4 rounded-2xl bg-darkCard border border-edge shadow-md space-y-4">
-        <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
-
-          <div className="relative w-full lg:max-w-md">
-            <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Stol raqami yoki izoh bo'yicha qidirish..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none transition duration-150"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-end">
-
-            <div className="flex items-center gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-edge text-xs font-semibold">
-              <button
-                onClick={() => setStatusFilter('ALL')}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${statusFilter === 'ALL' ? 'bg-brand text-white' : 'text-slate-400 hover:text-slate-200'
-                  }`}
-              >
-                Barchasi
-              </button>
-              <button
-                onClick={() => setStatusFilter('AVAILABLE')}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${statusFilter === 'AVAILABLE' ? 'bg-emerald-500/10 text-emerald-400' : 'text-slate-400 hover:text-slate-200'
-                  }`}
-              >
-                Bo'sh
-              </button>
-              <button
-                onClick={() => setStatusFilter('OCCUPIED')}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${statusFilter === 'OCCUPIED' ? 'bg-rose-500/10 text-rose-400' : 'text-slate-400 hover:text-slate-200'
-                  }`}
-              >
-                Band
-              </button>
-              <button
-                onClick={() => setStatusFilter('RESERVED')}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${statusFilter === 'RESERVED' ? 'bg-amber-500/10 text-amber-400' : 'text-slate-400 hover:text-slate-200'
-                  }`}
-              >
-                Rezerv
-              </button>
-            </div>
-
-            {isManagerOrOwner && (
-              <select
-                value={activeFilter}
-                onChange={(e) => setActiveFilter(e.target.value)}
-                className="bg-slate-950/70 border border-edge focus:border-brand/40 text-slate-300 px-3 py-2 rounded-xl text-xs focus:outline-none transition cursor-pointer"
-              >
-                <option value="ALL">Barcha holatdagilar</option>
-                <option value="ACTIVE">Faqat Faollar</option>
-                <option value="INACTIVE">Deaktivlar</option>
-              </select>
-            )}
-
-            <div className="flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-edge">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-lg transition cursor-pointer ${viewMode === 'grid' ? 'bg-overlay-strong text-ink' : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                title="Grid ko'rinishi"
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-lg transition cursor-pointer ${viewMode === 'list' ? 'bg-overlay-strong text-ink' : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                title="Ro'yxat ko'rinishi"
-              >
-                <List className="w-4 h-4" />
-              </button>
-            </div>
-
-            <button
-              onClick={fetchTables}
-              className="p-2.5 rounded-xl bg-overlay border border-edge-strong text-slate-400 hover:text-ink transition cursor-pointer"
-              title="Yangilash"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
-
-            <div
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-overlay border border-edge-strong text-[11px] font-semibold"
-              title={isWsConnected ? "Jonli yangilanishlar faol" : "Jonli ulanish yo'q, avtomatik qayta urinilmoqda..."}
-            >
-              <span className={`w-2 h-2 rounded-full ${isWsConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-              <span className="text-slate-300 hidden sm:inline">{isWsConnected ? 'Jonli' : 'Ajralgan'}</span>
-            </div>
-          </div>
-        </div>
-      </div> */}
-
-      {/* Main Content Area */}
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-28 gap-4">
-          <Loader2 className="w-10 h-10 text-brand animate-spin" />
-          <p className="text-slate-400 text-sm font-semibold">Stollar ro'yxati yuklanmoqda...</p>
-        </div>
-      ) : error ? (
-        <div className="flex flex-col items-center justify-center py-20 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 text-center max-w-lg mx-auto">
-          <AlertCircle className="w-12 h-12 text-rose-500 mb-3 animate-pulse" />
-          <h4 className="font-bold text-ink text-base mb-1">Xatolik yuz berdi</h4>
-          <p className="text-sm text-slate-400 mb-4">{error}</p>
-          <button
-            onClick={fetchTables}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs transition cursor-pointer"
-          >
-            <RefreshCw className="w-4 h-4" />
-            <span>Qayta urinish</span>
-          </button>
-        </div>
-      ) : filteredTables.length > 0 ? (
-        viewMode === 'grid' ? (
-
-          /* Visual GRID View Layout */
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {filteredTables.map((table) => {
-              const statusTheme = ({
-                AVAILABLE: { bg: 'bg-gradient-to-br from-emerald-400 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500', text: 'text-white', chip: 'bg-black/15 text-white', shadow: 'shadow-emerald-900/20 hover:shadow-emerald-500/30', label: "Bo'sh" },
-                OCCUPIED: { bg: 'bg-gradient-to-br from-rose-400 to-rose-600 hover:from-rose-400 hover:to-rose-500', text: 'text-white', chip: 'bg-black/15 text-white', shadow: 'shadow-rose-900/20 hover:shadow-rose-500/30', label: 'Band' },
-                RESERVED: { bg: 'bg-gradient-to-br from-amber-300 to-amber-500 hover:from-amber-300 hover:to-amber-400', text: 'text-slate-900', chip: 'bg-black/10 text-slate-900', shadow: 'shadow-amber-900/10 hover:shadow-amber-500/30', label: 'Rezerv' }
-              } as Record<string, { bg: string; text: string; chip: string; shadow: string; label: string }>)[table.status || 'AVAILABLE']
-                || { bg: 'bg-slate-700', text: 'text-slate-200', chip: 'bg-black/15 text-slate-200', shadow: 'shadow-black/20', label: table.status };
-
-              const isInactive = table.is_active === false;
-
-              return (
-                <div
-                  key={table.uuid}
-                  onClick={() => setOrderingTable(table)}
-                  className={`relative rounded-2xl border overflow-hidden cursor-pointer transition-all duration-300 group hover:-translate-y-1 hover:scale-[1.02] flex flex-col min-h-[200px] p-5 gap-2 ${isInactive
-                      ? 'border-dashed border-edge bg-darkCard/50 opacity-55 justify-center items-center text-center'
-                      : `border-white/10 shadow-lg ${statusTheme.shadow} ${statusTheme.bg} ${statusTheme.text} justify-between`
-                    }`}
-                >
-                  {/* Manager quick actions (on hover) */}
-                  {isManagerOrOwner && (
-                    <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openCrudModal(table); }}
-                        className="p-1.5 rounded-lg bg-black/15 hover:bg-black/25 backdrop-blur-sm transition cursor-pointer"
-                        title="Tahrirlash"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDeleteTable(table.uuid, table.table_number); }}
-                        className="p-1.5 rounded-lg bg-black/15 hover:bg-black/25 backdrop-blur-sm transition cursor-pointer"
-                        title="O'chirish (Deaktiv)"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Status label */}
-                  <div className={`inline-flex self-start items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide px-2 py-1 rounded-lg ${isInactive ? 'text-slate-500' : statusTheme.chip}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isInactive ? 'bg-slate-500' : 'bg-current'} ${table.status === 'OCCUPIED' && !isInactive ? 'animate-pulse' : ''}`} />
-                    <span>{isInactive ? 'Nofaol' : statusTheme.label}</span>
-                  </div>
-
-                  {/* Body */}
-                  <div className="flex-1 flex flex-col items-center justify-center text-center gap-2">
-                    <div className={`font-black text-2xl tracking-tight leading-tight break-words drop-shadow-sm ${isInactive ? 'text-ink' : statusTheme.text}`}>
-                      {table.table_number}
-                    </div>
-
-                    <div className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md ${isInactive ? 'bg-overlay text-slate-400' : statusTheme.chip}`}>
-                      <Users className="w-3 h-3 shrink-0" />
-                      <span>{table.capacity} kishi</span>
-                    </div>
-
-                    {table.current_order ? (
-                      <p className={`text-[11px] leading-relaxed font-medium truncate max-w-full ${isInactive ? 'text-slate-400' : 'opacity-90'}`}>
-                        {table.current_order.order_number} · {Number(table.current_order.total_price).toLocaleString('uz-UZ')} UZS
-                      </p>
-                    ) : table.notes && (
-                      <p className={`text-[11px] line-clamp-1 leading-relaxed font-medium max-w-full ${isInactive ? 'text-slate-500' : 'opacity-80'}`}>
-                        {table.notes}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Active toggle (manager) */}
-                  {isManagerOrOwner && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleToggleActive(table); }}
-                      className={`absolute bottom-2.5 right-2.5 w-3 h-3 rounded-full border-2 ${isInactive ? 'border-edge-strong' : 'border-white/40'
-                        } ${table.is_active !== false ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-600'
-                        }`}
-                      title={table.is_active !== false ? "Faol (Deaktiv qilish)" : "Nofaol (Faollashtirish)"}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-
-          /* Visual TABLE List Layout */
-          <div className="p-6 rounded-2xl bg-darkCard border border-edge shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-edge text-slate-500 text-xs uppercase tracking-wider font-bold">
-                    <th className="pb-3.5 pl-2">Stol Raqami</th>
-                    <th className="pb-3.5">O'tirish joylari</th>
-                    <th className="pb-3.5">Izoh / Tafsilotlar</th>
-                    {isManagerOrOwner && <th className="pb-3.5 text-center">Tartib</th>}
-                    <th className="pb-3.5 text-center">Holat</th>
-                    {isManagerOrOwner && <th className="pb-3.5 text-center">Faol</th>}
-                    {isManagerOrOwner && <th className="pb-3.5 text-right pr-2">Amallar</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-edge text-slate-300">
-                  {filteredTables.map((table) => (
-                    <tr
-                      key={table.uuid}
-                      onClick={() => setOrderingTable(table)}
-                      className={`hover:bg-overlay transition-colors cursor-pointer ${table.is_active === false ? 'opacity-55 border-dashed' : ''
-                        }`}
-                    >
-                      <td className="py-3.5 pl-2">
-                        <div className="font-bold text-ink text-base">{table.table_number}</div>
-                        {table.current_order && (
-                          <div className="text-[10px] text-slate-500 mt-0.5">{table.current_order.order_number}</div>
-                        )}
-                      </td>
-                      <td className="py-3.5 font-semibold text-slate-200">
-                        <span className="flex items-center gap-1"><Users className="w-4 h-4 text-slate-500" /> {table.capacity} kishi</span>
-                      </td>
-                      <td className="py-3.5 text-xs text-slate-400 max-w-xs truncate">
-                        {table.notes || <span className="text-slate-600">-</span>}
-                      </td>
-                      {isManagerOrOwner && (
-                        <td className="py-3.5 text-center text-slate-400 font-semibold">{table.display_order ?? 0}</td>
-                      )}
-                      <td className="py-3.5 text-center">
-                        {getStatusBadge(table.status)}
-                      </td>
-                      {isManagerOrOwner && (
-                        <td className="py-3.5 text-center">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleToggleActive(table); }}
-                            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border transition ${table.is_active !== false
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                              : 'bg-slate-700/25 text-slate-500 border-slate-700/30'
-                              }`}
-                          >
-                            {table.is_active !== false ? "FAOL" : "NOFAOL"}
-                          </button>
-                        </td>
-                      )}
-                      {isManagerOrOwner && (
-                        <td className="py-3.5 text-right pr-2">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); openCrudModal(table); }}
-                              className="p-1.5 rounded-lg bg-overlay border border-edge text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
-                              title="Tahrirlash"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleDeleteTable(table.uuid, table.table_number); }}
-                              className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/10 text-rose-400 hover:text-white hover:bg-rose-500 transition cursor-pointer"
-                              title="O'chirish"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )
-      ) : (
-
-        /* Empty State */
-        <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-darkCard/50 border border-dashed border-edge rounded-2xl text-center">
-          <HelpCircle className="w-14 h-14 stroke-[1] mb-3 text-slate-600" />
-          <h3 className="font-bold text-ink text-base mb-1">Stollar topilmadi</h3>
-          <p className="text-sm text-slate-400 max-w-sm">
-            {tables.length > 0
-              ? "Qidiruv yoki filtr shartlariga mos keladigan stollar topilmadi."
-              : "Hozircha yaratilgan stollar mavjud emas."}
-          </p>
-          {tables.length > 0 && (searchQuery || statusFilter !== 'ALL' || activeFilter !== 'ALL') ? (
-            <button
-              onClick={() => { setSearchQuery(''); setStatusFilter('ALL'); setActiveFilter('ALL'); }}
-              className="mt-4 flex items-center gap-1 px-4 py-2.5 rounded-xl bg-overlay border border-edge-strong text-slate-300 hover:text-ink hover:bg-overlay-strong font-bold text-xs transition cursor-pointer"
-            >
-              <span>Filtrlarni tozalash</span>
-            </button>
-          ) : isManagerOrOwner && (
-            <button
-              onClick={() => openCrudModal(null)}
-              className="mt-4 flex items-center gap-1 px-4 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs transition cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Yangi stol yaratish</span>
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* CRUD MODAL (ADD / EDIT) */}
-      {isCrudModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-brand/5 rounded-bl-full pointer-events-none filter blur-xl" />
-
-            <h3 className="text-lg font-bold text-ink mb-4 flex items-center gap-2">
-              {selectedTable ? "Stol Ma'lumotlarini Tahrirlash" : "Yangi Stol Qo'shish"}
-            </h3>
-
-            {formError && (
-              <div className="mb-4 flex gap-2.5 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs items-center">
-                <ShieldAlert className="w-4 h-4 shrink-0" />
-                <span>{formError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleCrudSubmit} className="space-y-4">
-
-              <div>
-                <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Stol Nomi / Raqami *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Masalan: 1, 5, VIP-2, A1"
-                  value={tableNumber}
-                  onChange={(e) => setTableNumber(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">O'tirish joyi (Sig'im) *</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    max="100"
-                    placeholder="Masalan: 4"
-                    value={capacity}
-                    onChange={(e) => setCapacity(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Tartib raqami</label>
-                  <input
-                    type="number"
-                    placeholder="Masalan: 5"
-                    value={displayOrder}
-                    onChange={(e) => setDisplayOrder(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Boshlang'ich Holat</label>
-                <select
-                  value={tableStatus}
-                  onChange={(e) => setTableStatus(e.target.value as TableStatus)}
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-300 focus:outline-none transition duration-150"
-                >
-                  <option value="AVAILABLE">Mavjud (Bo'sh)</option>
-                  <option value="OCCUPIED">Band qilingan</option>
-                  <option value="RESERVED">Rezerv qilingan</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Izohlar / Joylashuvi</label>
-                <textarea
-                  placeholder="Masalan: Terassada, Deraza yonida, VIP xona"
-                  rows={2}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150 resize-none"
-                />
-              </div>
-
-              {/* Filial selection (Superadmin only) */}
-              {partnerData?.role !== 'manager' && (
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Bog'liq filial</label>
-                  <select
-                    value={filialUuid}
-                    onChange={(e) => setFilialUuid(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-300 focus:outline-none transition duration-150 cursor-pointer"
-                  >
-                    <option value="">-- Filialni tanlang --</option>
-                    {filialList.map(f => (
-                      <option key={f.uuid} value={f.uuid}>
-                        {f.filial_name} {f.is_main ? "(Asosiy)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-edge">
-                <div className="flex flex-col">
-                  <span className="text-xs font-semibold text-slate-300">Faol holatda</span>
-                  <span className="text-[10px] text-slate-500">Stol ofitsantlar ro'yxatida ko'rinadi</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                  className="w-4 h-4 text-brand focus:ring-0 focus:ring-offset-0 rounded bg-slate-900 border-edge cursor-pointer"
-                />
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex items-center gap-3 pt-3 border-t border-edge">
-                <button
-                  type="button"
-                  onClick={() => setIsCrudModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-edge-strong text-slate-400 hover:text-ink hover:bg-overlay transition duration-150 font-bold text-xs cursor-pointer"
-                >
-                  Bekor qilish
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs shadow-lg shadow-brand/20 transition duration-150 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>{selectedTable ? "Saqlash" : "Qo'shish"}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* BULK IMPORT MODAL */}
-      {isBulkModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-bl-full pointer-events-none filter blur-xl" />
-
-            <h3 className="text-lg font-bold text-ink mb-2 flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-              Ko'p miqdorda stol import qilish
-            </h3>
-            <p className="text-slate-400 text-xs mb-4">Tizimga bir vaqtning o'zida ko'plab stollarni tezkorlik bilan qo'shing</p>
-
-            {bulkError && (
-              <div className="mb-4 flex gap-2.5 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs items-center">
-                <ShieldAlert className="w-4 h-4 shrink-0" />
-                <span>{bulkError}</span>
-              </div>
-            )}
-
-            {bulkSuccessMsg && (
-              <div className="mb-4 flex gap-2.5 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs items-center">
-                <CheckCircle className="w-4 h-4 shrink-0" />
-                <span>{bulkSuccessMsg}</span>
-              </div>
-            )}
-
-            {/* Selection tabs for import method */}
-            <div className="flex border-b border-edge mb-4 text-xs font-bold">
-              <button
-                onClick={() => setBulkMethod('generator')}
-                className={`pb-2.5 px-4 border-b-2 transition ${bulkMethod === 'generator' ? 'border-brand text-brand' : 'border-transparent text-slate-400 hover:text-slate-200'
-                  }`}
-              >
-                Stollar generatori
-              </button>
-              <button
-                onClick={() => setBulkMethod('raw')}
-                className={`pb-2.5 px-4 border-b-2 transition ${bulkMethod === 'raw' ? 'border-brand text-brand' : 'border-transparent text-slate-400 hover:text-slate-200'
-                  }`}
-              >
-                Matn yordamida (CSV format)
-              </button>
-            </div>
-
-            <form onSubmit={handleBulkSubmit} className="space-y-4">
-
-              {bulkMethod === 'generator' ? (
-                /* Method A: Generator */
-                <div className="space-y-4">
-                  <div className="p-3 bg-overlay border border-edge rounded-xl text-[11px] text-slate-400 leading-relaxed">
-                    <span className="font-bold text-ink">Generator qanday ishlaydi:</span> Boshlang'ich sondan yakuniy songacha stollar ketma-ket yaratiladi. Masalan, Prefiks: <code className="text-brand">VIP-</code>, Boshlanishi: <code className="text-brand">1</code>, Yakuni: <code className="text-brand">3</code> bo'lsa, zaldagi stollar: <code className="text-slate-300">VIP-1, VIP-2, VIP-3</code> ko'rinishida qo'shiladi.
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Stol Prefiksi</label>
-                      <input
-                        type="text"
-                        placeholder="Masalan: VIP-"
-                        value={bulkPrefix}
-                        onChange={(e) => setBulkPrefix(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 focus:outline-none transition"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Boshlanishi *</label>
-                      <input
-                        type="number"
-                        required
-                        min="1"
-                        value={bulkStart}
-                        onChange={(e) => setBulkStart(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 focus:outline-none transition"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Yakuni *</label>
-                      <input
-                        type="number"
-                        required
-                        min="1"
-                        value={bulkEnd}
-                        onChange={(e) => setBulkEnd(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 focus:outline-none transition"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Sig'im (Barcha stollar uchun) *</label>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      max="100"
-                      value={bulkCapacity}
-                      onChange={(e) => setBulkCapacity(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 focus:outline-none transition"
-                    />
-                  </div>
-                </div>
-              ) : (
-                /* Method B: Raw CSV like text area */
-                <div className="space-y-4">
-                  <div className="p-3 bg-overlay border border-edge rounded-xl text-[11px] text-slate-400 leading-relaxed">
-                    <span className="font-bold text-ink">Format:</span> Har bir qatorga bittadan stol yozing, format: <code className="text-emerald-400">stol_nomi, sig'im, izoh(ixtiyoriy)</code> ko'rinishida bo'lsin.
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">Stollar ro'yxati *</label>
-                    <textarea
-                      required
-                      rows={5}
-                      value={bulkRawText}
-                      onChange={(e) => setBulkRawText(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-700 focus:outline-none transition font-mono"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Action buttons */}
-              <div className="flex items-center gap-3 pt-3 border-t border-edge">
-                <button
-                  type="button"
-                  onClick={() => setIsBulkModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-edge-strong text-slate-400 hover:text-ink hover:bg-overlay transition duration-150 font-bold text-xs cursor-pointer"
-                >
-                  Bekor qilish
-                </button>
-                <button
-                  type="submit"
-                  disabled={bulkSubmitting}
-                  className="flex-1 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs shadow-lg shadow-brand/20 transition duration-150 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  {bulkSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Import qilish</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* QR CODE MODAL */}
-      {isQrModalOpen && qrCodeUrl && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-darkCard border border-edge-strong rounded-2xl shadow-2xl p-6 relative overflow-hidden animate-in fade-in zoom-in duration-200 text-center">
-            <button
-              onClick={() => setIsQrModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-lg bg-overlay border border-edge text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
-              title="Yopish"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <h3 className="text-lg font-bold text-ink mb-1 flex items-center justify-center gap-2">
-              <QrCode className="w-5 h-5 text-brand" />
-              Muassasa QR-kodi
-            </h3>
-            <p className="text-slate-400 text-xs mb-5">Mijozlar shu QR-kodni skanerlab menyuga o'tishlari mumkin</p>
-
-            <div className="p-4 bg-white rounded-2xl inline-block mx-auto">
-              <QRCodeCanvas
-                ref={qrCanvasRef}
-                value={qrCodeUrl}
-                size={224}
-                level="M"
-                marginSize={0}
-                bgColor="#ffffff"
-                fgColor="#0f172a"
-                title="Muassasa QR-kodi"
-              />
-            </div>
-
-            <button
-              onClick={handleDownloadQrCode}
-              disabled={qrDownloading}
-              className="mt-5 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs shadow-lg shadow-brand/20 transition duration-150 disabled:opacity-50 cursor-pointer"
-            >
-              {qrDownloading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Download className="w-3.5 h-3.5" />
-              )}
-              <span>Rasm qilib yuklab olish</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Table Order Modal (Create new order / Manage active order) */}
       {orderingTable && (
         <TableOrderModal
           table={orderingTable}
           onClose={(refresh) => {
             setOrderingTable(null);
-            if (refresh) {
-              fetchTables();
-            }
+            if (refresh) fetchTables(true);
           }}
         />
       )}
-
     </div>
   );
 };

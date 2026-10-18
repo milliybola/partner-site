@@ -1,6 +1,7 @@
 import React from 'react';
-import { MapPin, CheckCircle2, Circle } from 'lucide-react';
+import { Check, MapPin } from 'lucide-react';
 import type { Neighborhood, PartnerDeliveryZone } from '../services/deliveryZonesApi';
+import { Badge, EmptyState } from '../../../core/ui';
 
 interface NeighborhoodChecklistProps {
   neighborhoods: Neighborhood[];
@@ -9,67 +10,51 @@ interface NeighborhoodChecklistProps {
   onToggle: (uuid: string) => void;
 }
 
-export const NeighborhoodChecklist: React.FC<NeighborhoodChecklistProps> = ({
-  neighborhoods,
-  savedZonesByUuid,
-  pendingUuids,
-  onToggle,
-}) => {
+export const NeighborhoodChecklist: React.FC<NeighborhoodChecklistProps> = ({ neighborhoods, savedZonesByUuid, pendingUuids, onToggle }) => {
   if (neighborhoods.length === 0) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center py-12 border border-dashed border-edge rounded-2xl text-slate-500 text-xs">
-        Mahallalar topilmadi.
-      </div>
-    );
+    return <EmptyState icon={<MapPin className="w-7 h-7" />} title="Mahallalar topilmadi" description="Tuman yoki qidiruv so'zini o'zgartirib ko'ring." className="py-8" />;
   }
 
   return (
-    <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
+    <ul className="divide-y divide-edge">
       {neighborhoods.map((n) => {
         const saved = savedZonesByUuid.get(n.uuid);
         const isPending = pendingUuids.has(n.uuid);
-
-        let statusPill: React.ReactNode = null;
-        if (saved) {
-          statusPill = (
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${saved.is_active
-              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-              : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-              }`}>
-              {saved.is_active ? "Qo'shilgan" : 'Nofaol'}
-            </span>
-          );
-        } else if (isPending) {
-          statusPill = (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">
-              Tanlandi
-            </span>
-          );
-        }
-
+        const checked = !!saved || isPending;
         return (
-          <button
-            key={n.uuid}
-            type="button"
-            onClick={() => onToggle(n.uuid)}
-            className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-900 border border-edge hover:border-edge-strong transition text-left cursor-pointer"
-          >
-            {saved || isPending ? (
-              <CheckCircle2 className={`w-4 h-4 shrink-0 ${saved ? (saved.is_active ? 'text-emerald-400' : 'text-amber-400') : 'text-sky-400'}`} />
-            ) : (
-              <Circle className="w-4 h-4 shrink-0 text-slate-600" />
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-ink text-sm truncate">{n.name}</p>
-              <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                <MapPin className="w-3 h-3" />
-                {n.district}
-              </p>
-            </div>
-            {statusPill}
-          </button>
+          <li key={n.uuid}>
+            <button
+              type="button"
+              onClick={() => onToggle(n.uuid)}
+              aria-pressed={checked}
+              className="w-full min-h-[56px] flex items-center gap-3 px-1 py-2.5 text-left cursor-pointer hover:bg-surface2 rounded-xl"
+            >
+              <span
+                className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 border-2 transition-colors ${
+                  saved
+                    ? saved.is_active
+                      ? 'bg-brand-bright border-brand-bright text-white'
+                      : 'bg-danger-soft border-danger/40 text-danger-ink'
+                    : isPending
+                      ? 'bg-gold border-gold text-ink'
+                      : 'border-edge-strong bg-surface'
+                }`}
+              >
+                {checked && <Check className="w-4 h-4" strokeWidth={3} />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-semibold text-ink truncate">{n.name}</span>
+                <span className="block text-[12px] text-muted truncate">{n.district}</span>
+              </span>
+              {saved ? (
+                <Badge tone={saved.is_active ? 'success' : 'danger'}>{saved.is_active ? "Qo'shilgan" : 'Nofaol'}</Badge>
+              ) : isPending ? (
+                <Badge tone="gold">Tanlandi</Badge>
+              ) : null}
+            </button>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 };

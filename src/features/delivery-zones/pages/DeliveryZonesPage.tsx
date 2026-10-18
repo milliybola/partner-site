@@ -1,16 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  MapPin,
-  Search,
-  Loader2,
-  AlertCircle,
-  RefreshCw,
-  Edit,
-  Trash2,
-  Eraser,
-  HelpCircle,
-} from 'lucide-react';
-import { STORAGE_KEYS } from '../../../core/config/constants';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Eraser, MapPin, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { deliveryZonesApi } from '../services/deliveryZonesApi';
 import type { Neighborhood, PartnerDeliveryZone } from '../services/deliveryZonesApi';
 import { filialApi } from '../../orders/services/filialApi';
@@ -20,34 +9,43 @@ import { NeighborhoodChecklist } from '../components/NeighborhoodChecklist';
 import { EditZoneModal } from '../components/EditZoneModal';
 import { useToast } from '../../../core/components/ToastProvider';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
+import { isManager as isManagerRole } from '../../../core/lib/session';
+import { getErrorMessage } from '../../../core/lib/errors';
+import { formatMoney } from '../../../core/lib/format';
+import {
+  Badge,
+  Button,
+  Card,
+  DataList,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  Input,
+  LoadingState,
+  PageHeader,
+  SearchInput,
+  Select,
+  Sheet,
+  SkeletonList,
+  Switch,
+} from '../../../core/ui';
+import type { Column } from '../../../core/ui';
 
 const TASHKENT_CENTER: [number, number] = [41.311081, 69.240562];
 
 const formatFee = (fee: string | null): string => {
   if (fee === null || fee === undefined || fee === '') return 'Standart narx';
-  const num = Number(fee);
-  return isNaN(num) ? fee : `${num.toLocaleString('uz-UZ')} so'm`;
+  const n = Number(fee);
+  return isNaN(n) ? fee : formatMoney(n);
 };
 
-const formatMinutes = (minutes: number | null): string => {
-  if (minutes === null || minutes === undefined) return '-';
-  return `${minutes} daqiqa`;
-};
+const formatMinutes = (minutes: number | null): string => (minutes === null || minutes === undefined ? '—' : `${minutes} daq`);
 
 const DeliveryZonesPage: React.FC = () => {
   const toast = useToast();
   const confirm = useConfirm();
+  const manager = isManagerRole();
 
-  const partnerData = (() => {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.PARTNER_DATA);
-      return data ? JSON.parse(data) : null;
-    } catch {
-      return null;
-    }
-  })();
-
-  // Neighborhoods (master list, selectable)
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [districts, setDistricts] = useState<string[]>([]);
   const [selectedDistrict, setSelectedDistrict] = useState('');
@@ -55,36 +53,32 @@ const DeliveryZonesPage: React.FC = () => {
   const [loadingNeighborhoods, setLoadingNeighborhoods] = useState(true);
   const [neighborhoodsError, setNeighborhoodsError] = useState<string | null>(null);
 
-  // Partner's saved zones
   const [zones, setZones] = useState<PartnerDeliveryZone[]>([]);
   const [loadingZones, setLoadingZones] = useState(true);
   const [zonesError, setZonesError] = useState<string | null>(null);
 
-  // Filial scoping
   const [filialList, setFilialList] = useState<PartnerFilial[]>([]);
   const [filialUuid, setFilialUuid] = useState('');
 
-  // Pending selection (not yet saved) + bulk-add form
   const [pendingUuids, setPendingUuids] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkDeliveryFee, setBulkDeliveryFee] = useState('');
   const [bulkEstimatedMinutes, setBulkEstimatedMinutes] = useState('');
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
   const [editingZone, setEditingZone] = useState<PartnerDeliveryZone | null>(null);
+  const [busyZone, setBusyZone] = useState<string | null>(null);
 
   const fetchNeighborhoods = useCallback(async () => {
     setLoadingNeighborhoods(true);
     setNeighborhoodsError(null);
     try {
       const data = await deliveryZonesApi.getNeighborhoods();
-      setNeighborhoods(data.neighborhoods);
-      setDistricts(data.districts);
-      setSelectedDistrict((prev) => prev || data.districts[0] || '');
-    } catch (err: any) {
-      console.error('Failed to fetch neighborhoods:', err);
-      setNeighborhoodsError(
-        err.response?.data?.message || err.message || "Mahallalar ro'yxatini yuklashda xatolik yuz berdi."
-      );
+      setNeighborhoods(Array.isArray(data.neighborhoods) ? data.neighborhoods : []);
+      setDistricts(Array.isArray(data.districts) ? data.districts : []);
+      setSelectedDistrict((prev) => prev || data.districts?.[0] || '');
+    } catch (err) {
+      setNeighborhoodsError(getErrorMessage(err, "Mahallalar ro'yxatini yuklashda xatolik yuz berdi."));
     } finally {
       setLoadingNeighborhoods(false);
     }
@@ -94,13 +88,9 @@ const DeliveryZonesPage: React.FC = () => {
     setLoadingZones(true);
     setZonesError(null);
     try {
-      const data = await deliveryZonesApi.getZones(filialUuid || undefined);
-      setZones(data);
-    } catch (err: any) {
-      console.error('Failed to fetch delivery zones:', err);
-      setZonesError(
-        err.response?.data?.message || err.message || "Yetkazib berish hududlarini yuklashda xatolik yuz berdi."
-      );
+      setZones(await deliveryZonesApi.getZones(filialUuid || undefined));
+    } catch (err) {
+      setZonesError(getErrorMessage(err, 'Yetkazib berish hududlarini yuklashda xatolik yuz berdi.'));
     } finally {
       setLoadingZones(false);
     }
@@ -115,36 +105,40 @@ const DeliveryZonesPage: React.FC = () => {
   }, [fetchZones]);
 
   useEffect(() => {
-    if (partnerData?.role === 'manager') return;
-    filialApi.getFilials()
-      .then((data) => setFilialList(data))
-      .catch((err) => console.error('Failed to load filials in DeliveryZonesPage:', err));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (manager) return;
+    filialApi
+      .getFilials()
+      .then(setFilialList)
+      .catch(() => setFilialList([]));
+  }, [manager]);
+
+  // Pending selections made for one filial must not leak into another filial's bulk add.
+  useEffect(() => {
+    setPendingUuids(new Set());
+  }, [filialUuid]);
 
   const savedZonesByUuid = useMemo(() => {
     const map = new Map<string, PartnerDeliveryZone>();
-    zones.forEach((z) => map.set(z.neighborhood.uuid, z));
+    zones.forEach((z) => {
+      if (z.neighborhood?.uuid) map.set(z.neighborhood.uuid, z);
+    });
     return map;
   }, [zones]);
 
-  const districtFilteredNeighborhoods = useMemo(() => {
-    if (!selectedDistrict) return neighborhoods;
-    return neighborhoods.filter((n) => n.district === selectedDistrict);
-  }, [neighborhoods, selectedDistrict]);
+  const districtFiltered = useMemo(
+    () => (selectedDistrict ? neighborhoods.filter((n) => n.district === selectedDistrict) : neighborhoods),
+    [neighborhoods, selectedDistrict],
+  );
 
-  const checklistFilteredNeighborhoods = useMemo(() => {
+  const checklistItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return districtFilteredNeighborhoods;
-    return districtFilteredNeighborhoods.filter((n) => n.name.toLowerCase().includes(q));
-  }, [districtFilteredNeighborhoods, searchQuery]);
+    return q ? districtFiltered.filter((n) => n.name.toLowerCase().includes(q)) : districtFiltered;
+  }, [districtFiltered, searchQuery]);
 
-  // Saved zones and pending selections stay visible on the map even when the district
-  // filter is scoped elsewhere — only the browsable/idle set is limited to the current
-  // district (for render performance), never something the partner has already picked.
+  // Saved zones and pending picks stay on the map even outside the selected district.
   const mapNeighborhoods = useMemo(() => {
     const byUuid = new Map<string, Neighborhood>();
-    districtFilteredNeighborhoods.forEach((n) => byUuid.set(n.uuid, n));
+    districtFiltered.forEach((n) => byUuid.set(n.uuid, n));
     zones.forEach((z) => {
       if (z.neighborhood) byUuid.set(z.neighborhood.uuid, z.neighborhood);
     });
@@ -155,12 +149,12 @@ const DeliveryZonesPage: React.FC = () => {
       }
     });
     return Array.from(byUuid.values());
-  }, [districtFilteredNeighborhoods, zones, pendingUuids, neighborhoods]);
+  }, [districtFiltered, zones, pendingUuids, neighborhoods]);
 
   const mapCenter = useMemo<[number, number]>(() => {
-    const withCenter = districtFilteredNeighborhoods.find((n) => n.center) || neighborhoods.find((n) => n.center);
+    const withCenter = districtFiltered.find((n) => n.center) || neighborhoods.find((n) => n.center);
     return withCenter?.center || TASHKENT_CENTER;
-  }, [districtFilteredNeighborhoods, neighborhoods]);
+  }, [districtFiltered, neighborhoods]);
 
   const handleToggle = (uuid: string) => {
     const saved = savedZonesByUuid.get(uuid);
@@ -176,22 +170,39 @@ const DeliveryZonesPage: React.FC = () => {
     });
   };
 
+  const selectAllVisible = () => {
+    setPendingUuids((prev) => {
+      const next = new Set(prev);
+      checklistItems.forEach((n) => {
+        if (!savedZonesByUuid.has(n.uuid)) next.add(n.uuid);
+      });
+      return next;
+    });
+  };
+
+  const bulkFeeInvalid = bulkDeliveryFee.trim() !== '' && (isNaN(Number(bulkDeliveryFee)) || Number(bulkDeliveryFee) < 0);
+  const bulkMinInvalid =
+    bulkEstimatedMinutes.trim() !== '' && (!Number.isInteger(Number(bulkEstimatedMinutes)) || Number(bulkEstimatedMinutes) < 0);
+
   const handleBulkAdd = async () => {
-    if (pendingUuids.size === 0) return;
+    if (pendingUuids.size === 0 || bulkFeeInvalid || bulkMinInvalid) return;
     setBulkSubmitting(true);
     try {
+      const count = pendingUuids.size;
       await deliveryZonesApi.bulkAddZones({
         neighborhood_uuids: Array.from(pendingUuids),
         filial_uuid: filialUuid || null,
         delivery_fee: bulkDeliveryFee.trim() ? bulkDeliveryFee.trim() : null,
         estimated_minutes: bulkEstimatedMinutes.trim() ? Number(bulkEstimatedMinutes) : null,
       });
-      toast.success(`${pendingUuids.size} ta hudud qo'shildi.`);
+      toast.success(`${count} ta hudud qo'shildi.`);
       setPendingUuids(new Set());
+      setBulkOpen(false);
+      setBulkDeliveryFee('');
+      setBulkEstimatedMinutes('');
       fetchZones();
-    } catch (err: any) {
-      console.error('Failed to bulk add delivery zones:', err);
-      toast.error(err.response?.data?.message || err.message || "Hududlarni qo'shishda xatolik yuz berdi.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Hududlarni qo'shishda xatolik yuz berdi."));
     } finally {
       setBulkSubmitting(false);
     }
@@ -199,35 +210,42 @@ const DeliveryZonesPage: React.FC = () => {
 
   const handleToggleZoneActive = async (zone: PartnerDeliveryZone) => {
     const updated = !zone.is_active;
+    setBusyZone(zone.uuid);
     setZones((prev) => prev.map((z) => (z.uuid === zone.uuid ? { ...z, is_active: updated } : z)));
     try {
       await deliveryZonesApi.updateZone(zone.uuid, { is_active: updated });
-    } catch (err: any) {
-      console.error('Failed to toggle zone active state:', err);
+    } catch (err) {
       setZones((prev) => prev.map((z) => (z.uuid === zone.uuid ? { ...z, is_active: !updated } : z)));
-      toast.error(err.response?.data?.message || "Hudud faolligini o'zgartirishda xatolik.");
+      toast.error(getErrorMessage(err, "Hudud faolligini o'zgartirishda xatolik."));
+    } finally {
+      setBusyZone(null);
     }
   };
 
   const handleDeleteZone = async (zone: PartnerDeliveryZone) => {
-    const ok = await confirm(`Haqiqatan ham "${zone.neighborhood.name}" hududini o'chirmoqchimisiz?`, {
+    const ok = await confirm(`"${zone.neighborhood.name}" hududi o'chiriladi. Davom etasizmi?`, {
+      title: "Hududni o'chirish",
       danger: true,
       confirmText: "O'chirish",
     });
     if (!ok) return;
+    setBusyZone(zone.uuid);
     try {
       await deliveryZonesApi.deleteZone(zone.uuid);
-      fetchZones();
-    } catch (err: any) {
-      console.error('Failed to delete delivery zone:', err);
-      toast.error(err.response?.data?.message || "Hududni o'chirishda xatolik yuz berdi.");
+      setZones((prev) => prev.filter((z) => z.uuid !== zone.uuid));
+      toast.success("Hudud o'chirildi.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Hududni o'chirishda xatolik yuz berdi."));
+    } finally {
+      setBusyZone(null);
     }
   };
 
   const handleClearAll = async () => {
     const ok = await confirm(
-      "Haqiqatan ham barcha yetkazib berish hududlarini tozalamoqchimisiz? Bu amalni ortga qaytarib bo'lmaydi.",
-      { danger: true, confirmText: "Barchasini o'chirish" }
+      // NOTE: DELETE partner/delivery-zones/clear/ takes no filial parameter — it clears ALL zones of the partner.
+      `Barcha ${zones.length > 0 ? `(${zones.length} ta ko'rinayotgan) ` : ''}yetkazib berish hududlari o'chiriladi — barcha filiallar uchun. Bu amalni ortga qaytarib bo'lmaydi.`,
+      { title: 'Barcha hududlarni tozalash', danger: true, confirmText: "Barchasini o'chirish" },
     );
     if (!ok) return;
     try {
@@ -235,99 +253,95 @@ const DeliveryZonesPage: React.FC = () => {
       setPendingUuids(new Set());
       toast.success('Barcha hududlar tozalandi.');
       fetchZones();
-    } catch (err: any) {
-      console.error('Failed to clear delivery zones:', err);
-      toast.error(err.response?.data?.message || "Hududlarni tozalashda xatolik yuz berdi.");
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Hududlarni tozalashda xatolik yuz berdi.'));
     }
   };
 
+  const columns: Column<PartnerDeliveryZone>[] = [
+    {
+      key: 'name',
+      header: 'Mahalla',
+      primary: true,
+      render: (z) => (
+        <div className="min-w-0">
+          <div className="font-bold text-ink truncate">{z.neighborhood?.name || '—'}</div>
+          <div className="text-[12px] text-muted md:hidden">{z.neighborhood?.district}</div>
+        </div>
+      ),
+    },
+    { key: 'district', header: 'Tuman', mobileHidden: true, render: (z) => <span className="text-muted">{z.neighborhood?.district || '—'}</span> },
+    { key: 'filial', header: 'Filial', render: (z) => <span className="text-muted">{z.filial_name || 'Barcha filiallar'}</span> },
+    { key: 'fee', header: 'Narx', render: (z) => <span className="whitespace-nowrap">{formatFee(z.delivery_fee)}</span> },
+    { key: 'time', header: 'Vaqt', render: (z) => formatMinutes(z.estimated_minutes) },
+    {
+      key: 'status',
+      header: 'Holat',
+      mobileAside: true,
+      render: (z) => <Badge tone={z.is_active ? 'success' : 'neutral'}>{z.is_active ? 'Faol' : 'Nofaol'}</Badge>,
+    },
+  ];
+
+  const pendingCount = pendingUuids.size;
+
   if (loadingNeighborhoods) {
     return (
-      <div className="flex flex-col items-center justify-center py-28 gap-4">
-        <Loader2 className="w-10 h-10 text-brand animate-spin" />
-        <p className="text-slate-400 text-sm font-semibold">Mahallalar ro'yxati yuklanmoqda...</p>
+      <div>
+        <PageHeader title="Yetkazish hududlari" />
+        <LoadingState label="Mahallalar ro'yxati yuklanmoqda..." />
       </div>
     );
   }
 
   if (neighborhoodsError) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-6 text-center max-w-lg mx-auto">
-        <AlertCircle className="w-12 h-12 text-rose-500 mb-3 animate-pulse" />
-        <h4 className="font-bold text-ink text-base mb-1">Xatolik yuz berdi</h4>
-        <p className="text-sm text-slate-400 mb-4">{neighborhoodsError}</p>
-        <button
-          onClick={fetchNeighborhoods}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs transition cursor-pointer"
-        >
-          <RefreshCw className="w-4 h-4" />
-          <span>Qayta urinish</span>
-        </button>
+      <div>
+        <PageHeader title="Yetkazish hududlari" />
+        <Card>
+          <ErrorState message={neighborhoodsError} onRetry={fetchNeighborhoods} />
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 font-Outfit text-slate-200">
-      {/* Title Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-edge pb-4">
-        <div>
-          <h1 className="text-3xl font-bold text-ink tracking-tight flex items-center gap-3">
-            Yetkazib berish hududlari <span className="bg-brand/10 text-brand p-1.5 rounded-xl"><MapPin className="w-6 h-6" /></span>
-          </h1>
-          <p className="text-slate-400 text-sm mt-1">Xaritadan yoki ro'yxatdan mahallalarni tanlab, yetkazib berish hududlarini sozlang</p>
-        </div>
-        <button
-          onClick={handleClearAll}
-          disabled={zones.length === 0}
-          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 font-bold text-xs transition duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-        >
-          <Eraser className="w-4 h-4" />
-          <span>Barchasini tozalash</span>
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col lg:flex-row gap-3">
-        {filialList.length > 0 && (
-          <select
-            value={filialUuid}
-            onChange={(e) => setFilialUuid(e.target.value)}
-            className="bg-slate-950/70 border border-edge focus:border-brand/40 text-slate-300 px-4 py-2.5 rounded-xl text-sm focus:outline-none transition cursor-pointer"
-          >
-            <option value="">Barcha filiallar</option>
-            {filialList.map((f) => (
-              <option key={f.uuid} value={f.uuid}>
-                {f.filial_name} {f.is_main ? '(Asosiy)' : ''}
+    <div className="space-y-4">
+      <PageHeader
+        title="Yetkazish hududlari"
+        subtitle="Xarita yoki ro'yxatdan mahallalarni tanlang"
+        sticky={false}
+        actions={
+          <Button variant="danger-soft" icon={<Eraser className="w-4 h-4" />} onClick={handleClearAll} disabled={zones.length === 0}>
+            <span className="hidden sm:inline">Barchasini tozalash</span>
+          </Button>
+        }
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {filialList.length > 0 && (
+            <Select value={filialUuid} onChange={(e) => setFilialUuid(e.target.value)} aria-label="Filial">
+              <option value="">Barcha filiallar</option>
+              {filialList.map((f) => (
+                <option key={f.uuid} value={f.uuid}>
+                  {f.filial_name} {f.is_main ? '(Asosiy)' : ''}
+                </option>
+              ))}
+            </Select>
+          )}
+          <Select value={selectedDistrict} onChange={(e) => setSelectedDistrict(e.target.value)} aria-label="Tuman">
+            <option value="">Barcha tumanlar</option>
+            {districts.map((d) => (
+              <option key={d} value={d}>
+                {d}
               </option>
             ))}
-          </select>
-        )}
-        <select
-          value={selectedDistrict}
-          onChange={(e) => setSelectedDistrict(e.target.value)}
-          className="bg-slate-950/70 border border-edge focus:border-brand/40 text-slate-300 px-4 py-2.5 rounded-xl text-sm focus:outline-none transition cursor-pointer"
-        >
-          <option value="">Barcha tumanlar</option>
-          {districts.map((d) => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
-        <div className="relative flex-1 lg:max-w-xs">
-          <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Mahalla nomi bo'yicha qidirish..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none transition duration-150"
-          />
+          </Select>
+          <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Mahalla nomi..." />
         </div>
-      </div>
+      </PageHeader>
 
-      {/* Map + checklist */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-7">
+      {/* Map + checklist: stacked on phones (map first), side-by-side on desktop */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 min-w-0">
+        <div className="lg:col-span-7 min-w-0">
           <NeighborhoodMap
             neighborhoods={mapNeighborhoods}
             savedZonesByUuid={savedZonesByUuid}
@@ -336,135 +350,136 @@ const DeliveryZonesPage: React.FC = () => {
             onToggle={handleToggle}
           />
         </div>
-        <div className="lg:col-span-5 flex flex-col p-4 rounded-2xl bg-darkCard border border-edge max-h-[560px]">
-          <NeighborhoodChecklist
-            neighborhoods={checklistFilteredNeighborhoods}
-            savedZonesByUuid={savedZonesByUuid}
-            pendingUuids={pendingUuids}
-            onToggle={handleToggle}
+        <Card padded={false} className="lg:col-span-5 min-w-0 flex flex-col lg:max-h-[600px]">
+          <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2">
+            <div className="min-w-0">
+              <h3 className="text-[16px] font-extrabold tracking-tightest">Mahallalar</h3>
+              <p className="text-[12px] text-muted">{checklistItems.length} ta ko'rsatilmoqda</p>
+            </div>
+            <Button size="sm" variant="secondary" onClick={selectAllVisible} disabled={checklistItems.length === 0}>
+              Hammasini tanlash
+            </Button>
+          </div>
+          <div className="px-3 pb-3 overflow-y-auto max-h-[50vh] lg:max-h-none lg:flex-1">
+            <NeighborhoodChecklist
+              neighborhoods={checklistItems}
+              savedZonesByUuid={savedZonesByUuid}
+              pendingUuids={pendingUuids}
+              onToggle={handleToggle}
+            />
+          </div>
+        </Card>
+      </div>
+
+      {/* Saved zones */}
+      <section>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h2 className="text-[17px] font-extrabold tracking-tightest">
+            Qo'shilgan hududlar {!loadingZones && !zonesError && <span className="text-muted font-bold">({zones.length})</span>}
+          </h2>
+        </div>
+        {loadingZones ? (
+          <SkeletonList rows={3} />
+        ) : zonesError ? (
+          <Card>
+            <ErrorState message={zonesError} onRetry={fetchZones} />
+          </Card>
+        ) : (
+          <DataList
+            rows={zones}
+            columns={columns}
+            rowKey={(z) => z.uuid}
+            empty={
+              <Card>
+                <EmptyState
+                  icon={<MapPin className="w-7 h-7" />}
+                  title="Hozircha hudud qo'shilmagan"
+                  description="Xarita yoki ro'yxatdan mahalla tanlab, pastdagi tugma orqali qo'shing."
+                />
+              </Card>
+            }
+            rowActions={(z) => (
+              <div className="flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-2 mr-1">
+                  <span className="text-[12px] text-muted md:hidden">Faol</span>
+                  <Switch size="sm" checked={z.is_active} disabled={busyZone === z.uuid} onChange={() => handleToggleZoneActive(z)} label="Faol" />
+                </span>
+                <IconButton label="Tahrirlash" variant="secondary" onClick={() => setEditingZone(z)}>
+                  <Pencil className="w-4 h-4" />
+                </IconButton>
+                <IconButton label="O'chirish" variant="danger-soft" disabled={busyZone === z.uuid} onClick={() => handleDeleteZone(z)}>
+                  <Trash2 className="w-4 h-4" />
+                </IconButton>
+              </div>
+            )}
+          />
+        )}
+      </section>
+
+      {/* Selection bar: fixed above the tab bar on phones, sticky at the bottom on desktop */}
+      {pendingCount > 0 && (
+        <>
+          <div className="h-20 md:hidden" aria-hidden />
+          <div
+            className="fixed md:sticky left-0 right-0 bottom-[calc(var(--tabbar-h)+var(--safe-bottom))] md:bottom-4 z-30
+              bg-surface border-t md:border border-edge md:rounded-2xl md:shadow-pop px-4 py-3 flex items-center gap-3"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="text-[15px] font-extrabold">{pendingCount} ta mahalla tanlandi</div>
+              <div className="text-[12px] text-muted truncate">{filialUuid ? filialList.find((f) => f.uuid === filialUuid)?.filial_name : 'Barcha filiallar uchun'}</div>
+            </div>
+            <IconButton label="Tanlovni bekor qilish" variant="secondary" onClick={() => setPendingUuids(new Set())}>
+              <X className="w-4 h-4" />
+            </IconButton>
+            <Button size="lg" icon={<Plus className="w-4 h-4" />} onClick={() => setBulkOpen(true)}>
+              Qo'shish
+            </Button>
+          </div>
+        </>
+      )}
+
+      <Sheet
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        persistent={bulkSubmitting}
+        size="sm"
+        title={`${pendingCount} ta hududni qo'shish`}
+        subtitle={filialUuid ? filialList.find((f) => f.uuid === filialUuid)?.filial_name : 'Barcha filiallar uchun'}
+        footer={
+          <>
+            <Button variant="secondary" size="lg" onClick={() => setBulkOpen(false)} disabled={bulkSubmitting}>
+              Bekor qilish
+            </Button>
+            <Button size="lg" onClick={handleBulkAdd} loading={bulkSubmitting} disabled={pendingCount === 0 || bulkFeeInvalid || bulkMinInvalid}>
+              Qo'shish
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Input
+            label="Yetkazib berish narxi (so'm)"
+            type="number"
+            inputMode="numeric"
+            min="0"
+            placeholder="Bo'sh — standart narx"
+            value={bulkDeliveryFee}
+            onChange={(e) => setBulkDeliveryFee(e.target.value)}
+            error={bulkFeeInvalid ? "Narx 0 yoki undan katta son bo'lishi kerak" : null}
+            hint="Ixtiyoriy. Barcha tanlangan hududlarga qo'llanadi"
+          />
+          <Input
+            label="Taxminiy yetkazish vaqti (daqiqa)"
+            type="number"
+            inputMode="numeric"
+            min="0"
+            placeholder="Masalan, 40"
+            value={bulkEstimatedMinutes}
+            onChange={(e) => setBulkEstimatedMinutes(e.target.value)}
+            error={bulkMinInvalid ? 'Butun son kiriting' : null}
           />
         </div>
-      </div>
-
-      {/* Bulk add panel */}
-      <div className="sticky bottom-4 z-10 p-4 rounded-2xl bg-darkCard border border-edge-strong shadow-2xl flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex-1">
-          <p className="text-sm font-bold text-ink">
-            {pendingUuids.size} ta hudud tanlandi
-          </p>
-          <p className="text-[11px] text-slate-500 mt-0.5">Xaritadan yoki ro'yxatdan mahalla tanlab, quyidagi tugma orqali qo'shing</p>
-        </div>
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          placeholder="Yetkazish narxi (ixtiyoriy)"
-          value={bulkDeliveryFee}
-          onChange={(e) => setBulkDeliveryFee(e.target.value)}
-          className="w-full sm:w-48 px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150"
-        />
-        <input
-          type="number"
-          min="0"
-          placeholder="Vaqt, daqiqa (ixtiyoriy)"
-          value={bulkEstimatedMinutes}
-          onChange={(e) => setBulkEstimatedMinutes(e.target.value)}
-          className="w-full sm:w-44 px-4 py-2.5 bg-slate-950 border border-edge focus:border-brand/40 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition duration-150"
-        />
-        <button
-          onClick={handleBulkAdd}
-          disabled={pendingUuids.size === 0 || bulkSubmitting}
-          className="flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs shadow-lg shadow-brand/20 transition duration-150 disabled:opacity-50 cursor-pointer shrink-0"
-        >
-          {bulkSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-          <span>Tanlanganlarni qo'shish</span>
-        </button>
-      </div>
-
-      {/* Existing zones table */}
-      <div className="p-6 rounded-2xl bg-darkCard border border-edge shadow-xl">
-        <h3 className="text-sm font-bold text-ink mb-4">Qo'shilgan hududlar</h3>
-        {loadingZones ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <Loader2 className="w-8 h-8 text-brand animate-spin" />
-            <p className="text-slate-400 text-xs">Hududlar yuklanmoqda...</p>
-          </div>
-        ) : zonesError ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <AlertCircle className="w-8 h-8 text-rose-500 mb-2" />
-            <p className="text-sm text-slate-400 mb-3">{zonesError}</p>
-            <button
-              onClick={fetchZones}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs transition cursor-pointer"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Qayta urinish</span>
-            </button>
-          </div>
-        ) : zones.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-slate-500 text-center">
-            <HelpCircle className="w-12 h-12 stroke-[1] mb-3 text-slate-600" />
-            <h4 className="font-bold text-ink text-sm mb-1">Hozircha hudud qo'shilmagan</h4>
-            <p className="text-xs text-slate-400 max-w-sm">Yuqoridagi xarita yoki ro'yxatdan mahalla tanlab, hududlar qo'shishni boshlang.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-edge text-slate-500 text-xs uppercase tracking-wider font-bold">
-                  <th className="pb-3.5 pl-2">Mahalla</th>
-                  <th className="pb-3.5">Tuman</th>
-                  <th className="pb-3.5">Filial</th>
-                  <th className="pb-3.5">Narx</th>
-                  <th className="pb-3.5">Vaqt</th>
-                  <th className="pb-3.5 text-center">Holat</th>
-                  <th className="pb-3.5 text-right pr-2">Amallar</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-edge text-slate-300">
-                {zones.map((zone) => (
-                  <tr key={zone.uuid} className={`hover:bg-overlay transition-colors ${!zone.is_active ? 'opacity-55' : ''}`}>
-                    <td className="py-3.5 pl-2 font-semibold text-ink">{zone.neighborhood.name}</td>
-                    <td className="py-3.5 text-slate-400">{zone.neighborhood.district}</td>
-                    <td className="py-3.5 text-slate-400">{zone.filial_name || 'Barcha filiallar'}</td>
-                    <td className="py-3.5 text-slate-300">{formatFee(zone.delivery_fee)}</td>
-                    <td className="py-3.5 text-slate-300">{formatMinutes(zone.estimated_minutes)}</td>
-                    <td className="py-3.5 text-center">
-                      <button
-                        onClick={() => handleToggleZoneActive(zone)}
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border transition cursor-pointer ${zone.is_active
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                          : 'bg-slate-700/25 text-slate-500 border-slate-700/30'
-                          }`}
-                      >
-                        {zone.is_active ? 'FAOL' : 'NOFAOL'}
-                      </button>
-                    </td>
-                    <td className="py-3.5 text-right pr-2">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => setEditingZone(zone)}
-                          className="p-1.5 rounded-lg bg-overlay border border-edge text-slate-400 hover:text-ink hover:bg-overlay-strong transition cursor-pointer"
-                          title="Tahrirlash"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteZone(zone)}
-                          className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/10 text-rose-400 hover:text-white hover:bg-rose-500 transition cursor-pointer"
-                          title="O'chirish"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      </Sheet>
 
       {editingZone && (
         <EditZoneModal

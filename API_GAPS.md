@@ -1,0 +1,30 @@
+# API gaps — MilliyGo Partner panel
+
+Everything here is shown in the UI with the `ApiGap` marker (`src/core/ui/ApiGap.tsx`): an amber, dashed "API" pill whose tooltip names the missing endpoint or field. The UI never fills these gaps with invented numbers. Base URL: `https://mytizim.uz/`.
+
+| # | Gap | Where in UI | What is needed |
+|---|-----|-------------|----------------|
+| 1 | **Open/closed toggle.** The old toggle only changed localStorage, so customers never saw it. It now calls `PATCH partner/me/ {"is_open": bool}`, but backend support for a partial JSON PATCH on this view is **unconfirmed**. | Top bar and "Ko'proq" sheet (`Layout.tsx`, `OpenStatus`) | Confirm `PATCH partner/me/` with JSON body, or add `POST partner/me/toggle-open/` returning `{is_open}`. Also include `is_open` in the **staff/manager login and `partner/staff/me/` payload**, so managers see a real state (it currently shows a neutral "Holat"). |
+| 2 | **Sets (combos).** | `/promotions` → "Setlar" tab; "Setlar" chip in POS (`CreateOrderPage`) | `GET/POST partner/my/sets/`, `PATCH/DELETE partner/my/sets/<uuid>/`, order line `items[].set`. Full contract: **`D:\Milliy\API_CONTRACT_SETS_PROMOS.md`** (shared by every MilliyGo frontend; do not fork it). |
+| 3 | **1+1 / 2+1 promotions (BUY_X_GET_Y).** | `/promotions` → "1+1 / 2+1 aksiyalar" tab; promo badge on product cards (`CatalogPage`, shown only if `product.promotion` exists) | `GET/POST partner/my/promotions/`, `PATCH/DELETE partner/my/promotions/<uuid>/`; `promotion` short object on products. See the same contract file. Free-item calculation follows the contract: `group = buy + get`, `free = floor(qty / group) * get`. The server recalculates. |
+| 3a | Contract gap: there is no field for choosing a *different* free product when `same_product = false`. | Promo editor, shown when the "Bepul mahsulot shu mahsulotning o'zi" switch is off | Proposal: `free_products: [uuid]` plus `free_quantity`. |
+| 3b | Contract gap: how a set image is uploaded. | Set editor | The frontend sends multipart (`items` as a JSON string) when a file is attached, otherwise JSON. Backend must accept both, or specify one. |
+| 3c | Contract gap: which roles may manage sets and promos (owner only, or also manager). | `/promotions` | Decide and return 403 accordingly; the UI does not restrict by role yet. |
+| 3d | Contract gap: response wrapper is not fixed. | `promotionsApi.ts` | The frontend accepts a bare array, `{data}` or `{results}`. Please standardise on `{success, data}`. |
+| 4 | **Shop stock quantity.** | Product form (shops only, read-only field) | Add `stock_quantity` (and optionally `track_stock`) to `products/` read and write. |
+| 5 | **Customer location for POS delivery orders.** `orders/partner-pos/create-delivery/` requires `latitude/longitude`; the POS has no customer map picker, so the **venue's** coordinates are sent (falling back to the Tashkent centre). | POS checkout, "Xaritada joy tanlash" (`CreateOrderPage`) | Either accept an address-only order and geocode on the server, or the UI needs a map picker (Yandex picker component exists in `profile/components/YandexLocationPicker.tsx` and can be reused once the expected behaviour is agreed). **Launch blocker** for delivery from the POS. |
+| 6 | **Payouts / settlements.** | Finance page | Proposal: `GET partner/finance/payouts/?period=` returning `[{uuid, period_from, period_to, gross, commission, net, status, paid_at}]` plus `pending_amount`. |
+| 7 | `partner/statistics/` has no commission for `today` or `this_week`. | Finance and Statistika KPI cards | Add `commission` to each period block. |
+| 8 | `partner/statistics/` has no `cancelled` for `this_week` or `this_month`, and no `average_check` for `overall`. | Finance / Statistika | Add the fields to every period block. |
+| 9 | `partner/statistics/` `top_products` only exists for `today` and `this_month`. | Finance / Statistika top products | Add it for `this_week` and `overall`. |
+| 10 | **Excel export period values disagree.** `partner/finance/export/excel/` is sent `day/week/month/all`; `partner/shifts/export/excel/` is sent `today/this_week/this_month/overall`. At least one is probably wrong. | Finance and Smena export buttons | Confirm the accepted values for both, ideally the same set. |
+| 11 | `DELETE partner/delivery-zones/clear/` has no filial scope; it wipes the zones of **every** filial. | Delivery zones, "Hammasini tozalash" (the confirm dialog warns about this) | Accept `?filial_uuid=`. |
+| 12 | `GET orders/` has no pagination info, date filter or status filter in the client (`ordersApi.getOrders` returns only `results`). History and finance lists may be truncated to page 1. | Buyurtmalar tarixi, Moliya, Yakunlangan column | Confirm pagination (`count/next`) and the supported filters (`status`, `from_date`, `to_date`, `delivery_type`), and document the date format. |
+| 13 | Rejecting an order sends no reason. | Rad etish button (orders queue) | Confirm whether `POST orders/partner-management/<uuid>/reject/` accepts `{reason}`. |
+| 14 | Staff/courier filial cannot be *unset*. | Staff and courier edit forms | Accept `home_filial_uuid: null` / `filial_uuid: null`. |
+| 15 | WebSocket `table_status_update` carries no `current_order`. | Stollar | Include `current_order` (total, item count, created_at) so tiles update without a refetch. |
+| 16 | `products/<uuid>/` partial update: the code sends PUT with `{is_available}` and retries with PATCH on 400/405. | Catalog availability switch | Confirm that PATCH is supported, then remove the PUT attempt. |
+| 17 | Yandex Maps is loaded without an API key. | Delivery zones, Profile and Branches map | Provide a production JS API key (quota and ToS). |
+
+## Contract reference
+Sets and 1+1/2+1: **`D:\Milliy\API_CONTRACT_SETS_PROMOS.md`**. Frontend implementation: `src/features/promotions/services/promotionsApi.ts`. If those endpoints return 404/405/501, the page shows a "Bu funksiya tez orada ishga tushadi" empty state instead of crashing, and saving shows a "backend tayyor emas" toast.

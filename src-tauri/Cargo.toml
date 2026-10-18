@@ -1,0 +1,37 @@
+[package]
+name = "milliy-partner"
+version = "1.0.0"
+description = "MilliyGo Hamkor — restoran va do'konlar uchun boshqaruv paneli"
+authors = ["MilliyGo"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+# `_lib` suffix avoids a name clash with the bin target on Windows (cargo issue #8519)
+name = "milliy_partner_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-updater = { version = "2", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# Auto-update is opt-in until a signing key + update server exist.
+# Build with: npm run tauri:build -- --features updater
+updater = ["dep:tauri-plugin-updater"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

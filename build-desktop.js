@@ -1,3 +1,6 @@
+// DEPRECATED: Electron packaging is replaced by Tauri v2 (see src-tauri/ and TAURI_MIGRATION.md).
+// Kept only as a fallback until the Tauri build is verified on a cashier PC. Remove afterwards
+// together with the electron, electron-builder, electron-packager, concurrently and wait-on devDependencies.
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

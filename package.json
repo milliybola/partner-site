@@ -1,16 +1,23 @@
 {
-  "name": "partner-site",
+  "name": "milliygo-partner",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "main": "main.js",
   "scripts": {
-    "dev": "vite --port 7080 --host localhost",
+    "dev": "vite --port 7080 --strictPort --host localhost",
+    "dev:lan": "vite --port 7080 --host",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:7080 && electron .\"",
-    "electron:build": "npm run build && node build-desktop.js"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:build:nsis": "tauri build --bundles nsis",
+    "tauri:build:msi": "tauri build --bundles msi",
+    "tauri:icons": "tauri icon public/logo.png -o src-tauri/icons",
+    "electron:dev": "echo [DEPRECATED] Electron is replaced by Tauri - see TAURI_MIGRATION.md && concurrently \"npm run dev\" \"wait-on http://localhost:7080 && electron .\"",
+    "electron:build": "echo [DEPRECATED] Electron is replaced by Tauri - see TAURI_MIGRATION.md && npm run build && node build-desktop.js"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

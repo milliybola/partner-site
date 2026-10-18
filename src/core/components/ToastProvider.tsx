@@ -24,9 +24,9 @@ export const useToast = () => {
 let idCounter = 0;
 
 const STYLES = {
-  success: { icon: CheckCircle, iconBg: 'bg-emerald-500/15 text-emerald-400', border: 'border-emerald-500/20' },
-  error: { icon: XCircle, iconBg: 'bg-rose-500/15 text-rose-400', border: 'border-rose-500/20' },
-  info: { icon: Info, iconBg: 'bg-brand/15 text-brand', border: 'border-brand/20' },
+  success: { icon: CheckCircle, iconBg: 'bg-brand-soft text-brand', border: 'border-edge' },
+  error: { icon: XCircle, iconBg: 'bg-danger-soft text-danger', border: 'border-danger/20' },
+  info: { icon: Info, iconBg: 'bg-info-soft text-info', border: 'border-edge' },
 } as const;
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -51,14 +51,14 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed top-6 right-6 z-[200] flex flex-col gap-3 w-full max-w-sm pointer-events-none">
+      <div className="fixed z-[200] flex flex-col gap-2 pointer-events-none left-4 right-4 bottom-[calc(var(--tabbar-h)+var(--safe-bottom)+12px)] md:left-auto md:bottom-auto md:top-5 md:right-5 md:w-full md:max-w-sm">
         {toasts.map((t) => {
           const s = STYLES[t.type];
           const Icon = s.icon;
           return (
             <div
               key={t.id}
-              className={`pointer-events-auto flex items-start gap-3 p-4 rounded-2xl bg-surface border ${s.border} shadow-2xl shadow-black/20 animate-[slideIn_0.3s_ease-out]`}
+              className={`pointer-events-auto flex items-start gap-3 p-4 rounded-2xl bg-surface border ${s.border} shadow-pop animate-slide-up`}
             >
               <span className={`p-2 rounded-xl shrink-0 ${s.iconBg}`}>
                 <Icon className="w-4.5 h-4.5" />

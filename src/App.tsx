@@ -20,6 +20,7 @@ import StaffPage from './features/staff/pages/StaffPage';
 import ShiftPage from './features/shifts/pages/ShiftPage';
 import TablesPage from './features/tables/pages/TablesPage';
 import DeliveryZonesPage from './features/delivery-zones/pages/DeliveryZonesPage';
+import PromotionsPage from './features/promotions/pages/PromotionsPage';
 
 const App: React.FC = () => {
   return (
@@ -53,6 +54,7 @@ const App: React.FC = () => {
               <Route path="staff" element={<StaffPage />} />
               <Route path="shift" element={<ShiftPage />} />
               <Route path="tables" element={<TablesPage />} />
+              <Route path="promotions" element={<PromotionsPage />} />
             </Route>
 
             {/* Fallback redirect */}

@@ -149,7 +149,8 @@ export const useWebSocket = (
       ? `${WS_BASE_URL}${restaurantUuid}/filial/${branchUuid}/orders/?token=${token}`
       : `${WS_BASE_URL}${restaurantUuid}/orders/?token=${token}`;
 
-    console.log(`[WS] Connecting to URL: ${wsUrl}`);
+    // Never log wsUrl: it contains the access token.
+    if (import.meta.env.DEV) console.log('[WS] Connecting...');
     const socket = new WebSocket(wsUrl);
     socketRef.current = socket;
 
@@ -160,7 +161,7 @@ export const useWebSocket = (
       // Start keep-alive ping interval (every 30 seconds)
       pingIntervalRef.current = setInterval(() => {
         if (socket.readyState === WebSocket.OPEN) {
-          console.log('[WS] Sending ping to keep connection alive');
+          
           socket.send(JSON.stringify({ action: 'ping' }));
         }
       }, 30000);
@@ -169,11 +170,11 @@ export const useWebSocket = (
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('[WS] Received message:', data);
+        if (import.meta.env.DEV) console.log('[WS] Received message:', data?.type);
 
         // Handle pong message
         if (data.action === 'pong') {
-          console.log('[WS] Connection alive (received pong)');
+          
           return;
         }
 

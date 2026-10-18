@@ -1,169 +1,154 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
-  Design tokens.
-  Values are "R G B" triples (no commas) so Tailwind's <alpha-value>
-  opacity-modifier syntax (e.g. bg-surface/50) works. `.dark` is the
-  default; `.light` overrides. The slate scale is intentionally
-  role-based rather than absolute — this codebase uses slate-300..600 as
-  muted text and slate-700..950 as surfaces throughout, so the scale
-  itself flips per theme instead of every component needing a `dark:`
-  variant.
+  MilliyGo Partner design tokens (light-only).
+  Values are "R G B" triples so Tailwind opacity modifiers work (bg-brand/10).
+  Brief: white surfaces, 1px borders #EEF0F3, ink #111111, muted #6B7280,
+  field #F2F3F5, brand #15803D, bright #16A34A, soft #E8F7EE, gold #F5B400.
 */
 :root,
+.light,
 .dark {
-  --color-canvas: 10 13 19;
-  --color-surface: 19 24 34;
-  --color-surface-2: 15 19 28;
-  --color-ink: 246 248 250;
-  --color-muted: 148 158 176;
-  --color-subtle: 103 113 133;
+  --color-canvas: 247 248 250;      /* #F7F8FA page background */
+  --color-surface: 255 255 255;     /* cards */
+  --color-surface-2: 250 250 251;   /* subtle panels */
+  --color-field: 242 243 245;       /* #F2F3F5 inputs */
+  --color-ink: 17 17 17;            /* #111111 */
+  --color-muted: 107 114 128;       /* #6B7280 */
+  --color-subtle: 156 163 175;      /* #9CA3AF */
+  --color-edge: 238 240 243;        /* #EEF0F3 */
+  --color-edge-strong: 226 229 234; /* #E2E5EA */
 
-  --color-brand: 56 130 255;
-  --color-brand-dark: 33 92 209;
+  --color-brand: 21 128 61;         /* #15803D */
+  --color-brand-dark: 22 101 52;    /* #166534 */
+  --color-brand-bright: 22 163 74;  /* #16A34A */
+  --color-brand-soft: 232 247 238;  /* #E8F7EE */
 
-  --color-edge: rgba(255, 255, 255, 0.07);
-  --color-edge-strong: rgba(255, 255, 255, 0.14);
-  --color-overlay: rgba(255, 255, 255, 0.04);
-  --color-overlay-strong: rgba(255, 255, 255, 0.09);
+  --color-gold: 245 180 0;          /* #F5B400 */
+  --color-gold-soft: 255 244 204;   /* #FFF4CC */
+  --color-gold-ink: 133 77 14;      /* #854D0E */
 
-  --slate-50: 248 250 252;
-  --slate-100: 241 245 249;
-  --slate-200: 226 232 240;
-  --slate-300: 176 186 202;
-  --slate-400: 139 150 170;
-  --slate-500: 103 113 133;
-  --slate-600: 74 83 101;
-  --slate-700: 52 60 76;
-  --slate-800: 34 41 55;
-  --slate-900: 23 28 39;
-  --slate-950: 13 16 23;
+  --color-danger: 239 68 68;        /* #EF4444 */
+  --color-danger-soft: 254 236 236; /* #FEECEC */
+  --color-danger-ink: 185 28 28;    /* #B91C1C */
 
-  color-scheme: dark;
-}
+  --color-warning: 245 158 11;      /* #F59E0B */
+  --color-warning-soft: 254 243 224;/* #FEF3E0 */
+  --color-warning-ink: 180 83 9;    /* #B45309 */
 
-.light {
-  --color-canvas: 247 248 250;
-  --color-surface: 255 255 255;
-  --color-surface-2: 241 243 246;
-  --color-ink: 15 20 30;
-  --color-muted: 90 99 117;
-  --color-subtle: 134 143 161;
+  --color-info: 37 99 235;          /* #2563EB */
+  --color-info-soft: 235 242 255;
 
-  --color-brand: 37 99 235;
-  --color-brand-dark: 29 78 216;
+  --color-overlay: rgba(17, 17, 17, 0.035);
+  --color-overlay-strong: rgba(17, 17, 17, 0.06);
 
-  --color-edge: rgba(15, 23, 42, 0.08);
-  --color-edge-strong: rgba(15, 23, 42, 0.16);
-  --color-overlay: rgba(15, 23, 42, 0.035);
-  --color-overlay-strong: rgba(15, 23, 42, 0.07);
-
-  --slate-50: 13 16 23;
-  --slate-100: 23 28 39;
-  --slate-200: 52 60 76;
-  --slate-300: 88 98 117;
-  --slate-400: 110 120 140;
-  --slate-500: 134 143 161;
-  --slate-600: 165 173 188;
-  --slate-700: 203 209 219;
-  --slate-800: 230 234 239;
-  --slate-900: 255 255 255;
+  /* Legacy slate scale, mapped for a light UI. Old code used 300..600 as
+     muted text and 700..950 as surfaces / fields. */
+  --slate-50: 17 17 17;
+  --slate-100: 17 17 17;
+  --slate-200: 31 41 55;
+  --slate-300: 75 85 99;
+  --slate-400: 107 114 128;
+  --slate-500: 134 140 152;
+  --slate-600: 156 163 175;
+  --slate-700: 226 229 234;
+  --slate-800: 238 240 243;
+  --slate-900: 242 243 245;
   --slate-950: 247 248 250;
+
+  /* Safe areas for phones / notches */
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --tabbar-h: 64px;
 
   color-scheme: light;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
   background-color: rgb(var(--color-canvas));
   color: rgb(var(--color-ink));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
 }
 
-/* Custom scrollbars, theme-aware */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: rgb(var(--color-canvas));
-}
-::-webkit-scrollbar-thumb {
-  background: rgb(var(--color-surface));
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-edge-strong);
+h1, h2, h3 {
+  letter-spacing: -0.4px;
 }
 
-/* Premium micro-animations */
+/* Prevent iOS zoom on input focus: inputs must be >= 16px on phones */
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(var(--color-edge-strong)); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--color-subtle)); }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* Animations */
 @keyframes slideUp {
-  from {
-    transform: translateY(24px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
-
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
 @keyframes slideIn {
-  from {
-    transform: translateX(-16px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+  from { transform: translateX(-12px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }
-
 @keyframes fadeIn {
-  from {
-    opacity: 0;
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes newOrderPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.45); }
+  50% { box-shadow: 0 0 0 8px rgba(22, 163, 74, 0); }
+}
+
+.animate-slide-up { animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-sheet-up { animation: sheetUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-slide-in { animation: slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-fade-in { animation: fadeIn 0.18s ease-out both; }
+.animate-spin-slow { animation: spin 8s linear infinite; }
+.animate-new-order { animation: newOrderPulse 1.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
-  to {
-    opacity: 1;
-  }
 }
 
-.animate-slide-up {
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
+.login-grid-bg { background-image: none; }
 
-.animate-slide-in {
-  animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.2s ease-out forwards;
-}
-
-.animate-spin-slow {
-  animation: spin 8s linear infinite;
-}
-
-.login-grid-bg {
-  background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-                    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-}
-.light .login-grid-bg {
-  background-image: linear-gradient(to right, rgba(15, 23, 42, 0.03) 1px, transparent 1px),
-                    linear-gradient(to bottom, rgba(15, 23, 42, 0.03) 1px, transparent 1px);
-}
-
-/* Text selection */
 ::selection {
-  background-color: rgb(var(--color-brand) / 0.3);
+  background-color: rgb(var(--color-brand) / 0.18);
   color: rgb(var(--color-ink));
 }
 
-/* Native <select>: replace the default browser arrow with a themed chevron.
-   Two encoded SVGs (dark/light) since background-image can't read CSS vars. */
+/* Native <select>: themed chevron */
 select {
   -webkit-appearance: none;
   appearance: none;
@@ -171,27 +156,47 @@ select {
   background-position: right 0.75rem center;
   background-size: 1rem;
   padding-right: 2.25rem !important;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b96ad' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
-.light select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-}
-select:disabled {
-  background-image: none;
-}
+select:disabled { background-image: none; }
 
-/* Checkboxes/radios: tint with the brand color instead of the browser default */
 input[type='checkbox'],
 input[type='radio'] {
   accent-color: rgb(var(--color-brand));
 }
 
-/* Number inputs: drop the native up/down spinner for a cleaner field */
 input[type='number']::-webkit-outer-spin-button,
 input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
-input[type='number'] {
-  -moz-appearance: textfield;
+input[type='number'] { -moz-appearance: textfield; }
+
+/* Keyboard focus ring (mouse clicks don't show it) */
+:focus-visible {
+  outline: 2px solid rgb(var(--color-brand) / 0.55);
+  outline-offset: 2px;
+}
+
+@layer components {
+  /* Reusable primitives for places where a React component would be overkill */
+  .ui-card {
+    @apply bg-surface border border-edge rounded-2xl;
+  }
+  .ui-input {
+    @apply w-full min-h-[44px] rounded-xl bg-field border border-transparent px-3.5 text-[15px] text-ink placeholder:text-subtle
+      focus:outline-none focus:bg-surface focus:border-brand/40 focus:ring-4 focus:ring-brand/10 transition disabled:opacity-60;
+  }
+  .ui-label {
+    @apply block text-[13px] font-semibold text-ink mb-1.5;
+  }
+  .ui-h1 {
+    @apply text-[22px] md:text-[26px] font-extrabold text-ink tracking-tightest leading-tight;
+  }
+  .ui-h2 {
+    @apply text-[17px] font-extrabold text-ink tracking-tightest;
+  }
+  .tap {
+    @apply min-h-[44px] min-w-[44px];
+  }
 }

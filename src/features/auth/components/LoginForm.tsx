@@ -8,6 +8,7 @@ import { cleanPhone, maskPhoneInput } from '../../../core/lib/format';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { clearSession, setPartner } from '../../../core/lib/session';
 import type { PartnerSession } from '../../../core/lib/session';
+import { clearTariffCache } from '../../../core/lib/tariff';
 
 const LoginForm: React.FC = () => {
   const navigate = useNavigate();
@@ -43,6 +44,7 @@ const LoginForm: React.FC = () => {
       }
 
       clearSession();
+      clearTariffCache(); // boshqa hamkor kirgan bo'lishi mumkin — tarif qayta yuklanadi
       localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, tokens.access);
       if (tokens.refresh) localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refresh);
 

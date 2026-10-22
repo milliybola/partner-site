@@ -1,5 +1,8 @@
-export const API_BASE_URL = 'https://mytizim.uz/';
-export const WS_BASE_URL = 'wss://mytizim.uz/ws/partner/';
+import { env } from './env';
+
+// Manzillar `.env.development` / `.env.production` dan olinadi (core/config/env.ts)
+export const API_BASE_URL = env.apiUrl;
+export const WS_BASE_URL = env.wsUrl;
 
 export const STORAGE_KEYS = {
   ACCESS_TOKEN: 'milliygo_access_token',

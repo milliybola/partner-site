@@ -7,6 +7,8 @@ import type { PartnerFilial } from '../../orders/services/filialApi';
 import { TableOrderModal } from '../components/TableOrderModal';
 import { BulkImportSheet, QrSheet, TableActionsSheet, TableFormSheet, TABLE_STATUS_LABEL } from '../components/TableSheets';
 import { useToast } from '../../../core/components/ToastProvider';
+import { useNavigate } from 'react-router-dom';
+import { limitText, useTariff } from '../../../core/lib/tariff';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
 import { useRealtime } from '../../../core/realtime/RealtimeProvider';
 import type { RealtimeEvent } from '../../../core/realtime/RealtimeProvider';
@@ -90,6 +92,12 @@ const TableTile: React.FC<{
 
 const TablesPage: React.FC = () => {
   const toast = useToast();
+  const navigate = useNavigate();
+  const { tariff, refresh: refreshTariffUsage } = useTariff();
+  const limitReached = () => {
+    toast.error(`Stol limiti to'lgan (${tariff.usage.tables} / ${limitText(tariff.max_tables)}). Tarifni oshiring.`);
+    navigate('/plan?need=tables');
+  };
   const confirm = useConfirm();
   const partner = useMemo(() => getPartner(), []);
   const manager = isManagerRole(partner);
@@ -97,6 +105,10 @@ const TablesPage: React.FC = () => {
   const canManage = partner?.role !== ('waiter' as any);
 
   const [tables, setTables] = useState<TableModel[]>([]);
+  // Stol qo'shilganda/o'chirilganda tarif foydalanishi (limit) yangilanadi
+  useEffect(() => {
+    void refreshTariffUsage();
+  }, [tables.length, refreshTariffUsage]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -209,7 +221,10 @@ const TablesPage: React.FC = () => {
     });
   }, [tables, filter, search]);
 
+  const openBulk = () => (tariff.can_add_table ? setBulkOpen(true) : limitReached());
+
   const openForm = (t: TableModel | null) => {
+    if (t === null && !tariff.can_add_table) return limitReached();
     setMenuTable(null);
     setEditing(t);
     setFormOpen(true);
@@ -276,10 +291,10 @@ const TablesPage: React.FC = () => {
             )}
             {canManage && (
               <>
-                <Button variant="outline" className="hidden sm:inline-flex" icon={<FileSpreadsheet className="w-4 h-4" />} onClick={() => setBulkOpen(true)}>
+                <Button variant="outline" className="hidden sm:inline-flex" icon={<FileSpreadsheet className="w-4 h-4" />} onClick={openBulk}>
                   Ko'plab qo'shish
                 </Button>
-                <IconButton label="Ko'plab qo'shish" variant="outline" className="sm:hidden" onClick={() => setBulkOpen(true)}>
+                <IconButton label="Ko'plab qo'shish" variant="outline" className="sm:hidden" onClick={openBulk}>
                   <FileSpreadsheet className="w-[18px] h-[18px]" />
                 </IconButton>
                 <Button icon={<Plus className="w-4 h-4" />} onClick={() => openForm(null)}>
@@ -328,7 +343,7 @@ const TablesPage: React.FC = () => {
                     <Button icon={<Plus className="w-4 h-4" />} onClick={() => openForm(null)}>
                       Stol qo'shish
                     </Button>
-                    <Button variant="outline" icon={<FileSpreadsheet className="w-4 h-4" />} onClick={() => setBulkOpen(true)}>
+                    <Button variant="outline" icon={<FileSpreadsheet className="w-4 h-4" />} onClick={openBulk}>
                       Ko'plab qo'shish
                     </Button>
                   </div>

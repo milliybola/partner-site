@@ -15,8 +15,15 @@ export interface OrderItem {
   product_uuid?: string;
   product_name?: string;
   product_image?: string;
-  line_total?: number;
+  line_total?: number | string;
   name?: string;
+  /** Serverda hisoblangan narx tafsiloti (variantlar, aksiya, kg/qadoq) */
+  unit?: 'PIECE' | 'KG';
+  packaging_name?: string;
+  options?: { group_name?: string; name: string; price_delta?: number | string }[];
+  free_quantity?: number | string;
+  discount_amount?: number | string;
+  promotion_label?: string;
 }
 
 export interface Order {
@@ -32,6 +39,8 @@ export interface Order {
   updated_at?: string;
   delivery_fee: number | string;
   total_price: number | string;
+  /** Aksiya/chegirmalar yig'indisi (server hisoblaydi) */
+  discount_amount?: number | string;
   payment?: string;
   payment_method?: string;
   payment_method_display?: string;
@@ -131,7 +140,7 @@ export const ordersApi = {
     contact_phone: string;
     latitude: string;
     longitude: string;
-    items: { product_uuid: string; quantity: number }[];
+    items: PosItemInput[];
   }): Promise<any> => {
     const response = await apiClient.post(ENDPOINTS.ORDERS.LIST, payload);
     return response.data;
@@ -145,7 +154,7 @@ export const ordersApi = {
     longitude: number;
     payment_method: string;
     description: string;
-    items: { product_uuid: string; quantity: number }[];
+    items: PosItemInput[];
   }): Promise<any> => {
     const response = await apiClient.post('orders/partner-pos/create-delivery/', payload);
     return response.data;
@@ -156,7 +165,7 @@ export const ordersApi = {
     contact_name?: string;
     payment_method: string;
     description?: string;
-    items: { product_uuid: string; quantity: number }[];
+    items: PosItemInput[];
   }): Promise<any> => {
     const response = await apiClient.post('orders/partner-pos/create-pickup/', payload);
     return response.data;
@@ -168,7 +177,7 @@ export const ordersApi = {
     contact_phone?: string;
     contact_name?: string;
     description?: string;
-    items: { product_uuid: string; quantity: number }[];
+    items: PosItemInput[];
   }): Promise<any> => {
     const response = await apiClient.post('orders/partner-pos/create-dine-in/', payload);
     return response.data;
@@ -236,3 +245,37 @@ export const ordersApi = {
     return response.data;
   },
 };
+
+/** Buyurtma qatori (POS): `quantity` — dona/kg yoki (qadoq tanlansa) qadoqlar soni; `options` — variant uuid'lari */
+export interface PosItemInput {
+  product_uuid: string;
+  quantity: number;
+  packaging?: string;
+  options?: string[];
+}
+
+/** Server hisoblagan savat qatori (POS quote) — buyurtma yaratilgandagi bilan bir xil */
+export interface QuoteLine {
+  product_uuid: string;
+  name: string;
+  quantity: number | string;
+  unit: 'PIECE' | 'KG';
+  packaging: string | null;
+  unit_price: number | string;
+  options: { uuid: string; name: string; price_delta: number | string }[];
+  free_quantity: number | string;
+  discount_amount: number | string;
+  promotion_label: string;
+  line_total: number | string;
+}
+
+export interface PosQuote {
+  items: QuoteLine[];
+  subtotal: number | string;
+  discount_amount: number | string;
+  delivery_fee: number | string;
+  total_price: number | string;
+}
+
+export const quotePosCart = async (items: PosItemInput[], deliveryType: string): Promise<PosQuote> =>
+  (await apiClient.post('orders/partner-pos/quote/', { items, delivery_type: deliveryType })).data?.data;

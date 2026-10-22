@@ -1,10 +1,14 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { YMaps, Map as YandexMap, Polygon } from 'react-yandex-maps';
+import { env } from '../../../core/config/env';
 import type { Neighborhood, PartnerDeliveryZone } from '../services/deliveryZonesApi';
 
 // react-yandex-maps' bundled types omit 'uz_UZ' from the YMaps `query.lang` union, but the
 // underlying Yandex Maps API accepts it (same as ProfilePage.tsx's raw script usage).
-const YMAPS_QUERY = { lang: 'uz_UZ' } as unknown as { lang: 'ru_RU' };
+const YMAPS_QUERY = {
+  lang: 'uz_UZ',
+  ...(env.yandexMapsKey ? { apikey: env.yandexMapsKey } : {}),
+} as unknown as { lang: 'ru_RU' };
 
 interface NeighborhoodMapProps {
   neighborhoods: Neighborhood[];

@@ -1,28 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import {
-  BarChart3,
-  BookOpen,
-  Building2,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  DollarSign,
-  LayoutGrid,
-  ListOrdered,
-  LogOut,
-  MapPin,
-  PlusCircle,
-  Receipt,
-  Settings,
-  ShoppingBag,
-  Table,
-  Tag,
-  User,
-  Users,
-  Wifi,
-  WifiOff,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutGrid, LogOut, PlusCircle, Receipt, Wifi, WifiOff } from 'lucide-react';
 import { filialApi } from '../../features/orders/services/filialApi';
 import type { PartnerFilial } from '../../features/orders/services/filialApi';
 import apiClient from '../api/client';
@@ -33,7 +11,6 @@ import {
   clearSession,
   getDisplayName,
   getPartner,
-  isShop,
   setPartner as savePartner,
   wording,
 } from '../lib/session';
@@ -41,65 +18,9 @@ import type { PartnerSession } from '../lib/session';
 import { getErrorMessage } from '../lib/errors';
 import { ensureNotificationPermission } from '../platform';
 import { ApiGap, Sheet, Select } from '../ui';
-
-interface NavItem {
-  to: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  end?: boolean;
-}
-
-interface NavGroup {
-  title: string;
-  items: NavItem[];
-}
-
-const buildNav = (p: PartnerSession | null): NavGroup[] => {
-  const manager = p?.role === 'manager';
-  const shop = isShop(p);
-  const w = wording(p);
-  const groups: NavGroup[] = [
-    {
-      title: 'Savdo',
-      items: [
-        ...(!manager ? [{ to: '/', label: 'Statistika', icon: BarChart3, end: true }] : []),
-        { to: '/orders', label: 'Buyurtmalar', icon: ListOrdered },
-        { to: '/new-order', label: 'Yangi buyurtma', icon: PlusCircle },
-        { to: '/all-orders', label: 'Buyurtmalar tarixi', icon: ShoppingBag },
-        ...(!shop ? [{ to: '/tables', label: 'Stollar', icon: Table }] : []),
-        { to: '/shift', label: 'Smena', icon: Clock },
-      ],
-    },
-    {
-      title: w.menu,
-      items: [
-        { to: '/catalog', label: w.menu, icon: BookOpen },
-        { to: '/promotions', label: 'Setlar va aksiyalar', icon: Tag },
-      ],
-    },
-    {
-      title: 'Boshqaruv',
-      items: [
-        ...(!manager
-          ? [
-              { to: '/finance', label: 'Moliya', icon: DollarSign },
-              { to: '/branches', label: 'Filiallar', icon: Building2 },
-              { to: '/delivery-zones', label: 'Yetkazish hududlari', icon: MapPin },
-            ]
-          : []),
-        { to: '/staff', label: 'Xodimlar', icon: Users },
-      ],
-    },
-    {
-      title: 'Hisob',
-      items: [
-        { to: '/profile', label: 'Profil', icon: User },
-        { to: '/settings', label: 'Sozlamalar', icon: Settings },
-      ],
-    },
-  ];
-  return groups.filter((g) => g.items.length > 0);
-};
+import { venueOf } from '../../venues';
+import { clearTariffCache, useTariff } from '../lib/tariff';
+import { buildNav, buildTabs } from '../../venues/nav';
 
 const Logo: React.FC<{ partner: PartnerSession | null; size?: number }> = ({ partner, size = 36 }) =>
   partner?.logo ? (
@@ -265,20 +186,26 @@ const Shell: React.FC = () => {
 
   const logout = useCallback(() => {
     clearSession();
+    clearTariffCache();
     navigate('/login', { replace: true });
     window.location.reload();
   }, [navigate]);
 
-  const groups = useMemo(() => buildNav(partner), [partner]);
+  const { tariff } = useTariff();
+  const groups = useMemo(() => buildNav(partner, tariff), [partner, tariff]);
   const manager = partner?.role === 'manager';
   const w = wording(partner);
   const filialName = partner?.current_filial?.filial_name || partner?.filial_name;
 
-  const tabs: NavItem[] = [
-    { to: '/orders', label: 'Buyurtmalar', icon: ListOrdered },
-    { to: '/catalog', label: w.menu, icon: BookOpen },
-    manager ? { to: '/shift', label: 'Smena', icon: Clock } : { to: '/', label: 'Statistika', icon: BarChart3, end: true },
-  ];
+  const kind = venueOf(partner);
+  const tabs = useMemo(() => buildTabs(kind, tariff), [kind, tariff]);
+  const newOrderLabel = kind === 'store' ? 'Kassa' : 'Yangi buyurtma';
+
+  // Do'kon va restoran ranglari: index.css dagi `[data-venue]` o'zgaruvchilari
+  useEffect(() => {
+    document.documentElement.dataset.venue = kind;
+  }, [kind]);
+
   const tabPaths = tabs.map((t) => t.to);
   const moreActive = !tabPaths.includes(location.pathname);
 
@@ -405,7 +332,7 @@ const Shell: React.FC = () => {
                   to="/new-order"
                   className="hidden md:inline-flex items-center gap-2 h-10 px-4 ml-1 rounded-xl bg-brand text-white text-[14px] font-bold hover:bg-brand-dark"
                 >
-                  <PlusCircle className="w-4 h-4" /> Yangi buyurtma
+                  <PlusCircle className="w-4 h-4" /> {newOrderLabel}
                 </NavLink>
               )}
             </div>
@@ -471,7 +398,7 @@ const Shell: React.FC = () => {
             to="/new-order"
             className="flex items-center justify-center gap-2 h-14 rounded-2xl bg-brand text-white text-[16px] font-extrabold"
           >
-            <PlusCircle className="w-5 h-5" /> Yangi buyurtma
+            <PlusCircle className="w-5 h-5" /> {newOrderLabel}
           </NavLink>
           <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-field">
             <div className="text-[14px] font-semibold">Muassasa holati</div>

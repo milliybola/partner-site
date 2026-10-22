@@ -35,6 +35,7 @@ interface ProfileForm {
   minOrderAmount: string;
   deliveryFee: string;
   freeDeliveryThreshold: string;
+  deliveryTimeMinutes: string;
   isOpen: boolean;
   hours: WorkingHours;
 }
@@ -50,6 +51,7 @@ const toForm = (p: any): ProfileForm => ({
   minOrderAmount: p?.min_order_amount != null ? String(parseFloat(p.min_order_amount) || 0) : '0',
   deliveryFee: p?.delivery_fee != null ? String(parseFloat(p.delivery_fee) || 0) : '0',
   freeDeliveryThreshold: p?.free_delivery_threshold != null ? String(parseFloat(p.free_delivery_threshold) || 0) : '0',
+  deliveryTimeMinutes: p?.delivery_time_minutes != null ? String(p.delivery_time_minutes) : '30',
   isOpen: p?.is_open !== undefined ? !!p.is_open : true,
   hours: normalizeHours(p?.opening_hours, { sat: false, sun: false }),
 });
@@ -206,6 +208,8 @@ const ProfilePage: React.FC = () => {
     if (form.hours.from_hour && form.hours.to_hour && form.hours.from_hour === form.hours.to_hour) {
       e.hours = 'Ochilish va yopilish vaqti bir xil bo‘lmasin';
     }
+    const minutes = Number(form.deliveryTimeMinutes);
+    if (!Number.isInteger(minutes) || minutes < 5 || minutes > 240) e.deliveryTimeMinutes = "Yetkazish vaqti 5 dan 240 daqiqagacha butun son bo'lsin";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -229,6 +233,7 @@ const ProfilePage: React.FC = () => {
       fd.append('min_order_amount', form.minOrderAmount || '0');
       fd.append('delivery_fee', form.deliveryFee || '0');
       fd.append('free_delivery_threshold', form.freeDeliveryThreshold || '0');
+      if (form.deliveryTimeMinutes) fd.append('delivery_time_minutes', form.deliveryTimeMinutes);
       fd.append('partner_type', profile?.partner_type || getPartner()?.partner_type || 'RESTAURANT');
       fd.append('is_open', form.isOpen ? 'true' : 'false');
       if (form.lat) fd.append('location_lat', form.lat);
@@ -443,7 +448,32 @@ const ProfilePage: React.FC = () => {
                 onChange={(e) => set('freeDeliveryThreshold', e.target.value)}
                 hint={ro ? undefined : "0 — o'chirilgan"}
               />
+              <Input
+                label="Yetkazish vaqti"
+                type="number"
+                inputMode="numeric"
+                min={5}
+                max={240}
+                value={form.deliveryTimeMinutes}
+                error={errors.deliveryTimeMinutes}
+                disabled={ro}
+                onChange={(e) => set('deliveryTimeMinutes', e.target.value)}
+                hint={ro ? 'daqiqa' : "daqiqa · «30 daqiqagacha» filtri shu qiymat bo'yicha ishlaydi"}
+              />
             </div>
+            {Array.isArray(profile?.cuisines) && profile.cuisines.length > 0 && (
+              <div className="mt-4">
+                <div className="text-[13px] font-semibold text-ink mb-1.5">Restoran turi</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {profile.cuisines.map((c: { uuid: string; name: string }) => (
+                    <span key={c.uuid} className="h-7 px-3 rounded-full bg-brand-soft text-brand text-[13px] font-bold inline-flex items-center">
+                      {c.name}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[12px] text-muted mt-1.5">Turlarni platforma administratori belgilaydi. O'zgartirish uchun qo'llab-quvvatlashga yozing.</p>
+              </div>
+            )}
             {ro && (
               <p className="text-[13px] text-muted mt-3">
                 {Number(form.freeDeliveryThreshold) > 0

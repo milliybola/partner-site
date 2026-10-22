@@ -41,7 +41,11 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
   if (!order) return null;
   const { primary, secondary, danger } = getQueueActions(order, ctx);
   const items = order.items || [];
-  const subtotal = items.reduce((s, it) => s + itemPrice(it) * (Number(it.quantity) || 0), 0);
+  // Server hisoblagan qator summasi (aksiya, variant, kg/qadoq hisobga olingan); eski buyurtmada yo'q bo'lsa — narx × miqdor
+  const lineTotal = (it: (typeof items)[number]) =>
+    it.line_total !== undefined && it.line_total !== null && it.line_total !== '' ? Number(it.line_total) : itemPrice(it) * (Number(it.quantity) || 0);
+  const subtotal = items.reduce((s, it) => s + lineTotal(it), 0);
+  const discount = Number(order.discount_amount) || 0;
   const final = isFinal(order.status);
   const hasComment = order.description && order.description !== "Izoh yo'q";
 
@@ -98,18 +102,38 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
             {items.map((it, i) => {
               const price = itemPrice(it);
               const qty = Number(it.quantity) || 0;
+              const free = Number(it.free_quantity) || 0;
+              const itemDiscount = Number(it.discount_amount) || 0;
+              const options = it.options ?? [];
+              const qtyText = it.unit === 'KG' ? `${Number(qty.toFixed(3))} kg` : `${qty}×`;
               return (
                 <div key={it.uuid || i} className="py-2.5 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex gap-2">
-                    <span className="min-w-[32px] h-7 px-1.5 rounded-lg bg-field text-ink text-[13px] font-extrabold flex items-center justify-center tabular-nums">
-                      {qty}×
+                    <span className="min-w-[32px] h-7 px-1.5 rounded-lg bg-field text-ink text-[13px] font-extrabold flex items-center justify-center tabular-nums whitespace-nowrap">
+                      {qtyText}
                     </span>
                     <div className="min-w-0">
-                      <p className="text-[15px] font-semibold text-ink">{itemName(it)}</p>
+                      <p className="text-[15px] font-semibold text-ink">
+                        {itemName(it)}
+                        {it.packaging_name && <span className="text-muted font-medium"> · {it.packaging_name}</span>}
+                      </p>
+                      {options.length > 0 && (
+                        <p className="text-[12px] text-muted">
+                          {options.map((o) => (Number(o.price_delta) > 0 ? `${o.name} (+${formatMoney(o.price_delta, false)})` : o.name)).join(', ')}
+                        </p>
+                      )}
                       <p className="text-[12px] text-muted tabular-nums">{formatMoney(price)}</p>
+                      {(free > 0 || it.promotion_label) && (
+                        <p className="text-[12px] font-bold text-brand">
+                          {it.promotion_label || 'Aksiya'}{free > 0 && `: ${free} ta bepul`}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <span className="text-[14px] font-bold text-ink tabular-nums shrink-0">{formatMoney(price * qty)}</span>
+                  <div className="text-right shrink-0">
+                    <span className="block text-[14px] font-bold text-ink tabular-nums">{formatMoney(lineTotal(it))}</span>
+                    {itemDiscount > 0 && <span className="block text-[12px] text-brand tabular-nums">−{formatMoney(itemDiscount)}</span>}
+                  </div>
                 </div>
               );
             })}
@@ -119,6 +143,12 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
               <span>Mahsulotlar</span>
               <span className="tabular-nums">{formatMoney(subtotal)}</span>
             </div>
+            {discount > 0 && (
+              <div className="flex justify-between text-brand">
+                <span>Chegirma / aksiya</span>
+                <span className="tabular-nums">−{formatMoney(discount)}</span>
+              </div>
+            )}
             {Number(order.delivery_fee) > 0 && (
               <div className="flex justify-between text-muted">
                 <span>Yetkazib berish</span>

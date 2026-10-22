@@ -74,6 +74,9 @@ const extractList = <T,>(data: any): T[] => {
   if (Array.isArray(data?.results)) return data.results;
   if (Array.isArray(data?.data)) return data.data;
   if (Array.isArray(data?.data?.results)) return data.data.results;
+  // Backend javobi: {success, data: {sets: [...]}} / {success, data: {promotions: [...]}}
+  if (Array.isArray(data?.data?.sets)) return data.data.sets;
+  if (Array.isArray(data?.data?.promotions)) return data.data.promotions;
   return [];
 };
 const extractOne = <T,>(data: any): T => (data?.data && !Array.isArray(data.data) ? data.data : data);
@@ -146,6 +149,8 @@ export interface CatalogProduct {
   image: string | null;
   categoryName: string;
   is_available: boolean;
+  /** SINGLE — oddiy mahsulot; SET — kombo (setga setni qo'shib bo'lmaydi) */
+  kind: 'SINGLE' | 'SET';
 }
 
 /** Same call CatalogPage uses: categories come with their products embedded. */
@@ -165,6 +170,7 @@ export const loadCatalogProducts = async (partnerUuid: string): Promise<CatalogP
         image: p.images?.find((img: any) => img.is_main)?.image || p.images?.[0]?.image || p.image_url || null,
         categoryName,
         is_available: p.is_available !== false,
+        kind: p.kind === 'SET' ? 'SET' : 'SINGLE',
       });
     });
   });

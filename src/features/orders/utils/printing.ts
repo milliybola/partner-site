@@ -36,6 +36,11 @@ export interface ReceiptData {
     unit_price?: number | string;
     line_total?: number | string;
     quantity: number;
+    unit?: 'PIECE' | 'KG';
+    packaging_name?: string;
+    options?: Array<{ name: string; price_delta?: number | string }>;
+    free_quantity?: number | string;
+    promotion_label?: string;
   }>;
   subtotal: number | string;
   delivery_fee?: number | string;
@@ -139,14 +144,18 @@ const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean)
     const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
     const unitPrice = Number(item.unit_price || 0).toLocaleString('uz-UZ');
     const lineTotal = Number(item.line_total || 0).toLocaleString('uz-UZ');
+    const qty = item.unit === 'KG' ? `${Number(Number(item.quantity).toFixed(3))} kg` : `${item.quantity}${item.packaging_name ? ` ${item.packaging_name}` : ''}`;
+    const options = (item.options || []).map((o: { name: string }) => o.name).join(', ');
+    const free = Number(item.free_quantity) || 0;
     return `
       <div style="margin-bottom: 6px; font-size: 11px; font-weight: 500; color: #000;">
         <div style="display: flex; justify-content: space-between; font-weight: 700; color: #000;">
           <span>${esc(productName)}</span>
           <span>${lineTotal} UZS</span>
         </div>
+        ${options ? `<div style="font-size: 10px; color: #000;">${esc(options)}</div>` : ''}
         <div style="font-size: 10px; color: #000; font-weight: 500; margin-top: 1px;">
-          ${unitPrice} UZS x ${item.quantity}
+          ${unitPrice} UZS x ${qty}${free > 0 ? ` (+${free} bepul${item.promotion_label ? `, ${esc(item.promotion_label)}` : ''})` : ''}
         </div>
       </div>
     `;

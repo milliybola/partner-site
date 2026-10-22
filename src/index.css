@@ -200,3 +200,14 @@ input[type='number'] { -moz-appearance: textfield; }
     @apply min-h-[44px] min-w-[44px];
   }
 }
+
+/*
+  Do'kon (store) ko'rinishi: asosiy rang yashildan ko'kka almashadi, shunda egasi bir qarashda
+  qaysi tizimda ekanini biladi. Restoran — MilliyGo yashili (yuqoridagi :root).
+*/
+:root[data-venue='store'] {
+  --color-brand: 37 99 235;          /* #2563EB */
+  --color-brand-dark: 29 78 216;     /* #1D4ED8 */
+  --color-brand-bright: 59 130 246;  /* #3B82F6 */
+  --color-brand-soft: 232 240 254;   /* #E8F0FE */
+}

@@ -379,7 +379,7 @@ const PromotionsPage: React.FC = () => {
       <SetEditorSheet
         open={setEditor.open}
         initial={setEditor.item}
-        products={products}
+        products={products.filter((p) => p.kind !== 'SET')}
         productsLoading={productsLoading}
         productsError={productsError}
         onRetryProducts={loadProducts}

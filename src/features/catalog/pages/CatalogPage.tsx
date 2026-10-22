@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FolderOpen, Pencil, Plus, Settings2, ShoppingBag, Trash2 } from 'lucide-react';
 import ProductFormModal from '../components/ProductFormModal';
-import type { ProductData } from '../components/ProductFormModal';
+import type { ProductData, ProductExtras } from '../components/ProductFormModal';
 import { catalogApi } from '../services/catalogApi';
 import type { BaseCategory, CatalogCategory, CatalogProduct } from '../services/catalogApi';
 import { useToast } from '../../../core/components/ToastProvider';
@@ -78,11 +78,19 @@ const ProductCard: React.FC<{
 
         <div className="mt-auto pt-2 flex items-end justify-between gap-2">
           <div className="min-w-0">
-            <div className="text-[16px] font-black text-ink tracking-tightest">{formatMoney(product.price)}</div>
+            <div className="text-[16px] font-black text-ink tracking-tightest">
+              {formatMoney(product.price)}
+              {isShop && product.unit === 'KG' && <span className="text-[12px] font-semibold text-muted"> / kg</span>}
+            </div>
             <div className="flex flex-wrap gap-1 mt-1">
               {!product.is_active && <Badge>Yashirin</Badge>}
               {isShop && product.stock !== null && product.stock !== undefined && (
-                <Badge tone={product.stock > 0 ? 'neutral' : 'danger'}>Qoldiq: {product.stock}</Badge>
+                <Badge tone={product.stock > 0 ? 'neutral' : 'danger'}>
+                  {product.stock > 0 ? `Qoldiq: ${product.stock} ${product.unit === 'KG' ? 'kg' : 'dona'}` : 'Tugagan'}
+                </Badge>
+              )}
+              {isShop && product.packagings && product.packagings.length > 0 && (
+                <Badge>{product.packagings.map((k) => k.name).join(', ')}</Badge>
               )}
             </div>
           </div>
@@ -200,15 +208,29 @@ const CatalogPage: React.FC = () => {
   };
 
   /* --------------------------------------------------------------- product */
-  const handleSaveProduct = async (formData: FormData) => {
-    if (selectedProduct?.uuid) {
-      await catalogApi.updateProduct(selectedProduct.uuid, formData);
+  const handleSaveProduct = async (formData: FormData, extras?: ProductExtras) => {
+    let uuid = selectedProduct?.uuid;
+    if (uuid) {
+      await catalogApi.updateProduct(uuid, formData);
       toast.success('Saqlandi');
     } else {
       const partnerUuid = getPartner()?.uuid;
       if (partnerUuid) formData.append('partner', partnerUuid);
-      await catalogApi.createProduct(formData);
+      uuid = await catalogApi.createProduct(formData);
       toast.success(`${w.product} qo'shildi`);
+    }
+    // Do'kon: qadoqlar va filiallar bo'yicha qoldiq alohida endpointlarga saqlanadi. Mahsulotning o'zi
+    // allaqachon saqlangan, shuning uchun bu yerdagi xato oynani yopmaydi, balki aniq aytiladi (qayta
+    // saqlash takroriy mahsulot yaratmasin).
+    if (extras && uuid) {
+      try {
+        if (extras.packagings && (extras.packagings.length > 0 || selectedProduct?.uuid)) await catalogApi.savePackagings(uuid, extras.packagings);
+        if (extras.stocks && extras.stocks.length > 0) await catalogApi.saveStock(uuid, extras.stocks);
+        // Variantlar: tahrirlashda bo'sh ro'yxat ham yuboriladi (hammasi o'chirilgan bo'lishi mumkin)
+        if (extras.optionGroups && (extras.optionGroups.length > 0 || selectedProduct?.uuid)) await catalogApi.saveOptionGroups(uuid, extras.optionGroups);
+      } catch (err) {
+        toast.error(getErrorMessage(err, `${w.product} saqlandi, lekin qadoq/qoldiq/variantlar saqlanmadi. Tahrirlab qayta urinib ko'ring.`));
+      }
     }
     await fetchCatalogData(true);
   };

@@ -5,6 +5,8 @@ import type { PartnerFilial } from '../../orders/services/filialApi';
 import { staffApi } from '../../staff/services/staffApi';
 import type { StaffMember } from '../../staff/services/staffApi';
 import { useToast } from '../../../core/components/ToastProvider';
+import { useNavigate } from 'react-router-dom';
+import { limitText, useTariff } from '../../../core/lib/tariff';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
 import {
   Badge,
@@ -66,8 +68,13 @@ const toForm = (b?: PartnerFilial | null): BranchForm => ({
 
 const BranchesPage: React.FC = () => {
   const toast = useToast();
+  const navigate = useNavigate();
+  const { tariff, refresh: refreshTariffUsage } = useTariff();
   const confirm = useConfirm();
   const [branches, setBranches] = useState<PartnerFilial[]>([]);
+  useEffect(() => {
+    void refreshTariffUsage();
+  }, [branches.length, refreshTariffUsage]);
   const [managers, setManagers] = useState<StaffMember[]>([]);
   const [managersError, setManagersError] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -113,6 +120,11 @@ const BranchesPage: React.FC = () => {
   const set = <K extends keyof BranchForm>(k: K, v: BranchForm[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   const openCreate = () => {
+    if (!tariff.can_add_filial) {
+      toast.error(`Filial limiti to'lgan (${tariff.usage.filials} / ${limitText(tariff.max_filials)}). Tarifni oshiring.`);
+      navigate('/plan?need=filials');
+      return;
+    }
     setEditing(null);
     setForm(toForm(null));
     setFormError(null);

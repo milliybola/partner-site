@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ImagePlus, X } from 'lucide-react';
 import { Button, Field, InlineAlert, Input, Sheet, SettingRow, Switch, Textarea } from '../../../core/ui';
-import { formatMoney, fromBackendDate, toBackendDate } from '../../../core/lib/format';
+import { formatMoney } from '../../../core/lib/format';
 import { getErrorMessage, isMissingEndpoint } from '../../../core/lib/errors';
 import { useToast } from '../../../core/components/ToastProvider';
 import { wording } from '../../../core/lib/session';
@@ -29,8 +29,6 @@ export const SetEditorSheet: React.FC<{
   const [price, setPrice] = useState('');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [isActive, setIsActive] = useState(true);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -47,8 +45,6 @@ export const SetEditorSheet: React.FC<{
     });
     setQuantities(q);
     setIsActive(initial?.is_active ?? true);
-    setStartDate(fromBackendDate(initial?.start_date));
-    setEndDate(fromBackendDate(initial?.end_date));
     setImageFile(null);
     setImagePreview(initial?.image || null);
     setErrors({});
@@ -86,7 +82,6 @@ export const SetEditorSheet: React.FC<{
     const totalQty = selectedItems.reduce((s, [, q]) => s + q, 0);
     if (selectedItems.length === 0) e.items = `Kamida bitta ${w.product.toLowerCase()} tanlang`;
     else if (totalQty < 2) e.items = "Set kamida 2 dona mahsulotdan iborat bo'lishi kerak";
-    if (startDate && endDate && startDate > endDate) e.dates = "Tugash sanasi boshlanish sanasidan oldin bo'lishi mumkin emas";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -99,8 +94,6 @@ export const SetEditorSheet: React.FC<{
       price: priceNum,
       items: selectedItems.map(([product, quantity]) => ({ product, quantity })),
       is_active: isActive,
-      start_date: startDate ? toBackendDate(startDate) : null,
-      end_date: endDate ? toBackendDate(endDate) : null,
     };
     setSaving(true);
     try {
@@ -211,14 +204,6 @@ export const SetEditorSheet: React.FC<{
             ) : null}
           </div>
         </div>
-
-        {/* Dates */}
-        <div className="grid grid-cols-2 gap-3">
-          <Input type="date" label="Boshlanish" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-          <Input type="date" label="Tugash" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-        </div>
-        {errors.dates && <p className="text-[12px] font-medium text-danger-ink -mt-2">{errors.dates}</p>}
-        <p className="text-[12px] text-muted -mt-2">Sana bo'sh qolsa, set muddatsiz amal qiladi.</p>
 
         <SettingRow
           className="border-t border-edge"

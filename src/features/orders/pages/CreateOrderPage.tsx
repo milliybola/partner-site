@@ -6,6 +6,7 @@ import {
   ChevronUp,
   FileText,
   FolderOpen,
+  Lock,
   Minus,
   Plus,
   Printer,
@@ -16,7 +17,8 @@ import {
   X,
 } from 'lucide-react';
 import apiClient from '../../../core/api/client';
-import { ordersApi } from '../services/ordersApi';
+import { ordersApi, quotePosCart } from '../services/ordersApi';
+import type { PosItemInput, PosQuote } from '../services/ordersApi';
 import { tablesApi } from '../../tables/services/tablesApi';
 import type { TableModel } from '../../tables/services/tablesApi';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
@@ -40,6 +42,10 @@ import {
 import { getErrorMessage } from '../../../core/lib/errors';
 import { formatMoney, maskPhoneInput } from '../../../core/lib/format';
 import { getPartner, isShop, wording } from '../../../core/lib/session';
+import { useTariff } from '../../../core/lib/tariff';
+import { shiftApi } from '../../shifts/services/shiftApi';
+import { ProductConfigSheet, isConfigurable, lineKey, unitPrice } from '../components/ProductConfigSheet';
+import type { LineConfig, PosOptionGroup, PosPackaging, SelectedOption } from '../components/ProductConfigSheet';
 
 interface Product {
   uuid: string;
@@ -50,6 +56,16 @@ interface Product {
   discount: number;
   is_available: boolean;
   image_url?: string | null;
+  /** Variantlar, qadoq va kg — kassada alohida sozlash oynasi bilan tanlanadi */
+  unit?: 'PIECE' | 'KG';
+  step?: number;
+  min_quantity?: number;
+  option_groups?: PosOptionGroup[];
+  packagings?: PosPackaging[];
+  /** Aksiya (1+1 / 2+1) va set tarkibi — kartada ko'rsatiladi; hisobni server qiladi */
+  promotion?: { label?: string } | null;
+  kind?: 'SINGLE' | 'SET';
+  set_items?: { name: string; quantity: number }[];
 }
 
 interface Category {
@@ -62,8 +78,20 @@ interface Category {
 
 interface CartItem {
   product: Product;
+  /** Dona/kg yoki (qadoq tanlangan bo'lsa) qadoqlar soni */
   quantity: number;
+  /** Qator identifikatori (mahsulot + variantlar + qadoq). Eski saqlangan savatlarda yo'q — product.uuid */
+  key?: string;
+  options?: SelectedOption[];
+  packaging?: PosPackaging | null;
 }
+
+const keyOf = (i: CartItem) => i.key ?? i.product.uuid;
+const linePrice = (i: CartItem) => unitPrice(i.product, i.options, i.packaging) * i.quantity;
+const qtyText = (i: CartItem) =>
+  i.packaging ? `${i.quantity} × ${i.packaging.name}` : i.product.unit === 'KG' ? `${Number(i.quantity.toFixed(3))} kg` : String(i.quantity);
+/** Chekda ko'rinadigan nom: "Lavash (Achchiq, Katta)" */
+const lineName = (i: CartItem) => (i.options?.length ? `${i.product.name} (${i.options.map((o) => o.name).join(', ')})` : i.product.name);
 
 type ServiceType = 'DELIVERY' | 'PICKUP' | 'DINE_IN';
 type PaymentMethod = 'CASH' | 'CLICK' | 'PAYME' | 'UZCARD';
@@ -130,6 +158,22 @@ const CreateOrderPage: React.FC = () => {
   const shop = isShop(partnerDetails);
   const w = wording(partnerDetails);
   const allowedServices: ServiceType[] = shop ? ['DELIVERY'] : ['DELIVERY', 'PICKUP', 'DINE_IN'];
+  // Tarifda yo'q xizmatlar qulf bilan ko'rinadi (bosilsa «Tarif» sahifasi); server ham baribir rad etadi
+  // Restoran kassasi: smena ochiq bo'lishi shart (server ham tekshiradi). null — hali noma'lum.
+  const [shiftOpen, setShiftOpen] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (shop) return;
+    let alive = true;
+    shiftApi
+      .getCurrentShift()
+      .then((s) => alive && setShiftOpen(!!s))
+      .catch(() => alive && setShiftOpen(null));
+    return () => {
+      alive = false;
+    };
+  }, [shop]);
+  const { tariff } = useTariff();
+  const lockedService = (t: ServiceType) => (t === 'PICKUP' && !tariff.allow_pickup) || (t === 'DINE_IN' && !tariff.allow_dine_in);
 
   // Catalog
   const [categories, setCategories] = useState<Category[]>([]);
@@ -269,15 +313,42 @@ const CreateOrderPage: React.FC = () => {
               ? c.products.map((p: any) => {
                   const raw = parseFloat(p.price || '0') || 0;
                   const disc = p.discount ? parseFloat(p.discount) || 0 : 0;
+                  // Birlik narxi serverdan (`final_price`: aksiya narxi yoki chegirma hisobga olingan) — o'zimiz hisoblamaymiz
+                  const serverPrice = p.final_price !== undefined && p.final_price !== null ? parseFloat(p.final_price) : NaN;
+                  const price = Number.isFinite(serverPrice) ? serverPrice : disc > 0 ? raw * (1 - disc / 100) : raw;
                   return {
                     uuid: p.uuid,
                     name: p.name,
                     description: p.description || '',
-                    price: disc > 0 ? raw * (1 - disc / 100) : raw,
+                    price,
+                    promotion: p.promotion && typeof p.promotion === 'object' ? { label: p.promotion.label } : null,
+                    kind: p.kind === 'SET' ? 'SET' : 'SINGLE',
+                    set_items: (Array.isArray(p.set_items) ? p.set_items : []).map((s: any) => ({ name: s.name, quantity: Number(s.quantity) || 1 })),
                     original_price: raw,
-                    discount: disc,
+                    discount: raw > 0 && price < raw ? Math.round((1 - price / raw) * 100) : 0,
                     is_available: !!p.is_available && !!p.is_active,
                     image_url: p.images?.find((img: any) => img.is_main)?.image || p.images?.[0]?.image || p.image_url || null,
+                    unit: p.unit === 'KG' ? 'KG' : 'PIECE',
+                    step: p.step !== undefined ? Number(p.step) : undefined,
+                    min_quantity: p.min_quantity !== undefined ? Number(p.min_quantity) : undefined,
+                    option_groups: (Array.isArray(p.option_groups) ? p.option_groups : []).map((g: any) => ({
+                      uuid: g.uuid,
+                      name: g.name,
+                      min_select: Number(g.min_select ?? 0),
+                      max_select: Number(g.max_select ?? 1),
+                      options: (Array.isArray(g.options) ? g.options : []).map((o: any) => ({
+                        uuid: o.uuid,
+                        name: o.name,
+                        price_delta: parseFloat(o.price_delta || '0') || 0,
+                        is_available: o.is_available !== false,
+                      })),
+                    })),
+                    packagings: (Array.isArray(p.packagings) ? p.packagings : []).map((k: any) => ({
+                      uuid: k.uuid,
+                      name: k.name,
+                      multiplier: Number(k.multiplier),
+                      price: parseFloat(k.price || '0') || 0,
+                    })),
                   } as Product;
                 })
               : [],
@@ -317,19 +388,41 @@ const CreateOrderPage: React.FC = () => {
   }, [productIndex]);
 
   /* -------------------------------------------------------------- cart */
-  const qtyOf = (uuid: string) => cart.find((i) => i.product.uuid === uuid)?.quantity || 0;
+  // Mahsulot kartochkasidagi son: shu mahsulotning barcha qatorlari (variant/qadoq farqidan qat'i nazar)
+  const qtyOf = (uuid: string) => cart.filter((i) => i.product.uuid === uuid).reduce((s, i) => s + i.quantity, 0);
 
+  /** Oddiy mahsulot (variant/qadoq/kg yo'q) — qator kaliti mahsulot uuid'sining o'zi */
   const setQty = (product: Product, qty: number) => {
-    const exists = cart.some((i) => i.product.uuid === product.uuid);
+    const exists = cart.some((i) => keyOf(i) === product.uuid);
     let next: CartItem[];
-    if (qty <= 0) next = cart.filter((i) => i.product.uuid !== product.uuid);
-    else if (exists) next = cart.map((i) => (i.product.uuid === product.uuid ? { ...i, quantity: qty } : i));
+    if (qty <= 0) next = cart.filter((i) => keyOf(i) !== product.uuid);
+    else if (exists) next = cart.map((i) => (keyOf(i) === product.uuid ? { ...i, quantity: qty } : i));
     else next = [...cart, { product, quantity: qty }];
     updateActiveCart({ cart: next });
   };
 
+  /** Savatdagi qatorni kaliti bo'yicha yangilash (savat paneli) */
+  const setLineQty = (key: string, qty: number) =>
+    updateActiveCart({ cart: qty <= 0 ? cart.filter((i) => keyOf(i) !== key) : cart.map((i) => (keyOf(i) === key ? { ...i, quantity: qty } : i)) });
+
+  const [configuring, setConfiguring] = useState<Product | null>(null);
+
+  const addConfigured = (product: Product, cfg: LineConfig) => {
+    const key = lineKey(product.uuid, cfg.options, cfg.packaging);
+    const existing = cart.find((i) => keyOf(i) === key);
+    const next = existing
+      ? cart.map((i) => (keyOf(i) === key ? { ...i, quantity: Number((i.quantity + cfg.quantity).toFixed(3)) } : i))
+      : [...cart, { product, quantity: cfg.quantity, key, options: cfg.options, packaging: cfg.packaging }];
+    updateActiveCart({ cart: next });
+    setConfiguring(null);
+  };
+
   const addToCart = (product: Product) => {
     if (!product.is_available) return;
+    if (isConfigurable(product)) {
+      setConfiguring(product);
+      return;
+    }
     setQty(product, qtyOf(product.uuid) + 1);
   };
 
@@ -391,8 +484,42 @@ const CreateOrderPage: React.FC = () => {
     return list;
   }, [categories, activeCategoryUuid, searchQuery]);
 
-  const itemsCount = cart.reduce((s, i) => s + i.quantity, 0);
-  const subtotal = cart.reduce((s, i) => s + i.product.price * i.quantity, 0);
+  // Kg qatori "1 ta buyurtma pozitsiyasi" hisoblanadi, kasr son emas
+  const itemsCount = cart.reduce((s, i) => s + (Number.isInteger(i.quantity) ? i.quantity : 1), 0);
+
+  /** Savat qatorlari serverga yuboriladigan shaklda (quote va buyurtma yaratishda bir xil) */
+  const buildItems = (lines: CartItem[]): PosItemInput[] =>
+    lines.map((i) => ({
+      product_uuid: i.product.uuid,
+      quantity: i.quantity,
+      ...(i.packaging ? { packaging: i.packaging.uuid } : {}),
+      ...(i.options?.length ? { options: i.options.map((o) => o.uuid) } : {}),
+    }));
+
+  // Narxni SERVER hisoblaydi (1+1/2+1 aksiya, set variantlari, chegirma, kg/qadoq) — kassa o'zi taxmin qilmaydi.
+  // Savat o'zgarsa 350 ms dan keyin qayta so'raladi; javob kelguncha taxminiy narx ko'rsatiladi.
+  const quoteKey = JSON.stringify([buildItems(cart), serviceType]);
+  const [quoteState, setQuoteState] = useState<{ key: string; quote: PosQuote | null; error: string | null } | null>(null);
+  useEffect(() => {
+    if (cart.length === 0) return;
+    let alive = true;
+    const t = setTimeout(() => {
+      quotePosCart(buildItems(cart), serviceType)
+        .then((quote) => alive && setQuoteState({ key: quoteKey, quote, error: null }))
+        .catch((err) => alive && setQuoteState({ key: quoteKey, quote: null, error: getErrorMessage(err, "Narxni hisoblab bo'lmadi.") }));
+    }, 350);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteKey]);
+  const quote = cart.length > 0 && quoteState?.key === quoteKey ? quoteState.quote : null;
+  const quoteError = cart.length > 0 && quoteState?.key === quoteKey ? quoteState.error : null;
+  const discountTotal = quote ? Number(quote.discount_amount) || 0 : 0;
+  const quoteLine = (idx: number) => quote?.items[idx];
+
+  const subtotal = quote ? Number(quote.subtotal) : cart.reduce((s, i) => s + linePrice(i), 0);
 
   // BUGFIX: the old code invented an 8 000 so'm fee / 50 000 threshold when the partner
   // profile didn't carry them. Now we only show a fee we actually know; otherwise the
@@ -418,6 +545,11 @@ const CreateOrderPage: React.FC = () => {
 
   /* ------------------------------------------------------------ steps */
   const handleServiceSelect = (type: ServiceType) => {
+    if (lockedService(type)) {
+      toast.info(`${SERVICE_LABEL[type]} tarifingizda yo'q. Tarifni oshiring.`);
+      navigate(`/plan?need=${type === 'PICKUP' ? 'pickup' : 'dine_in'}`);
+      return;
+    }
     updateActiveCart({ serviceType: type, step: type === 'DINE_IN' ? 'TABLE_SELECT' : 'MENU' });
   };
 
@@ -439,7 +571,12 @@ const CreateOrderPage: React.FC = () => {
       await printPreCheckUtil({
         table_number: serviceType === 'DINE_IN' ? selectedTable?.table_number || null : null,
         total_price: total,
-        items: cart.map((i) => ({ product_name: i.product.name, price_at_time_of_order: i.product.price, quantity: i.quantity })),
+        items: cart.map((i, idx) => {
+          const q = quoteLine(idx);
+          // Aksiya hisobga olingan qator summasi: narx = jami / miqdor
+          const unit = q ? Number(q.line_total) / (Number(q.quantity) || 1) : unitPrice(i.product, i.options, i.packaging);
+          return { product_name: lineName(i), price_at_time_of_order: unit, quantity: i.quantity };
+        }),
       });
     } catch (err) {
       toast.error(getErrorMessage(err, 'Pre-chekni chop etishda xatolik'));
@@ -460,12 +597,19 @@ const CreateOrderPage: React.FC = () => {
           address: serviceType === 'DELIVERY' ? address.trim() : undefined,
           delivery_type_display: SERVICE_LABEL[serviceType],
           table_number: serviceType === 'DINE_IN' ? selectedTable?.table_number || null : null,
-          items: cart.map((i) => ({
-            product_name: i.product.name,
-            unit_price: i.product.price,
-            quantity: i.quantity,
-            line_total: i.product.price * i.quantity,
-          })),
+          items: cart.map((i, idx) => {
+            const q = quoteLine(idx);
+            return {
+              product_name: lineName(i),
+              unit_price: q ? q.unit_price : unitPrice(i.product, i.options, i.packaging),
+              quantity: i.quantity,
+              unit: i.product.unit,
+              packaging_name: i.packaging?.name,
+              free_quantity: q?.free_quantity,
+              promotion_label: q?.promotion_label,
+              line_total: q ? q.line_total : linePrice(i),
+            };
+          }),
           subtotal,
           delivery_fee: deliveryFee ?? 0,
           total_price: total,
@@ -487,6 +631,11 @@ const CreateOrderPage: React.FC = () => {
   /* ------------------------------------------------------------ submit */
   const handleSubmitOrder = async () => {
     if (!isFormValid || submitting) return;
+    if (!shop && shiftOpen === false) {
+      toast.error('Smena ochilmagan. Buyurtma yaratish uchun avval smenani oching.');
+      navigate('/shift');
+      return;
+    }
 
     // BUGFIX: a phone field left at "+998" used to be sent as contact_phone "998".
     const phone = normalizePhone(contactPhone);
@@ -503,7 +652,7 @@ const CreateOrderPage: React.FC = () => {
     // venue's own coordinates (pre-existing behaviour). See report / API_GAPS.md.
     const lat = partnerDetails?.location_lat ? parseFloat(partnerDetails.location_lat) : 41.311081;
     const lng = partnerDetails?.location_long ? parseFloat(partnerDetails.location_long) : 69.240562;
-    const items = cart.map((i) => ({ product_uuid: i.product.uuid, quantity: i.quantity }));
+    const items = buildItems(cart);
 
     try {
       if (serviceType === 'DELIVERY') {
@@ -615,12 +764,16 @@ const CreateOrderPage: React.FC = () => {
                 key={o.type}
                 type="button"
                 onClick={() => handleServiceSelect(o.type)}
-                className="flex sm:flex-col items-center sm:items-start gap-4 p-4 sm:p-5 min-h-[84px] rounded-2xl bg-surface border border-edge text-left hover:border-brand/40 hover:shadow-card active:bg-brand-soft transition cursor-pointer"
+                className={`flex sm:flex-col items-center sm:items-start gap-4 p-4 sm:p-5 min-h-[84px] rounded-2xl bg-surface border border-edge text-left transition cursor-pointer ${
+                  lockedService(o.type) ? 'opacity-70' : 'hover:border-brand/40 hover:shadow-card active:bg-brand-soft'
+                }`}
               >
-                <span className="w-14 h-14 rounded-2xl bg-brand-soft text-brand flex items-center justify-center shrink-0">{o.icon}</span>
+                <span className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${lockedService(o.type) ? 'bg-field text-subtle' : 'bg-brand-soft text-brand'}`}>
+                  {lockedService(o.type) ? <Lock className="w-7 h-7" /> : o.icon}
+                </span>
                 <span>
                   <span className="block text-[16px] font-extrabold tracking-tightest">{o.title}</span>
-                  <span className="block text-[13px] text-muted mt-0.5">{o.desc}</span>
+                  <span className="block text-[13px] text-muted mt-0.5">{lockedService(o.type) ? "Tarifingizda yo'q — tarifni oshiring" : o.desc}</span>
                 </span>
               </button>
             ))}
@@ -711,30 +864,49 @@ const CreateOrderPage: React.FC = () => {
         <EmptyState icon={<ShoppingBag className="w-7 h-7" />} title="Savat bo'sh" description={`Menyudan ${w.product.toLowerCase()} qo'shing`} className="py-8" />
       ) : (
         <div className="divide-y divide-edge">
-          {cart.map((i) => (
-            <div key={i.product.uuid} className="py-3 flex items-center gap-3">
+          {cart.map((i, idx) => {
+            const q = quoteLine(idx);
+            const free = Number(q?.free_quantity) || 0;
+            return (
+            <div key={keyOf(i)} className="py-3 flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <div className="text-[14px] font-bold text-ink truncate" title={i.product.name}>
                   {i.product.name}
+                  {i.product.kind === 'SET' && <span className="ml-1.5 align-middle"><Badge tone="info">Set</Badge></span>}
                 </div>
+                {i.options && i.options.length > 0 && <div className="text-[12px] text-muted truncate">{i.options.map((o) => o.name).join(', ')}</div>}
                 <div className="text-[13px] text-muted">
-                  {formatMoney(i.product.price)}
+                  {formatMoney(q ? q.unit_price : unitPrice(i.product, i.options, i.packaging))}
+                  {(i.packaging || i.product.unit === 'KG') && <span> · {qtyText(i)}</span>}
+                  {q && <span className="ml-2 font-bold text-ink tabular-nums">= {formatMoney(q.line_total)}</span>}
                   {!i.product.is_available && <span className="ml-2 text-danger-ink font-semibold">Tugagan</span>}
                 </div>
+                {(free > 0 || q?.promotion_label) && (
+                  <div className="text-[12px] font-bold text-brand">
+                    {q?.promotion_label || 'Aksiya'}{free > 0 && `: ${free} ta bepul`}
+                  </div>
+                )}
               </div>
-              <QtyStepper value={i.quantity} min={0} onChange={(v) => setQty(i.product, v)} />
+              {i.product.unit === 'KG' && !i.packaging ? (
+                <span className="px-3 h-11 inline-flex items-center rounded-xl bg-field text-[14px] font-extrabold tabular-nums">{qtyText(i)}</span>
+              ) : (
+                <QtyStepper value={i.quantity} min={0} onChange={(v) => setLineQty(keyOf(i), v)} />
+              )}
               <button
                 type="button"
                 aria-label="O'chirish"
-                onClick={() => setQty(i.product, 0)}
+                onClick={() => setLineQty(keyOf(i), 0)}
                 className="w-11 h-11 rounded-xl flex items-center justify-center text-muted hover:text-danger hover:bg-danger-soft cursor-pointer shrink-0"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
+
+      {quoteError && <InlineAlert tone="danger">{quoteError}</InlineAlert>}
 
       {unavailableInCart.length > 0 && (
         <InlineAlert tone="warning">
@@ -818,6 +990,12 @@ const CreateOrderPage: React.FC = () => {
           <span>Mahsulotlar ({itemsCount} ta)</span>
           <span>{formatMoney(subtotal)}</span>
         </div>
+        {discountTotal > 0 && (
+          <div className="flex justify-between text-brand font-semibold">
+            <span>Aksiya / chegirma (hisobga olingan)</span>
+            <span>−{formatMoney(discountTotal)}</span>
+          </div>
+        )}
         {serviceType === 'DELIVERY' && (
           <div className="flex justify-between text-muted">
             <span>Yetkazib berish</span>
@@ -953,7 +1131,11 @@ const CreateOrderPage: React.FC = () => {
                         ) : (
                           <ShoppingBag className="w-8 h-8 text-subtle" />
                         )}
-                        {p.discount > 0 && <span className="absolute top-2 left-2"><Badge tone="danger">-{p.discount}%</Badge></span>}
+                        <span className="absolute top-2 left-2 flex flex-col items-start gap-1">
+                          {p.discount > 0 && <Badge tone="danger">-{p.discount}%</Badge>}
+                          {p.promotion?.label && <Badge tone="gold">{p.promotion.label}</Badge>}
+                          {p.kind === 'SET' && <Badge tone="info">Set</Badge>}
+                        </span>
                         {!p.is_available && (
                           <span className="absolute inset-0 bg-white/70 flex items-center justify-center">
                             <Badge tone="neutral">Tugagan</Badge>
@@ -967,6 +1149,9 @@ const CreateOrderPage: React.FC = () => {
                       </div>
                       <div className="p-3 pb-2 flex-1">
                         <div className="text-[14px] font-bold text-ink leading-snug line-clamp-2">{p.name}</div>
+                        {p.kind === 'SET' && p.set_items && p.set_items.length > 0 && (
+                          <div className="mt-0.5 text-[11px] text-muted line-clamp-2">{p.set_items.map((s) => `${s.quantity}× ${s.name}`).join(", ")}</div>
+                        )}
                         <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
                           <span className="text-[15px] font-extrabold text-ink">{formatMoney(p.price)}</span>
                           {p.discount > 0 && <span className="text-[12px] text-subtle line-through">{formatMoney(p.original_price, false)}</span>}
@@ -974,7 +1159,7 @@ const CreateOrderPage: React.FC = () => {
                       </div>
                     </button>
                     <div className="px-3 pb-3">
-                      {qty > 0 ? (
+                      {qty > 0 && !isConfigurable(p) ? (
                         <div className="flex items-center bg-brand-soft rounded-xl">
                           <button
                             type="button"
@@ -1020,6 +1205,8 @@ const CreateOrderPage: React.FC = () => {
           <div className="border-t border-edge p-4">{submitButton}</div>
         </aside>
 
+        <ProductConfigSheet product={configuring} onClose={() => setConfiguring(null)} onConfirm={(cfg) => configuring && addConfigured(configuring, cfg)} />
+
         {/* Mobile / tablet floating cart bar */}
         {cart.length > 0 && (
           <button
@@ -1054,6 +1241,14 @@ const CreateOrderPage: React.FC = () => {
 
   return (
     <div className="pt-3 animate-fade-in">
+      {!shop && shiftOpen === false && (
+        <InlineAlert tone="warning" className="mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="font-semibold">Smena ochilmagan — smenani ochmaguncha buyurtma yaratib bo'lmaydi.</span>
+            <Button size="sm" onClick={() => navigate('/shift')}>Smenani ochish</Button>
+          </div>
+        </InlineAlert>
+      )}
       {cartTabsBar}
       {step === 'SERVICE_TYPE' && !shop && renderServiceTypeStep()}
       {step === 'TABLE_SELECT' && !shop && renderTableSelectStep()}

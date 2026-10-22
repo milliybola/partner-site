@@ -18,6 +18,8 @@ export interface NavGroup {
   title: string;
   items: NavItem[];
 }
+console.log("gffg");
+
 
 const own = (owner: boolean, items: NavItem[]) => (owner ? items : []);
 

@@ -90,7 +90,7 @@ const DATE_PRESETS: { value: DatePreset; label: string }[] = [
 
 const DONE_OK = ['COMPLETED', 'DELIVERED'];
 const DONE_BAD = ['CANCELLED', 'REJECTED'];
-const ACTIVE = ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'ON_THE_WAY'];
+const ACTIVE = ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'PICKED_UP', 'ON_THE_WAY'];
 
 const orderPayment = (o: Order) => (o.payment || o.payment_method || '').toUpperCase();
 const orderNo = (o: Order) => o.order_number || `#${o.id}`;

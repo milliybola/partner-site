@@ -32,15 +32,25 @@ export interface ActionContext {
 }
 
 export const isPendingLike = (s: string) => s === 'PENDING' || s === 'SEARCHING_COURIER';
+/** Kuryer buyurtmani olgan: holatni endi kuryer boshqaradi. */
+export const isHandedToCourier = (o: Pick<Order, 'status' | 'courier' | 'courier_phone'>) =>
+  (o.status === 'PICKED_UP' || o.status === 'ON_THE_WAY') && !!(o.courier || o.courier_phone);
+
+export const HANDED_NOTE = 'Buyurtma kuryerga topshirilgan — holatni endi kuryer boshqaradi.';
+
 export const isFinal = (s: string) => ['COMPLETED', 'DELIVERED', 'REJECTED', 'CANCELLED'].includes(s);
 
 export const getQueueActions = (order: Order, ctx: ActionContext): { primary?: QueueAction; secondary: QueueAction[]; danger?: QueueAction } => {
   const delivery = order.delivery_type === 'DELIVERY';
   const secondary: QueueAction[] = [];
+  if (isHandedToCourier(order)) return { secondary: [] };
+  if (delivery && ctx.hasOwnCouriers && ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(order.status)) {
+    secondary.push({ kind: 'assign_courier', label: 'Kuryer biriktirish', tone: 'secondary' });
+  }
   switch (order.status) {
     case 'PENDING':
     case 'SEARCHING_COURIER':
-      if (delivery && ctx.hasOwnCouriers) secondary.push({ kind: 'assign_courier', label: "O'z kuryerimni biriktirish", tone: 'secondary' });
+      if (delivery && ctx.hasOwnCouriers) secondary.push({ kind: 'assign_courier', label: 'Kuryer biriktirish', tone: 'secondary' });
       return {
         primary: { kind: 'accept', label: delivery ? 'Qabul qilish (MilliyGo kuryeri)' : 'Qabul qilish', tone: 'primary' },
         secondary,

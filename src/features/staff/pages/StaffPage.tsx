@@ -56,13 +56,13 @@ const courierStatus = (status?: string) => {
   }
 };
 
-const StaffPage: React.FC = () => {
+const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => {
   const toast = useToast();
   const confirm = useConfirm();
   const manager = isManagerFn();
   const canEdit = !manager;
 
-  const [tab, setTab] = useState<Tab>('staff');
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [filials, setFilials] = useState<PartnerFilial[]>([]);
 
   // Staff

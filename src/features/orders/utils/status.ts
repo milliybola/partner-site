@@ -12,6 +12,7 @@ export type OrderStatus =
   | 'REJECTED'
   | 'PREPARING'
   | 'READY_FOR_PICKUP'
+  | 'PICKED_UP'
   | 'ON_THE_WAY'
   | 'COMPLETED'
   | 'DELIVERED'
@@ -25,6 +26,7 @@ export const STATUS_META: Record<string, { label: string; tone: BadgeTone; group
   ACCEPTED: { label: 'Qabul qilindi', tone: 'info', group: 'PREPARING' },
   PREPARING: { label: 'Tayyorlanmoqda', tone: 'warning', group: 'PREPARING' },
   READY_FOR_PICKUP: { label: 'Tayyor', tone: 'success', group: 'READY' },
+  PICKED_UP: { label: 'Kuryer oldi', tone: 'info', group: 'ON_THE_WAY' },
   ON_THE_WAY: { label: "Yo'lda", tone: 'info', group: 'ON_THE_WAY' },
   COMPLETED: { label: 'Yakunlangan', tone: 'neutral', group: 'DONE' },
   DELIVERED: { label: 'Yetkazildi', tone: 'neutral', group: 'DONE' },
@@ -36,7 +38,7 @@ export const QUEUE_GROUPS: { key: QueueGroup; label: string; statuses: string[] 
   { key: 'NEW', label: 'Yangi', statuses: ['PENDING', 'SEARCHING_COURIER'] },
   { key: 'PREPARING', label: 'Tayyorlanmoqda', statuses: ['ACCEPTED', 'PREPARING'] },
   { key: 'READY', label: 'Tayyor', statuses: ['READY_FOR_PICKUP'] },
-  { key: 'ON_THE_WAY', label: "Yo'lda", statuses: ['ON_THE_WAY'] },
+  { key: 'ON_THE_WAY', label: "Yo'lda", statuses: ['PICKED_UP', 'ON_THE_WAY'] },
   { key: 'DONE', label: 'Yakunlangan', statuses: ['COMPLETED', 'DELIVERED', 'REJECTED', 'CANCELLED'] },
 ];
 

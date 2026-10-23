@@ -4,7 +4,7 @@ import type { Order } from '../../services/ordersApi';
 import { Badge, Button, Sheet } from '../../../../core/ui';
 import { formatDateTime, formatMoney, formatPhone } from '../../../../core/lib/format';
 import { deliveryTypeLabel, paymentLabel, statusLabel, statusTone } from '../../utils/status';
-import { getQueueActions, isFinal, itemName, itemPrice, orderNo } from './actions';
+import { getQueueActions, HANDED_NOTE, isFinal, isHandedToCourier, itemName, itemPrice, orderNo } from './actions';
 import type { ActionContext, QueueAction } from './actions';
 import { ElapsedChip } from './OrderCard';
 
@@ -95,6 +95,12 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
       }
     >
       <div className="space-y-5">
+        {isHandedToCourier(order) && (
+          <div className="rounded-2xl bg-info-soft text-info px-4 py-3 flex gap-2.5">
+            <Bike className="w-4 h-4 mt-0.5 shrink-0" />
+            <p className="text-[14px] font-semibold">{HANDED_NOTE}</p>
+          </div>
+        )}
         {/* Items */}
         <section>
           <h3 className="text-[12px] font-bold uppercase tracking-wider text-subtle mb-1">Tarkib · {items.length} xil</h3>
@@ -193,11 +199,11 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
               {order.distance ? <span className="text-muted font-medium"> · {order.distance} km</span> : null}
             </InfoRow>
           )}
-          {order.courier_phone && (
+          {(order.courier_phone || order.courier?.phone) && (
             <InfoRow icon={<Bike className="w-4 h-4" />} label="Kuryer">
-              {[order.courier?.first_name, order.courier?.last_name].filter(Boolean).join(' ')}{' '}
-              <a href={`tel:${order.courier_phone}`} className="text-brand hover:underline">
-                {formatPhone(order.courier_phone)}
+              {order.courier?.full_name || [order.courier?.first_name, order.courier?.last_name].filter(Boolean).join(' ')}{' '}
+              <a href={`tel:${order.courier_phone || order.courier?.phone}`} className="text-brand hover:underline">
+                {formatPhone(order.courier_phone || order.courier?.phone || '')}
               </a>
             </InfoRow>
           )}

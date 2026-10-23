@@ -1,5 +1,5 @@
 import {
-  BarChart3, BookOpen, Boxes, Building2, ChefHat, ClipboardCheck, Clock, DollarSign, Home, ListOrdered, Lock, MapPin,
+  Bike, BarChart3, BookOpen, Boxes, Building2, ChefHat, ClipboardCheck, Clock, DollarSign, Home, ListOrdered, Lock, MapPin,
   ScanBarcode, Settings, ShoppingBag, Table, Tag, User, Users, Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -79,6 +79,8 @@ const management = (owner: boolean): NavGroup[] => [
       ]),
       { to: '/all-orders', label: 'Buyurtmalar tarixi', icon: ShoppingBag },
       { to: '/staff', label: 'Xodimlar', icon: Users },
+      { to: '/couriers', label: 'Kuryerlar', icon: Bike },
+      { to: '/couriers', label: 'Kuryerlar', icon: Bike },
     ],
   },
   {

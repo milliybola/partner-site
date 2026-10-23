@@ -4,7 +4,7 @@ import type { Order } from '../../services/ordersApi';
 import { Badge, Button } from '../../../../core/ui';
 import { formatMoney, formatTime, minutesSince } from '../../../../core/lib/format';
 import { deliveryTypeLabel, statusLabel, statusTone } from '../../utils/status';
-import { getQueueActions, isFinal, isPendingLike, itemName, orderNo } from './actions';
+import { getQueueActions, isFinal, isHandedToCourier, isPendingLike, itemName, orderNo } from './actions';
 import type { ActionContext, QueueAction } from './actions';
 
 const TypeIcon: React.FC<{ type?: string }> = ({ type }) =>
@@ -107,6 +107,10 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
           <ChevronRight className="w-4 h-4 text-subtle" />
         </div>
       </button>
+
+      {!primary && !danger && isHandedToCourier(order) && (
+        <p className="px-3.5 pb-3.5 text-[12px] font-semibold text-muted">Kuryerda — holatni kuryer boshqaradi</p>
+      )}
 
       {(primary || danger) && (
         <div className="px-3.5 pb-3.5">

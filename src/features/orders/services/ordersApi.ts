@@ -30,7 +30,7 @@ export interface Order {
   id: number;
   uuid: string;
   order_number?: string;
-  status: 'PENDING' | 'SEARCHING_COURIER' | 'ACCEPTED' | 'REJECTED' | 'PREPARING' | 'READY_FOR_PICKUP' | 'ON_THE_WAY' | 'COMPLETED' | 'DELIVERED' | 'CANCELLED';
+  status: 'PENDING' | 'SEARCHING_COURIER' | 'ACCEPTED' | 'REJECTED' | 'PREPARING' | 'READY_FOR_PICKUP' | 'PICKED_UP' | 'ON_THE_WAY' | 'COMPLETED' | 'DELIVERED' | 'CANCELLED';
   partner_uuid?: string;
   contact_phone: string;
   contact_name?: string;
@@ -50,7 +50,7 @@ export interface Order {
   distance?: number;
   description?: string;
   reject_reason?: string | null;
-  courier?: { first_name?: string; last_name?: string } | null;
+  courier?: { first_name?: string; last_name?: string; full_name?: string; phone?: string } | null;
   is_paid?: boolean;
   table_number?: string | null;
   delivery_type?: string;

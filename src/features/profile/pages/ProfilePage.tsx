@@ -36,6 +36,7 @@ interface ProfileForm {
   deliveryFee: string;
   freeDeliveryThreshold: string;
   deliveryTimeMinutes: string;
+  maxActiveOrders: string;
   isOpen: boolean;
   hours: WorkingHours;
 }
@@ -52,6 +53,7 @@ const toForm = (p: any): ProfileForm => ({
   deliveryFee: p?.delivery_fee != null ? String(parseFloat(p.delivery_fee) || 0) : '0',
   freeDeliveryThreshold: p?.free_delivery_threshold != null ? String(parseFloat(p.free_delivery_threshold) || 0) : '0',
   deliveryTimeMinutes: p?.delivery_time_minutes != null ? String(p.delivery_time_minutes) : '30',
+  maxActiveOrders: p?.max_active_orders != null ? String(p.max_active_orders) : '3',
   isOpen: p?.is_open !== undefined ? !!p.is_open : true,
   hours: normalizeHours(p?.opening_hours, { sat: false, sun: false }),
 });
@@ -210,6 +212,8 @@ const ProfilePage: React.FC = () => {
     }
     const minutes = Number(form.deliveryTimeMinutes);
     if (!Number.isInteger(minutes) || minutes < 5 || minutes > 240) e.deliveryTimeMinutes = "Yetkazish vaqti 5 dan 240 daqiqagacha butun son bo'lsin";
+    const trip = Number(form.maxActiveOrders);
+    if (!Number.isInteger(trip) || trip < 1 || trip > 4) e.maxActiveOrders = "Reysdagi buyurtmalar soni 1 dan 4 gacha bo'lsin";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -234,6 +238,7 @@ const ProfilePage: React.FC = () => {
       fd.append('delivery_fee', form.deliveryFee || '0');
       fd.append('free_delivery_threshold', form.freeDeliveryThreshold || '0');
       if (form.deliveryTimeMinutes) fd.append('delivery_time_minutes', form.deliveryTimeMinutes);
+      if (form.maxActiveOrders) fd.append('max_active_orders', form.maxActiveOrders);
       fd.append('partner_type', profile?.partner_type || getPartner()?.partner_type || 'RESTAURANT');
       fd.append('is_open', form.isOpen ? 'true' : 'false');
       if (form.lat) fd.append('location_lat', form.lat);
@@ -459,6 +464,18 @@ const ProfilePage: React.FC = () => {
                 disabled={ro}
                 onChange={(e) => set('deliveryTimeMinutes', e.target.value)}
                 hint={ro ? 'daqiqa' : "daqiqa · «30 daqiqagacha» filtri shu qiymat bo'yicha ishlaydi"}
+              />
+              <Input
+                label="Kuryer bir reysda nechta buyurtma olsin"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={4}
+                value={form.maxActiveOrders}
+                error={errors.maxActiveOrders}
+                disabled={ro}
+                onChange={(e) => set('maxActiveOrders', e.target.value)}
+                hint={ro ? 'ta' : "1–4 · kuryer birga olib ketadigan buyurtmalar soni (yo'l-yo'lakay yetkazish)"}
               />
             </div>
             {Array.isArray(profile?.cuisines) && profile.cuisines.length > 0 && (

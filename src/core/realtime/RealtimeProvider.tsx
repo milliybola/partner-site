@@ -34,6 +34,10 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const num = event.order_data?.order_number || event.order_data?.id || '';
       notify('Yangi buyurtma', num ? `Buyurtma #${num} keldi` : event.message || 'Yangi buyurtma keldi');
     }
+    if (event?.type === 'no_courier_alert') {
+      // Buyurtmaga kuryer topilmadi: hamkor o'z kuryerini qo'lda biriktirishi kerak
+      notify('Kuryer topilmadi', event.message || 'Buyurtmaga kuryer topilmadi. Kuryerni qo\'lda biriktiring.');
+    }
     listeners.current.forEach((l) => {
       try {
         l(event);

@@ -33,10 +33,10 @@ export const CourierPickerSheet: React.FC<{
         <EmptyState
           icon={<Bike className="w-7 h-7" />}
           title="Kuryerlar topilmadi"
-          description="O'z kuryerlaringizni Xodimlar bo'limida qo'shishingiz mumkin."
+          description="O'z kuryerlaringizni Kuryerlar bo'limida qo'shishingiz mumkin."
           action={
-            <Button variant="outline" onClick={() => navigate('/staff')}>
-              Xodimlarga o'tish
+            <Button variant="outline" onClick={() => navigate('/couriers')}>
+              Kuryerlarga o'tish
             </Button>
           }
         />
@@ -44,6 +44,9 @@ export const CourierPickerSheet: React.FC<{
         <div className="space-y-2">
           {sorted.map((c) => {
             const st = courierStatus(c.status);
+            const load = c.active_orders ?? 0;
+            const limit = c.max_active_orders ?? 1;
+            const full = load >= limit;
             return (
               <div key={c.uuid} className="flex items-center justify-between gap-3 p-3 rounded-2xl border border-edge">
                 <div className="min-w-0">
@@ -55,9 +58,14 @@ export const CourierPickerSheet: React.FC<{
                       {st.label}
                     </Badge>
                     <span className="text-[12px] text-muted">{formatPhone(c.phone)}</span>
+                    {load > 0 && (
+                      <Badge tone={full ? 'danger' : 'brand'}>
+                        Reys {load}/{limit}
+                      </Badge>
+                    )}
                   </div>
                 </div>
-                <Button size="md" loading={assigningUuid === c.uuid} disabled={!!assigningUuid} onClick={() => onAssign(c.uuid)}>
+                <Button size="md" loading={assigningUuid === c.uuid} disabled={!!assigningUuid || full} onClick={() => onAssign(c.uuid)}>
                   Biriktirish
                 </Button>
               </div>

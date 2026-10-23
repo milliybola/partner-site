@@ -39,7 +39,7 @@ import { OrderDetailSheet } from '../components/queue/OrderDetailSheet';
 import { PaymentSheet } from '../components/queue/PaymentSheet';
 import type { PaymentMethod } from '../components/queue/PaymentSheet';
 import { CourierPickerSheet } from '../components/queue/CourierPickerSheet';
-import { isPendingLike, orderNo } from '../components/queue/actions';
+import { HANDED_NOTE, isPendingLike, orderNo } from '../components/queue/actions';
 import type { ActionContext, QueueAction } from '../components/queue/actions';
 
 /* ------------------------------------------------------------ prefs */
@@ -310,6 +310,17 @@ const OrdersPage: React.FC = () => {
     }
   };
 
+  // 409 HANDED_TO_COURIER: kuryer buyurtmani olgan — xabar ko'rsatib, ro'yxatni yangilaymiz.
+  const reportActionError = (err: any, fallback: string) => {
+    if (err?.response?.status === 409 && err?.response?.data?.code === 'HANDED_TO_COURIER') {
+      toast.error(err.response.data.message || HANDED_NOTE);
+      setCourierOrder(null);
+      fetchOrders('silent');
+      return;
+    }
+    toast.error(getErrorMessage(err, fallback));
+  };
+
   const updateStatus = async (order: Order, nextStatus: Order['status'], successMsg?: string) => {
     const previous = orders;
     setBusyUuid(order.uuid);
@@ -325,7 +336,7 @@ const OrdersPage: React.FC = () => {
       fetchOrders('silent');
     } catch (err) {
       setOrders(previous);
-      toast.error(getErrorMessage(err, 'Buyurtma holatini yangilashda xatolik yuz berdi.'));
+      reportActionError(err, 'Buyurtma holatini yangilashda xatolik yuz berdi.');
     } finally {
       setBusyUuid(null);
     }
@@ -360,7 +371,7 @@ const OrdersPage: React.FC = () => {
       setCourierOrder(null);
       fetchOrders('silent');
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Kuryerni biriktirishda xatolik yuz berdi.'));
+      reportActionError(err, 'Kuryerni biriktirishda xatolik yuz berdi.');
     } finally {
       setAssigningCourierUuid(null);
     }
@@ -373,7 +384,7 @@ const OrdersPage: React.FC = () => {
       toast.success('Buyurtma MilliyGo kuryerlariga yuborildi.');
       fetchOrders('silent');
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Global kuryerlarga yuborishda xatolik yuz berdi.'));
+      reportActionError(err, 'Global kuryerlarga yuborishda xatolik yuz berdi.');
     } finally {
       setBusyUuid(null);
     }
@@ -389,7 +400,7 @@ const OrdersPage: React.FC = () => {
       handlePrintReceipt(order.uuid, true);
       fetchOrders('silent');
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Buyurtmani yakunlashda xatolik yuz berdi.'));
+      reportActionError(err, 'Buyurtmani yakunlashda xatolik yuz berdi.');
     } finally {
       setBusyUuid(null);
     }
@@ -408,7 +419,7 @@ const OrdersPage: React.FC = () => {
       setPaymentOrder(null);
       fetchOrders('silent');
     } catch (err) {
-      toast.error(getErrorMessage(err, "To'lov ma'lumotlarini saqlashda xatolik yuz berdi."));
+      reportActionError(err, "To'lov ma'lumotlarini saqlashda xatolik yuz berdi.");
     } finally {
       setPaymentSaving(false);
     }

@@ -19,6 +19,8 @@ export interface CourierModel {
   vehicle_info?: CourierVehicleInfo;
   filial_uuid?: string;
   filial_name?: string;
+  active_orders?: number;
+  max_active_orders?: number;
   created_at?: string;
 }
 

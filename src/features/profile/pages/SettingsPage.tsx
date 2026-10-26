@@ -3,7 +3,8 @@ import { Bell, BellOff, ChevronDown, Monitor, Printer, Volume2 } from 'lucide-re
 import { useToast } from '../../../core/components/ToastProvider';
 import { Badge, Button, Card, CardHeader, Divider, InlineAlert, PageHeader, QtyStepper, SettingRow, Switch } from '../../../core/ui';
 import { ensureNotificationPermission, isTauri, notify } from '../../../core/platform';
-import { getDisplayName, getPartner } from '../../../core/lib/session';
+import { getDisplayName, getPartner, isManager } from '../../../core/lib/session';
+import { PaymentMethodsCard } from '../components/PaymentMethodsCard';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { printReceiptPreview } from '../../orders/utils/printing';
 
@@ -152,6 +153,9 @@ const SettingsPage: React.FC = () => {
           </Button>
         </div>
       </Card>
+
+      {/* Faqat egasi: qaysi to'lov usullari qabul qilinadi (menejer ko'rmaydi) */}
+      {!isManager() && <PaymentMethodsCard />}
 
       <Card>
         <CardHeader title="Bildirishnomalar va ovoz" icon={<Bell className="w-[18px] h-[18px]" />} />

@@ -1,32 +1,42 @@
 import React, { useEffect, useState } from 'react';
-import { Banknote, CreditCard, Smartphone, Wallet } from 'lucide-react';
+import { Banknote, CreditCard, Smartphone, Wallet, ArrowLeftRight } from 'lucide-react';
 import type { Order } from '../../services/ordersApi';
 import { Button, Sheet } from '../../../../core/ui';
 import { formatMoney } from '../../../../core/lib/format';
+import { normalizePayCode, usePaymentMethods } from '../../../../core/lib/payments';
+import type { PayMethod } from '../../../../core/lib/payments';
 import { orderNo } from './actions';
 
-export type PaymentMethod = 'CASH' | 'CLICK' | 'PAYME' | 'UZCARD';
+/** Eski nom — endi backend kodlari (core/lib/payments.ts) */
+export type PaymentMethod = PayMethod;
 
-const METHODS: { value: PaymentMethod; label: string; icon: React.ReactNode }[] = [
-  { value: 'CASH', label: 'Naqd pul', icon: <Banknote className="w-6 h-6" /> },
-  { value: 'CLICK', label: 'Click', icon: <Smartphone className="w-6 h-6" /> },
-  { value: 'PAYME', label: 'Payme', icon: <Wallet className="w-6 h-6" /> },
-  { value: 'UZCARD', label: 'Uzcard', icon: <CreditCard className="w-6 h-6" /> },
-];
+const ICONS: Record<PayMethod, React.ReactNode> = {
+  CASH: <Banknote className="w-6 h-6" />,
+  CARD: <CreditCard className="w-6 h-6" />,
+  TRANSFER: <ArrowLeftRight className="w-6 h-6" />,
+  CLICK: <Smartphone className="w-6 h-6" />,
+  PAYME: <Wallet className="w-6 h-6" />,
+};
 
+/**
+ * YAGONA to'lov oynasi (topshirish / yakunlash): faqat hamkor yoqqan usullar ko'rinadi.
+ * Tasdiqlansa to'lov va yakunlash bitta so'rovda yuboriladi (OrdersPage → ordersApi.completeWithPayment).
+ */
 export const PaymentSheet: React.FC<{
   order: Order | null;
   saving: boolean;
   onClose: () => void;
   onSubmit: (method: PaymentMethod) => void;
 }> = ({ order, saving, onClose, onSubmit }) => {
+  const { methods } = usePaymentMethods();
   const [method, setMethod] = useState<PaymentMethod>('CASH');
 
   useEffect(() => {
     if (!order) return;
-    const m = String(order.payment_method || '').toUpperCase();
-    setMethod((METHODS.some((x) => x.value === m) ? m : 'CASH') as PaymentMethod);
-  }, [order]);
+    const m = normalizePayCode(order.payment_method);
+    // Buyurtmadagi usul hamkorda o'chirilgan bo'lsa — birinchi yoqilganini tanlaymiz
+    setMethod(methods.some((x) => x.value === m) ? m : methods[0].value);
+  }, [order, methods]);
 
   if (!order) return null;
   return (
@@ -55,7 +65,7 @@ export const PaymentSheet: React.FC<{
       {order.is_paid && <p className="mt-2 text-[13px] text-muted">Buyurtma allaqachon to'langan deb belgilangan. To'lov turini tekshirib, yakunlang.</p>}
       <div className="mt-4 text-[13px] font-semibold text-ink mb-2">To'lov turi</div>
       <div className="grid grid-cols-2 gap-2" role="radiogroup">
-        {METHODS.map((m) => {
+        {methods.map((m) => {
           const active = m.value === method;
           return (
             <button
@@ -68,7 +78,7 @@ export const PaymentSheet: React.FC<{
                 active ? 'border-brand bg-brand-soft text-brand' : 'border-edge bg-surface text-ink hover:bg-field'
               }`}
             >
-              {m.icon}
+              {ICONS[m.value]}
               {m.label}
             </button>
           );

@@ -7,6 +7,7 @@ import { deliveryTypeLabel, paymentLabel, statusLabel, statusTone } from '../../
 import { getQueueActions, HANDED_NOTE, isFinal, isHandedToCourier, itemName, itemPrice, orderNo } from './actions';
 import type { ActionContext, QueueAction } from './actions';
 import { ElapsedChip } from './OrderCard';
+import { DeliveryAddressSection, LocationBadge } from './DeliveryAddressSection';
 
 const SOURCE_LABEL: Record<string, string> = {
   WAITER: 'Ofitsiant',
@@ -35,9 +36,10 @@ interface Props {
   onEdit: (order: Order) => void;
   onPrintReceipt: (order: Order, withQr: boolean) => void;
   onPrintPreCheck: (order: Order) => void;
+  onOrderPatched: (uuid: string, patch: Partial<Order>) => void;
 }
 
-export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, printing, onClose, onAction, onEdit, onPrintReceipt, onPrintPreCheck }) => {
+export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, printing, onClose, onAction, onEdit, onPrintReceipt, onPrintPreCheck, onOrderPatched }) => {
   if (!order) return null;
   const { primary, secondary, danger } = getQueueActions(order, ctx);
   const items = order.items || [];
@@ -58,6 +60,7 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
         <span className="flex items-center gap-2 flex-wrap">
           Buyurtma {orderNo(order)}
           <Badge tone={statusTone(order.status)}>{statusLabel(order.status)}</Badge>
+          <LocationBadge order={order} />
         </span>
       }
       subtitle={
@@ -174,6 +177,8 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
             <p className="text-[14px] font-semibold">{order.description}</p>
           </div>
         )}
+
+        {order.delivery_type === 'DELIVERY' && !final && <DeliveryAddressSection key={order.uuid} order={order} onPatched={onOrderPatched} />}
 
         {/* Customer & delivery */}
         <section className="rounded-2xl border border-edge px-3 py-1 divide-y divide-edge">

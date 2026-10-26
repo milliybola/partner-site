@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   CheckCircle,
@@ -34,7 +34,6 @@ import {
   Input,
   QtyStepper,
   SearchInput,
-  Segmented,
   Sheet,
   Skeleton,
   Textarea,
@@ -44,6 +43,8 @@ import { formatMoney, maskPhoneInput } from '../../../core/lib/format';
 import { getPartner, isShop, wording } from '../../../core/lib/session';
 import { useTariff } from '../../../core/lib/tariff';
 import { shiftApi } from '../../shifts/services/shiftApi';
+import { callsApi } from '../../calls/callsApi';
+import { PhoneCustomerInput } from '../../customers/PhoneCustomerInput';
 import { ProductConfigSheet, isConfigurable, lineKey, unitPrice } from '../components/ProductConfigSheet';
 import type { LineConfig, PosOptionGroup, PosPackaging, SelectedOption } from '../components/ProductConfigSheet';
 
@@ -94,7 +95,6 @@ const qtyText = (i: CartItem) =>
 const lineName = (i: CartItem) => (i.options?.length ? `${i.product.name} (${i.options.map((o) => o.name).join(', ')})` : i.product.name);
 
 type ServiceType = 'DELIVERY' | 'PICKUP' | 'DINE_IN';
-type PaymentMethod = 'CASH' | 'CLICK' | 'PAYME' | 'UZCARD';
 
 interface CartTab {
   id: string;
@@ -105,20 +105,14 @@ interface CartTab {
   contactPhone: string;
   address: string;
   comment: string;
-  paymentMethod: PaymentMethod;
+  /** Qo'ng'iroqdan ochilgan buyurtma: yaratilgach shu call yozuvi `resolve` qilinadi */
+  callUuid?: string;
   cart: CartItem[];
   step: 'SERVICE_TYPE' | 'TABLE_SELECT' | 'MENU';
 }
 
 const CARTS_KEY = 'milliygo_active_carts';
 const CART_ID_KEY = 'milliygo_active_cart_id';
-
-const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
-  { value: 'CASH', label: 'Naqd' },
-  { value: 'CLICK', label: 'Click' },
-  { value: 'PAYME', label: 'Payme' },
-  { value: 'UZCARD', label: 'Uzcard' },
-];
 
 const SERVICE_LABEL: Record<ServiceType, string> = {
   DELIVERY: 'Yetkazib berish',
@@ -134,7 +128,6 @@ const newCartTab = (num: number, shop: boolean): CartTab => ({
   contactName: '',
   contactPhone: '',
   address: '',
-  paymentMethod: 'CASH',
   comment: '',
   cart: [],
   // Shops only deliver — there is nothing to choose, go straight to the menu.
@@ -224,6 +217,36 @@ const CreateOrderPage: React.FC = () => {
     if (redirectTimer.current) clearTimeout(redirectTimer.current);
   }, []);
 
+  /* ------------------------------------- qo'ng'iroqdan buyurtma ochish */
+  // `/new-order?phone=+998…&name=…&call=<uuid>` — hamkor telefonidagi ilova qo'ng'iroqni aniqlagan va
+  // alert-kartadan "Buyurtma ochish" bosilgan. Bo'sh savat bo'lsa shuni to'ldiramiz, bo'lmasa yangi savat ochamiz.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const prefilled = useRef('');
+  useEffect(() => {
+    const key = `${searchParams.get('phone') || ''}|${searchParams.get('call') || ''}`;
+    if (prefilled.current === key) return;
+    const rawPhone = searchParams.get('phone');
+    if (!rawPhone) return;
+    prefilled.current = key;
+    const patch = {
+      contactPhone: maskPhoneInput(rawPhone),
+      contactName: searchParams.get('name') || '',
+      callUuid: searchParams.get('call') || undefined,
+    };
+    const current = activeCarts.find((c) => c.id === activeCartId) || activeCarts[0];
+    if (current && current.cart.length === 0 && normalizePhone(current.contactPhone) === '') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- URL'dagi bir martalik qo'ng'iroq ma'lumotini savatga ko'chirish
+      setActiveCarts((prev) => prev.map((c) => (c.id === current.id ? { ...c, ...patch } : c)));
+      setActiveCartId(current.id);
+    } else {
+      const tab = { ...newCartTab(activeCarts.length + 1, shop), ...patch };
+      setActiveCarts((prev) => [...prev, tab]);
+      setActiveCartId(tab.id);
+    }
+    // URL tozalanadi: sahifa yangilansa qayta to'ldirilmasin
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams, activeCarts, activeCartId, shop]);
+
   /* ------------------------------------------------------------ tables */
   const fetchTables = useCallback(async () => {
     if (shop) return;
@@ -264,7 +287,7 @@ const CreateOrderPage: React.FC = () => {
   }, [activeCarts, activeCartId]);
 
   const activeCart = useMemo(() => activeCarts.find((c) => c.id === activeCartId) || activeCarts[0], [activeCarts, activeCartId]);
-  const { cart, serviceType, selectedTableUuid, contactName, contactPhone, address, paymentMethod, comment, step } = activeCart;
+  const { cart, serviceType, selectedTableUuid, contactName, contactPhone, address, comment, step } = activeCart;
   const currentId = activeCart.id;
 
   const updateActiveCart = useCallback(
@@ -428,6 +451,7 @@ const CreateOrderPage: React.FC = () => {
 
   const clearCart = () => {
     updateActiveCart({
+      callUuid: undefined,
       cart: [],
       contactName: '',
       contactPhone: '',
@@ -613,7 +637,7 @@ const CreateOrderPage: React.FC = () => {
           subtotal,
           delivery_fee: deliveryFee ?? 0,
           total_price: total,
-          payment_method_display: PAYMENT_OPTIONS.find((p) => p.value === paymentMethod)?.label || paymentMethod,
+          payment_method_display: 'Naqd',
           description: comment.trim() || undefined,
           partner_name: partnerDetails?.name || partnerDetails?.partner_name,
           partner_address: partnerDetails?.address,
@@ -644,40 +668,43 @@ const CreateOrderPage: React.FC = () => {
       setCartSheetOpen(true);
       return;
     }
+    if (serviceType === 'DELIVERY' && !phone) {
+      // Yetkazib berishda FAQAT telefon majburiy (manzil va xarita nuqtasi — hamkor ixtiyoriy kiritadi).
+      setPhoneError("Yetkazib berish uchun mijoz telefon raqami majburiy");
+      setCartSheetOpen(true);
+      return;
+    }
     setPhoneError(null);
     setSubmitting(true);
     setSubmitError(null);
 
-    // NOTE: there is no customer-location picker yet, so delivery orders carry the
-    // venue's own coordinates (pre-existing behaviour). See report / API_GAPS.md.
-    const lat = partnerDetails?.location_lat ? parseFloat(partnerDetails.location_lat) : 41.311081;
-    const lng = partnerDetails?.location_long ? parseFloat(partnerDetails.location_long) : 69.240562;
+    // Mijoz koordinatalari yuborilmaydi: xaritadan tanlash yo'q va muassasa koordinatalarini mijozniki deb yuborish
+    // kuryerni noto'g'ri yo'naltirardi. Faqat telefon majburiy; manzil matni ixtiyoriy.
     const items = buildItems(cart);
 
+    let created: any = null;
     try {
       if (serviceType === 'DELIVERY') {
-        await ordersApi.createDeliveryOrder({
+        created = await ordersApi.createDeliveryOrder({
           contact_phone: phone || undefined,
           contact_name: contactName.trim() || undefined,
           address: address.trim() || undefined,
-          latitude: lat,
-          longitude: lng,
-          payment_method: paymentMethod,
+          payment_method: 'CASH',
           description: comment.trim() || "Izoh yo'q",
           items,
         });
       } else if (serviceType === 'PICKUP') {
-        await ordersApi.createPickupOrder({
+        created = await ordersApi.createPickupOrder({
           contact_phone: phone || undefined,
           contact_name: contactName.trim() || undefined,
-          payment_method: paymentMethod,
+          payment_method: 'CASH',
           description: comment.trim() || undefined,
           items,
         });
       } else {
-        await ordersApi.createDineInOrder({
+        created = await ordersApi.createDineInOrder({
           table: selectedTableUuid,
-          payment_method: paymentMethod,
+          payment_method: 'CASH',
           contact_phone: phone || undefined,
           contact_name: contactName.trim() || undefined,
           description: comment.trim() || undefined,
@@ -686,6 +713,8 @@ const CreateOrderPage: React.FC = () => {
         if (selectedTableUuid) tablesApi.updateTableStatus(selectedTableUuid, 'OCCUPIED').catch(() => undefined);
       }
 
+      // Qo'ng'iroqdan ochilgan bo'lsa — shu call yozuvi yopiladi (xato bo'lsa buyurtmaga ta'sir qilmaydi)
+      if (activeCart.callUuid) callsApi.resolve(activeCart.callUuid, created?.data?.uuid).catch(() => undefined);
       setCartSheetOpen(false);
       setSubmitSuccess(true);
       if (activeCarts.length > 1) removeTab(currentId);
@@ -937,22 +966,20 @@ const CreateOrderPage: React.FC = () => {
           onChange={(e) => updateActiveCart({ contactName: e.target.value })}
           autoComplete="off"
         />
-        <Input
-          label="Telefon"
-          type="tel"
-          inputMode="tel"
-          placeholder="+998 (90) 123-45-67"
+        <PhoneCustomerInput
           value={contactPhone}
+          name={contactName}
           error={phoneError}
+          onPhoneChange={(v) => {
+            setPhoneError(null);
+            updateActiveCart({ contactPhone: v });
+          }}
+          onNameFound={(n) => updateActiveCart({ contactName: n })}
           onFocus={() => {
             if (!contactPhone) updateActiveCart({ contactPhone: '+998' });
           }}
           onBlur={() => {
             if (normalizePhone(contactPhone) === '') updateActiveCart({ contactPhone: '' });
-          }}
-          onChange={(e) => {
-            setPhoneError(null);
-            updateActiveCart({ contactPhone: maskPhoneInput(e.target.value) });
           }}
         />
       </div>
@@ -960,22 +987,16 @@ const CreateOrderPage: React.FC = () => {
       {serviceType === 'DELIVERY' && (
         <div className="space-y-2">
           <Textarea
-            label="Yetkazish manzili"
+            label="Yetkazish manzili (ixtiyoriy)"
             rows={2}
             placeholder="Ko'cha, uy, podyezd, qavat, mo'ljal"
             value={address}
             onChange={(e) => updateActiveCart({ address: e.target.value })}
           />
-          <ApiGap title="Mijoz joylashuvini xaritadan tanlash yo'q: create-delivery so'roviga muassasa koordinatalari yuboriladi (latitude/longitude). Kuryer marshruti uchun mijoz koordinatasi kerak.">
-            Xaritada joy tanlash
-          </ApiGap>
         </div>
       )}
-
-      <div>
-        <div className="text-[13px] font-semibold text-ink mb-1.5">To'lov turi</div>
-        <Segmented options={PAYMENT_OPTIONS} value={paymentMethod} onChange={(v) => updateActiveCart({ paymentMethod: v })} />
-      </div>
+      {/* To'lov yaratishda so'ralmaydi: buyurtma naqd/to'lanmagan yaratiladi, to'lov usuli topshirishda (PaymentSheet) bir marta qabul qilinadi. */}
+      <p className="text-[12px] text-muted">To'lov usuli bu yerda so'ralmaydi — buyurtma topshirilganda bir marta qabul qilinadi.</p>
 
       <Textarea
         label="Izoh"

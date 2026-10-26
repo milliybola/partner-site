@@ -410,8 +410,8 @@ const OrdersPage: React.FC = () => {
     if (!paymentOrder) return;
     setPaymentSaving(true);
     try {
-      await ordersApi.markOrderPaid(paymentOrder.uuid, { payment_method: method, is_paid: true });
-      await ordersApi.completeOrder(paymentOrder.uuid);
+      // To'lov va yakunlash — bitta so'rovda (eski serverda mark-paid bilan to'ldiriladi)
+      await ordersApi.completeWithPayment(paymentOrder.uuid, method);
       freeTableForOrder(paymentOrder);
       toast.success(`${orderNo(paymentOrder)} to'landi va yakunlandi`);
       handlePrintReceipt(paymentOrder.uuid, true);
@@ -669,6 +669,7 @@ const OrdersPage: React.FC = () => {
         onEdit={(o) => setEditingOrder(o)}
         onPrintReceipt={(o, qr) => handlePrintReceipt(o.uuid, qr)}
         onPrintPreCheck={handlePrintPreCheck}
+        onOrderPatched={(uuid, patch) => setOrders((prev) => prev.map((o) => (o.uuid === uuid ? { ...o, ...patch } : o)))}
       />
 
       <PaymentSheet order={paymentOrder} saving={paymentSaving} onClose={() => !paymentSaving && setPaymentOrder(null)} onSubmit={submitPayment} />

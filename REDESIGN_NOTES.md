@@ -143,3 +143,20 @@ npm run build        # production web build (dist/)
 npm run tauri:dev    # desktop (requires Rust, see TAURI_MIGRATION.md)
 npm run tauri:build  # Windows installers (NSIS + MSI)
 ```
+
+## 6. Qo'ng'iroq taklifi, mijoz ismi va hamkor to'lov usullari (2026-10-26)
+Shartnoma: `D:\Milliy\API_CONTRACT_CALLS_PAYMENTS.md`.
+
+- **Qo'ng'iroq taklifi** (`src/features/calls/`): hamkor telefonidagi MilliyGo Merchant `POST partner/calls/` yuboradi; partner-site `GET partner/calls/?open=1` ni har ~5 s so'raydi (yashirin tabda 30 s, xatoda 30 s gacha sekinlashadi) va WebSocket `incoming_call` / `call_update` xabarlarini tinglaydi. `CallAlerts` (Layout'da, barcha sahifalarda) ekran tepasida alert-kartalar chiqaradi: telefon, ism, "N marta buyurtma bergan", holat (Qo'ng'iroq bo'lmoqda / tugadi / o'tkazib yuborilgan), **Buyurtma ochish** (`/new-order?phone=&name=&call=`) va **Yopish** (`dismiss`). 3 tagacha karta, qolgani "Yana N ta". Signal: buyurtma chime'idan farqli "ding-dong" ovozi, OS bildirishnomasi ("… raqamga buyurtma yaratamizmi?") va oyna sarlavhasida `📞 (N)`. Yopilgan/hal qilingan call qayta chiqmaydi; sahifa ochilganda eski ochiq qo'ng'iroqlar ovozsiz ko'rsatiladi.
+- **Buyurtma ochish**: `CreateOrderPage` query'dagi `phone`, `name`, `call` ni o'qiydi — bo'sh savat bo'lsa shuni to'ldiradi, aks holda yangi savat ochadi. Yaratilgach `POST partner/calls/{call}/resolve/ {order_uuid}`.
+- **Mijoz ismi** (`src/features/customers/`): telefon maydonida avvalgi mijozlardan taklif (`GET partner/customers/?search=`); tanlanganda yoki 9 raqam to'liq kiritilganda `lookup` bilan ism avtomatik to'ldiriladi (yozilgan ism hech qachon bosib ketilmaydi).
+- **To'lov usullari** (`src/core/lib/payments.ts`): backend kodlari (CASH, CARD, TRANSFER, CLICK, PAYME; UZCARD/HUMO → CARD). `GET partner/payment-methods/` bo'yicha `PaymentSheet` (topshirish) va stol hisob-kitobida faqat yoqilgan usullar ko'rinadi. Sozlamalar → "To'lov usullari" (faqat egasi, `PUT`, kamida bittasi). To'lov va yakunlash endi bitta `complete {payment_method}` so'rovi (`ordersApi.completeWithPayment`); javobda `is_paid` true bo'lmasa (eski server) `mark-paid` ga qaytadi.
+- **Yaratishda to'lov so'ralmaydi**: kassa (`CreateOrderPage`) va stolga buyurtma ochishda to'lov tanlagich olib tashlandi; buyurtma `CASH` / to'lanmagan yaratiladi, to'lov topshirishda bir marta qabul qilinadi.
+- Tekshirilmagan: jonli server bilan (backend/ilova hali tayyor emas edi). `npm run build` (tsc + vite) xatosiz; yangi fayllar ESLint'dan o'tadi. Loyihada test infratuzilmasi (vitest/jest) yo'q.
+- Delivery from the POS: only the phone is required (address and map point optional; no fake venue coordinates are sent). Resolves API_GAPS #5.
+
+## Yetkazish manzili / joylashuv so'rovi (API_CONTRACT_LOCATION.md)
+- Chek (`printing.ts`): DELIVERY uchun ism, katta telefon, manzil (yo'q bo'lsa "MANZIL KIRITILMAGAN — mijozga qo'ng'iroq qiling") va koordinata bo'lsa xarita QR.
+- `ordersApi`: `updateDeliveryInfo` (PATCH delivery-info), `requestLocation` (POST request-location); `Order` ga `latitude/longitude/location_status`.
+- UI: `DeliveryAddressSection` (OrderDetailSheet) — ogohlantirish, "Manzilni kiritish", "Mijozdan joylashuv so'rash" (SMS ketmasa havola + nusxa); `LocationBadge` karta va sheetda.
+- Backend: `OrderReceiptSerializer` ga `latitude/longitude` qo'shildi.

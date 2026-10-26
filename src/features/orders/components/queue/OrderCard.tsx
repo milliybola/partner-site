@@ -6,6 +6,7 @@ import { formatMoney, formatTime, minutesSince } from '../../../../core/lib/form
 import { deliveryTypeLabel, statusLabel, statusTone } from '../../utils/status';
 import { getQueueActions, isFinal, isHandedToCourier, isPendingLike, itemName, orderNo } from './actions';
 import type { ActionContext, QueueAction } from './actions';
+import { LocationBadge } from './DeliveryAddressSection';
 
 const TypeIcon: React.FC<{ type?: string }> = ({ type }) =>
   type === 'DINE_IN' ? <Utensils className="w-3.5 h-3.5" /> : type === 'PICKUP' ? <ShoppingBag className="w-3.5 h-3.5" /> : <Bike className="w-3.5 h-3.5" />;
@@ -84,6 +85,8 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
             {more > 0 && <li className="text-muted text-[12px]">yana {more} ta mahsulot</li>}
           </ul>
         )}
+
+        {!dense && order.delivery_type === 'DELIVERY' && <div className="mt-2"><LocationBadge order={order} /></div>}
 
         {!dense && (order.contact_name || (order.delivery_type === 'DELIVERY' && order.address)) && (
           <div className="mt-2 space-y-0.5 text-[12px] text-muted">

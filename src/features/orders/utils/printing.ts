@@ -27,6 +27,9 @@ export interface ReceiptData {
   contact_name?: string;
   contact_phone?: string;
   address?: string;
+  delivery_type?: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   delivery_type_display?: string;
   table_number?: string | null;
   items: Array<{
@@ -139,6 +142,24 @@ const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean)
   const qrCodeSvg = includeOfdQr
     ? await QRCode.toString(OFD_QR_URL, { type: 'svg', margin: 0, width: 90 }).catch(() => '')
     : '';
+
+  const isDelivery = receiptData.delivery_type === 'DELIVERY';
+  const hasPoint = receiptData.latitude != null && receiptData.longitude != null && receiptData.latitude !== '' && receiptData.longitude !== '';
+  const mapUrl = hasPoint ? `https://www.google.com/maps?q=${Number(receiptData.latitude)},${Number(receiptData.longitude)}` : '';
+  const mapQrSvg = isDelivery && mapUrl
+    ? await QRCode.toString(mapUrl, { type: 'svg', margin: 0, width: 110 }).catch(() => '')
+    : '';
+  // Kuryerga yo'l ko'rsatish: ruchka bilan yozish o'rniga chekning o'zida manzil, telefon va xarita QR.
+  const deliveryBlock = isDelivery ? `
+        <div class="divider"></div>
+        <div style="font-weight: 800; font-size: 13px; margin-bottom: 3px;">YETKAZISH</div>
+        ${receiptData.contact_name ? `<div style="font-size: 13px; font-weight: 700;">${esc(receiptData.contact_name)}</div>` : ''}
+        ${receiptData.contact_phone ? `<div style="font-size: 18px; font-weight: 800; margin: 2px 0;">${esc(receiptData.contact_phone)}</div>` : ''}
+        ${(receiptData.address || '').trim()
+          ? `<div style="font-size: 13px; font-weight: 700; line-height: 1.3;">${esc(receiptData.address)}</div>`
+          : `<div style="font-size: 13px; font-weight: 800; border: 2px solid #000; padding: 4px; margin-top: 3px;">MANZIL KIRITILMAGAN — mijozga qo'ng'iroq qiling: ${esc(receiptData.contact_phone)}</div>`}
+        ${mapQrSvg ? `<div style="text-align: center; margin-top: 6px;">${mapQrSvg}<div style="font-size: 10px;">Xaritada ochish uchun skanerlang</div><div style="font-size: 9px; word-break: break-all;">${esc(mapUrl)}</div></div>` : ''}
+  ` : '';
 
   const itemsHtml = (receiptData.items || []).map((item: any) => {
     const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
@@ -295,12 +316,12 @@ const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean)
           <span class="info-label">Sana:</span>
           <span class="info-value">${formattedDate}</span>
         </div>
-        ${receiptData.contact_name ? `
+        ${!isDelivery && receiptData.contact_name ? `
         <div class="info-row">
           <span class="info-label">Mijoz:</span>
           <span class="info-value">${esc(receiptData.contact_name)}</span>
         </div>` : ''}
-        ${receiptData.contact_phone ? `
+        ${!isDelivery && receiptData.contact_phone ? `
         <div class="info-row">
           <span class="info-label">Tel:</span>
           <span class="info-value">${esc(receiptData.contact_phone)}</span>
@@ -316,6 +337,7 @@ const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean)
           <span class="info-label">Stol:</span>
           <span class="info-value bold">${esc(receiptData.table_number)}-stol</span>
         </div>` : ''}
+        ${deliveryBlock}
 
 
         <div class="divider"></div>

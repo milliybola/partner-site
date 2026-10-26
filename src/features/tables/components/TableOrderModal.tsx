@@ -7,6 +7,8 @@ import { useToast } from '../../../core/components/ToastProvider';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
 import { getPartner, wording } from '../../../core/lib/session';
 import { getErrorMessage } from '../../../core/lib/errors';
+import { normalizePayCode, usePaymentMethods } from '../../../core/lib/payments';
+import type { PayMethod } from '../../../core/lib/payments';
 import { cleanPhone, formatMoney, maskPhoneInput, minutesSince } from '../../../core/lib/format';
 import {
   Badge,
@@ -56,33 +58,30 @@ interface TableOrderModalProps {
   onClose: (refresh: boolean) => void;
 }
 
-type PaymentMethod = 'CASH' | 'CLICK' | 'PAYME' | 'UZCARD';
+type PaymentMethod = PayMethod;
 
-const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
-  { value: 'CASH', label: 'Naqd' },
-  { value: 'CLICK', label: 'Click' },
-  { value: 'PAYME', label: 'Payme' },
-  { value: 'UZCARD', label: 'Uzcard' },
-];
-
-const PaymentPicker: React.FC<{ value: PaymentMethod; onChange: (v: PaymentMethod) => void }> = ({ value, onChange }) => (
-  <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="To'lov turi">
-    {PAYMENT_METHODS.map((m) => (
-      <button
-        key={m.value}
-        type="button"
-        role="radio"
-        aria-checked={value === m.value}
-        onClick={() => onChange(m.value)}
-        className={`h-12 rounded-xl text-[14px] font-bold border transition cursor-pointer ${
-          value === m.value ? 'border-brand bg-brand-soft text-brand' : 'border-edge bg-surface text-ink hover:bg-field'
-        }`}
-      >
-        {m.label}
-      </button>
-    ))}
-  </div>
-);
+/** To'lov usuli tanlagich — faqat hamkor yoqqan usullar (core/lib/payments.ts). */
+const PaymentPicker: React.FC<{ value: PaymentMethod; onChange: (v: PaymentMethod) => void }> = ({ value, onChange }) => {
+  const { methods } = usePaymentMethods();
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" role="radiogroup" aria-label="To'lov turi">
+      {methods.map((m) => (
+        <button
+          key={m.value}
+          type="button"
+          role="radio"
+          aria-checked={value === m.value}
+          onClick={() => onChange(m.value)}
+          className={`h-12 rounded-xl text-[14px] font-bold border transition cursor-pointer ${
+            value === m.value ? 'border-brand bg-brand-soft text-brand' : 'border-edge bg-surface text-ink hover:bg-field'
+          }`}
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
+  );
+};
 
 export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose }) => {
   const toast = useToast();
@@ -105,7 +104,6 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [comment, setComment] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -116,10 +114,12 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [printingPreCheck, setPrintingPreCheck] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
-  const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>(() => {
-    const pm = String(table.current_order?.payment_method || '').toUpperCase();
-    return (PAYMENT_METHODS.some((m) => m.value === pm) ? pm : 'CASH') as PaymentMethod;
-  });
+  const { methods: payMethods } = usePaymentMethods();
+  const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>(() => normalizePayCode(table.current_order?.payment_method));
+  // Tanlangan usul hamkorda o'chirilgan bo'lsa — birinchi yoqilganiga o'tamiz
+  useEffect(() => {
+    if (!payMethods.some((m) => m.value === editPaymentMethod)) setEditPaymentMethod(payMethods[0].value);
+  }, [payMethods, editPaymentMethod]);
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [itemsChanged, setItemsChanged] = useState(false);
 
@@ -235,7 +235,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     try {
       await ordersApi.createDineInOrder({
         table: table.uuid,
-        payment_method: paymentMethod,
+        payment_method: 'CASH', // to'lov yaratishda so'ralmaydi — topshirishda bir marta olinadi
         contact_phone: phoneDigits.length === 12 ? phoneDigits : undefined,
         contact_name: contactName.trim() || undefined,
         description: comment.trim() || undefined,
@@ -330,8 +330,8 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     if (!orderUuid || paymentSaving) return;
     setPaymentSaving(true);
     try {
-      await ordersApi.markOrderPaid(orderUuid, { payment_method: editPaymentMethod, is_paid: true });
-      await ordersApi.completeOrder(orderUuid);
+      // To'lov va yakunlash — bitta so'rovda (eski serverda mark-paid bilan to'ldiriladi)
+      await ordersApi.completeWithPayment(orderUuid, editPaymentMethod);
     } catch (err) {
       toast.error(getErrorMessage(err, "To'lovni yakunlashda xatolik yuz berdi."));
       setPaymentSaving(false);
@@ -515,10 +515,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
               />
             </div>
             <Textarea label="Izoh" rows={2} placeholder="Masalan: achchiqsiz" value={comment} onChange={(e) => setComment(e.target.value)} />
-            <div>
-              <div className="text-[13px] font-semibold text-ink mb-1.5">To'lov turi</div>
-              <PaymentPicker value={paymentMethod} onChange={setPaymentMethod} />
-            </div>
+            <p className="text-[12px] text-muted">To'lov usuli yaratishda so'ralmaydi — buyurtma topshirilganda (hisob-kitobda) bir marta qabul qilinadi.</p>
           </div>
         )}
 

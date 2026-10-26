@@ -35,6 +35,10 @@ export interface Order {
   contact_phone: string;
   contact_name?: string;
   address: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  /** Faqat DELIVERY: NONE | REQUESTED | RECEIVED | HAS_POINT */
+  location_status?: 'NONE' | 'REQUESTED' | 'RECEIVED' | 'HAS_POINT' | null;
   created_at: string;
   updated_at?: string;
   delivery_fee: number | string;
@@ -105,9 +109,37 @@ export const ordersApi = {
     return response.data;
   },
 
-  completeOrder: async (orderUuid: string): Promise<any> => {
-    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/complete/`);
+  updateDeliveryInfo: async (
+    orderUuid: string,
+    payload: { address?: string; latitude?: number | null; longitude?: number | null; contact_name?: string; contact_phone?: string },
+  ): Promise<Order> => {
+    const response = await apiClient.patch(`orders/partner-pos/${orderUuid}/delivery-info/`, payload);
+    return response.data?.data;
+  },
+
+  requestLocation: async (
+    orderUuid: string,
+  ): Promise<{ link: string; sms_sent: boolean; sms_error: string; sent_count: number; expires_at: string; location_status: Order['location_status'] }> => {
+    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/request-location/`, {});
+    return response.data?.data;
+  },
+
+  completeOrder: async (orderUuid: string, payment?: { payment_method: string; is_paid?: boolean }): Promise<any> => {
+    // Backend `complete`: payment_method berilsa to'lov va yakunlash BIR tranzaksiyada (yagona to'lov mantig'i).
+    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/complete/`, payment ?? undefined);
     return response.data;
+  },
+
+  /**
+   * To'lovni qabul qilib yakunlash — bitta so'rovda. Server javobida `is_paid` true bo'lmasa (eski backend
+   * `complete` ga to'lovni e'tiborsiz qoldiradi) — `mark-paid` bilan to'ldiriladi.
+   */
+  completeWithPayment: async (orderUuid: string, paymentMethod: string): Promise<any> => {
+    const res = await ordersApi.completeOrder(orderUuid, { payment_method: paymentMethod });
+    if (res?.is_paid !== true) {
+      await ordersApi.markOrderPaid(orderUuid, { payment_method: paymentMethod, is_paid: true });
+    }
+    return res;
   },
 
   markOrderPaid: async (
@@ -150,8 +182,8 @@ export const ordersApi = {
     contact_phone?: string;
     contact_name?: string;
     address?: string;
-    latitude: number;
-    longitude: number;
+    latitude?: number;
+    longitude?: number;
     payment_method: string;
     description: string;
     items: PosItemInput[];

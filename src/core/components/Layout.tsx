@@ -20,6 +20,8 @@ import { ensureNotificationPermission } from '../platform';
 import { ApiGap, Sheet, Select } from '../ui';
 import { venueOf } from '../../venues';
 import { clearTariffCache, useTariff } from '../lib/tariff';
+import { clearPaymentMethodsCache } from '../lib/payments';
+import { CallAlerts } from '../../features/calls/CallAlerts';
 import { buildNav, buildTabs } from '../../venues/nav';
 
 const Logo: React.FC<{ partner: PartnerSession | null; size?: number }> = ({ partner, size = 36 }) =>
@@ -187,6 +189,7 @@ const Shell: React.FC = () => {
   const logout = useCallback(() => {
     clearSession();
     clearTariffCache();
+    clearPaymentMethodsCache();
     navigate('/login', { replace: true });
     window.location.reload();
   }, [navigate]);
@@ -229,6 +232,7 @@ const Shell: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-canvas text-ink md:flex" style={{ ['--appbar-h' as any]: '56px' }}>
+      <CallAlerts />
       {/* ---------------- Desktop sidebar ---------------- */}
       <aside
         className={`hidden md:flex flex-col sticky top-0 h-screen shrink-0 bg-surface border-r border-edge transition-[width] duration-200 ${

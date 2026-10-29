@@ -166,6 +166,12 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
                 <span className="tabular-nums">{formatMoney(order.delivery_fee)}</span>
               </div>
             )}
+            {Number(order.service_charge_amount) > 0 && (
+              <div className="flex justify-between text-muted">
+                <span>Xizmat haqi{Number(order.service_charge_percent) > 0 ? ` (${order.service_charge_percent}%)` : ''}</span>
+                <span className="tabular-nums">{formatMoney(order.service_charge_amount!)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-[17px] font-black text-ink pt-1">
               <span>Jami</span>
               <span className="tabular-nums">{formatMoney(order.total_price)}</span>

@@ -41,6 +41,8 @@ export interface ReceiptData {
   }>;
   subtotal: number | string;
   delivery_fee?: number | string;
+  service_charge_percent?: number | string;
+  service_charge_amount?: number | string;
   total_price: number | string;
   payment_method_display?: string;
   payment_method?: string;
@@ -351,6 +353,14 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
             <span class="info-label">Yetkazib berish:</span>
             <span class="info-value">${Number(receiptData.delivery_fee || 0).toLocaleString('uz-UZ')} UZS</span>
           </div>
+          ${
+            Number(receiptData.service_charge_amount || 0) > 0
+              ? `<div class="totals-row">
+            <span class="info-label">Xizmat haqi${Number(receiptData.service_charge_percent || 0) > 0 ? ` (${receiptData.service_charge_percent}%)` : ''}:</span>
+            <span class="info-value">${Number(receiptData.service_charge_amount).toLocaleString('uz-UZ')} UZS</span>
+          </div>`
+              : ''
+          }
 
           <div class="grand-total-row">
             <span>JAMI:</span>

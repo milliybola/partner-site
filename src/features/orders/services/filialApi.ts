@@ -21,6 +21,8 @@ export interface PartnerFilial {
   is_main?: boolean;
   /** Bir xil nomli filiallar bir-birining kuryerlaridan foydalanadi; bo'sh — havza yo'q */
   courier_pool?: string;
+  /** Stol (DINE_IN) buyurtmalariga qo'shiladigan xizmat haqi foizi; ofitsiantga tegishli. 0 — olinmaydi. */
+  service_charge_percent?: number;
   opening_hours?: {
     mon: boolean;
     tue: boolean;

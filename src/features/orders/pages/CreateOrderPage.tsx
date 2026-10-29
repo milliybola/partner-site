@@ -105,7 +105,8 @@ const giftOf = (i: CartItem): number => {
   const p = i.product.promotion;
   if (!p || !p.buy_quantity || !p.get_quantity || p.buy_quantity <= 0 || p.get_quantity <= 0) return 0;
   if (i.product.unit === 'KG' || i.packaging) return 0;
-  return Math.floor(i.quantity / p.buy_quantity) * p.get_quantity;
+  // Aksiya bir buyurtmada BIR MARTA: `buy` ta to'lansa `get` ta sovg'a (ko'pida ham shuncha)
+  return i.quantity >= p.buy_quantity ? p.get_quantity : 0;
 };
 
 /** Serverga yuboriladigan miqdor: dona promo qatorida to'langan + sovg'a, aks holda `quantity` */
@@ -116,8 +117,8 @@ const dealNote = (i: CartItem): string | null => {
   const p = i.product.promotion;
   if (!p || !p.buy_quantity || !p.get_quantity || p.buy_quantity <= 0 || p.get_quantity <= 0) return null;
   if (i.product.unit === 'KG' || i.packaging) return null;
-  const rest = i.quantity % p.buy_quantity;
-  const needPaid = rest === 0 ? p.buy_quantity : p.buy_quantity - rest;
+  if (i.quantity >= p.buy_quantity) return null; // sovg'a allaqachon qo'shilgan
+  const needPaid = Math.max(p.buy_quantity - i.quantity, 1);
   const label = p.label || `${p.buy_quantity}+${p.get_quantity}`;
   return `${label} aksiya · yana ${needPaid} ta oling — ${p.get_quantity} ta sovg'a`;
 };
@@ -587,6 +588,8 @@ const CreateOrderPage: React.FC = () => {
   const quote = cart.length > 0 && quoteState?.key === quoteKey ? quoteState.quote : null;
   const quoteError = cart.length > 0 && quoteState?.key === quoteKey ? quoteState.error : null;
   const discountTotal = quote ? Number(quote.discount_amount) || 0 : 0;
+  const serviceCharge = quote ? Number(quote.service_charge_amount) || 0 : 0;
+  const serviceChargePercent = quote ? Number(quote.service_charge_percent) || 0 : 0;
   const quoteLine = (idx: number) => quote?.items[idx];
 
   const subtotal = quote ? Number(quote.subtotal) : cart.reduce((s, i) => s + linePrice(i), 0);
@@ -607,7 +610,7 @@ const CreateOrderPage: React.FC = () => {
         : knownThreshold !== null && knownThreshold > 0 && subtotal >= knownThreshold
           ? 0
           : knownFee;
-  const total = subtotal + (deliveryFee || 0);
+  const total = subtotal + (deliveryFee || 0) + serviceCharge;
 
   const unavailableInCart = cart.filter((i) => !i.product.is_available);
   const isFormValid =
@@ -682,6 +685,8 @@ const CreateOrderPage: React.FC = () => {
           }),
           subtotal,
           delivery_fee: deliveryFee ?? 0,
+          service_charge_percent: serviceChargePercent || undefined,
+          service_charge_amount: serviceCharge || undefined,
           total_price: total,
           payment_method_display: 'Naqd',
           description: comment.trim() || undefined,
@@ -1082,6 +1087,12 @@ const CreateOrderPage: React.FC = () => {
           <div className="flex justify-between text-muted">
             <span>Yetkazib berish</span>
             <span>{deliveryFee === null ? 'Server hisoblaydi' : deliveryFee === 0 ? 'Bepul' : formatMoney(deliveryFee)}</span>
+          </div>
+        )}
+        {serviceCharge > 0 && (
+          <div className="flex justify-between text-muted">
+            <span>Xizmat haqi{serviceChargePercent > 0 ? ` (${serviceChargePercent}%)` : ''}</span>
+            <span>{formatMoney(serviceCharge)}</span>
           </div>
         )}
         <div className="flex justify-between items-baseline pt-1 border-t border-edge-strong">

@@ -50,6 +50,7 @@ interface BranchForm {
   status: FilialStatus;
   isMain: boolean;
   managerUuid: string;
+  serviceCharge: string;
   hours: WorkingHours;
 }
 
@@ -65,6 +66,7 @@ const toForm = (b?: PartnerFilial | null): BranchForm => ({
   status: b?.filial_status || 'ACTIVE',
   isMain: !!b?.is_main,
   managerUuid: managerUuidOf(b),
+  serviceCharge: b?.service_charge_percent != null ? String(b.service_charge_percent) : '',
   hours: normalizeHours(b?.opening_hours),
 });
 
@@ -157,6 +159,9 @@ const BranchesPage: React.FC = () => {
     const lng = form.lng ? parseFloat(form.lng) : undefined;
     if ((form.lat && !Number.isFinite(lat)) || (form.lng && !Number.isFinite(lng))) return setFormError("Koordinatalar noto'g'ri.");
 
+    const sc = form.serviceCharge.trim() === '' ? 0 : parseFloat(form.serviceCharge.replace(',', '.'));
+    if (!Number.isFinite(sc) || sc < 0 || sc > 100) return setFormError("Xizmat haqi 0–100% orasida bo'lishi kerak.");
+
     const payload: any = {
       filial_name: form.filialName.trim(),
       address: form.address || undefined,
@@ -166,6 +171,7 @@ const BranchesPage: React.FC = () => {
       filial_status: form.status,
       is_main: form.isMain,
       manager: form.managerUuid || null,
+      service_charge_percent: sc,
       opening_hours: hoursToPayload(form.hours),
     };
 
@@ -425,6 +431,18 @@ const BranchesPage: React.FC = () => {
             </Select>
           </div>
           <Input label="Manzil" value={form.address} onChange={(e) => set('address', e.target.value)} placeholder="Shahar, ko'cha, uy" />
+          <Input
+            label="Xizmat haqi (%)"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            max={100}
+            step={0.5}
+            value={form.serviceCharge}
+            onChange={(e) => set('serviceCharge', e.target.value)}
+            placeholder="0"
+            hint="Stol (zal) buyurtmalariga qo'shiladi, mijoz to'laydi va buyurtmani olgan ofitsiantga hisoblanadi. 0 — olinmaydi."
+          />
           <YandexLocationPicker
             lat={form.lat}
             lng={form.lng}

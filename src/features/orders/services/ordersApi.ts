@@ -45,9 +45,13 @@ export interface Order {
   created_at: string;
   updated_at?: string;
   delivery_fee: number | string;
+  /** Stol buyurtmasiga qo'llangan xizmat haqi (foiz snapshot'i va summasi) */
+  service_charge_percent?: number | string;
+  service_charge_amount?: number | string;
   total_price: number | string;
   /** Aksiya/chegirmalar yig'indisi (server hisoblaydi) */
   discount_amount?: number | string;
+  waiter_name?: string | null;
   payment?: string;
   payment_method?: string;
   payment_method_display?: string;
@@ -314,6 +318,9 @@ export interface PosQuote {
   subtotal: number | string;
   discount_amount: number | string;
   delivery_fee: number | string;
+  /** Xizmat haqi — faqat stol (DINE_IN) buyurtmasida, filial foizi bo'yicha */
+  service_charge_percent?: number | string;
+  service_charge_amount?: number | string;
   total_price: number | string;
 }
 

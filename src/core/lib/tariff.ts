@@ -11,18 +11,47 @@ export interface PartnerTariff {
   allow_delivery: boolean;
   allow_pickup: boolean;
   allow_dine_in: boolean;
-  /** null — cheksiz */
+  /** null — cheksiz. `tables_per_filial` bo'lsa — jami (cap × filiallar soni) */
   max_tables: number | null;
+  /** stol limiti har filialga nisbatanmi */
+  tables_per_filial: boolean;
+  /** har filialga stol soni (jami emas) */
+  table_per_filial_cap: number | null;
   max_filials: number | null;
-  usage: { tables: number; filials: number };
+  max_products: number | null;
+  max_couriers: number | null;
+  /** oyiga bepul MilliyGo buyurtmalari; null — cheksiz */
+  free_orders_monthly: number | null;
+  /** kvotadan ortgan har buyurtma narxi (so'm) */
+  extra_order_fee: number;
+  price_monthly: number;
+  /** aksiyagacha (chizilgan) narx; 0 yoki price_monthly dan kichik bo'lsa — ko'rsatilmaydi */
+  price_monthly_original: number;
+  listing_priority: number;
+  priority_support: boolean;
+  usage: {
+    tables: number;
+    filials: number;
+    products: number;
+    couriers: number;
+    orders_this_month: number;
+    orders_over: number;
+    overage_fee: number;
+  };
   can_add_table: boolean;
   can_add_filial: boolean;
+  can_add_product: boolean;
+  can_add_courier: boolean;
 }
 
 /** Yuklanmaguncha yoki so'rov xato bo'lsa — hech narsani yashirmaymiz (cheklovni baribir server qo'llaydi) */
 export const UNRESTRICTED: PartnerTariff = {
   code: 'unlimited', name: 'Cheklovsiz', restricted: false, allow_delivery: true, allow_pickup: true, allow_dine_in: true,
-  max_tables: null, max_filials: null, usage: { tables: 0, filials: 0 }, can_add_table: true, can_add_filial: true,
+  max_tables: null, tables_per_filial: false, table_per_filial_cap: null, max_filials: null,
+  max_products: null, max_couriers: null, free_orders_monthly: null, extra_order_fee: 0,
+  price_monthly: 0, price_monthly_original: 0, listing_priority: 0, priority_support: true,
+  usage: { tables: 0, filials: 0, products: 0, couriers: 0, orders_this_month: 0, orders_over: 0, overage_fee: 0 },
+  can_add_table: true, can_add_filial: true, can_add_product: true, can_add_courier: true,
 };
 
 let cached: PartnerTariff | null = null;

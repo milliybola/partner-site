@@ -349,10 +349,14 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
             <span class="info-label">Summa:</span>
             <span class="info-value">${Number(receiptData.subtotal).toLocaleString('uz-UZ')} UZS</span>
           </div>
-          <div class="totals-row">
+          ${
+            isDelivery
+              ? `<div class="totals-row">
             <span class="info-label">Yetkazib berish:</span>
             <span class="info-value">${Number(receiptData.delivery_fee || 0).toLocaleString('uz-UZ')} UZS</span>
-          </div>
+          </div>`
+              : ''
+          }
           ${
             Number(receiptData.service_charge_amount || 0) > 0
               ? `<div class="totals-row">

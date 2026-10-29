@@ -220,10 +220,10 @@ const OrdersPage: React.FC = () => {
     return () => clearInterval(t);
   }, [isConnected, fetchOrders]);
 
-  // Auto-hide the "new order" banner.
+  // "Yangi buyurtma" modali 3 soniyada o'zi yopiladi.
   useEffect(() => {
     if (!banner) return;
-    const t = setTimeout(() => setBanner(null), 12000);
+    const t = setTimeout(() => setBanner(null), 3000);
     return () => clearTimeout(t);
   }, [banner]);
 
@@ -588,32 +588,56 @@ const OrdersPage: React.FC = () => {
         </div>
       </PageHeader>
 
-      {/* New order banner */}
+      {/* Yangi buyurtma — katta markaziy modal; 3 soniyada o'zi yopiladi */}
       {banner && (
-        <div className="sticky top-[calc(var(--appbar-h)+8px)] z-20 mb-3 flex items-center gap-3 rounded-2xl bg-brand text-white px-4 py-3 shadow-pop animate-slide-up">
-          <span className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-            <Bell className="w-5 h-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[15px] font-extrabold">{banner.message}</div>
-            {banner.price !== undefined && <div className="text-[13px] opacity-90 tabular-nums">{formatMoney(banner.price)}</div>}
-          </div>
-          {banner.uuid && (
-            <Button
-              variant="gold"
-              size="md"
-              onClick={() => {
-                setActiveGroup('NEW');
-                if (orders.some((o) => o.uuid === banner.uuid)) openOrder(orders.find((o) => o.uuid === banner.uuid)!);
-                setBanner(null);
-              }}
+        <div
+          className="fixed inset-0 z-[130] flex items-center justify-center bg-black/55 backdrop-blur-sm p-4 animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setBanner(null)}
+        >
+          <div
+            className="relative w-full max-w-md overflow-hidden rounded-3xl bg-surface shadow-pop animate-pop"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              aria-label="Yopish"
+              onClick={() => setBanner(null)}
+              className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 text-white hover:bg-white/25 cursor-pointer"
             >
-              Ko'rish
-            </Button>
-          )}
-          <button type="button" aria-label="Yopish" onClick={() => setBanner(null)} className="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/10 cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+              <X className="h-5 w-5" />
+            </button>
+            <div className="bg-brand px-6 pb-7 pt-8 text-center text-white">
+              <span className="mx-auto mb-3 flex h-20 w-20 items-center justify-center rounded-3xl bg-white/15 animate-bounce">
+                <Bell className="h-10 w-10" />
+              </span>
+              <div className="text-[13px] font-bold uppercase tracking-[0.18em] opacity-90">Yangi buyurtma!</div>
+              <div className="mt-1.5 text-[19px] font-black leading-snug break-words">{banner.message}</div>
+              {banner.price !== undefined && (
+                <div className="mt-3 text-[34px] font-black leading-none tabular-nums">{formatMoney(banner.price)}</div>
+              )}
+            </div>
+            <div className="flex gap-2.5 p-4">
+              <Button variant="outline" size="lg" className="flex-1" onClick={() => setBanner(null)}>
+                Yopish
+              </Button>
+              {banner.uuid && (
+                <Button
+                  variant="gold"
+                  size="lg"
+                  className="flex-[2]"
+                  onClick={() => {
+                    setActiveGroup('NEW');
+                    if (orders.some((o) => o.uuid === banner.uuid)) openOrder(orders.find((o) => o.uuid === banner.uuid)!);
+                    setBanner(null);
+                  }}
+                >
+                  Ko'rish
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

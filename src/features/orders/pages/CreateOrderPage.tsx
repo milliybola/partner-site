@@ -146,7 +146,7 @@ const CART_ID_KEY = 'milliygo_active_cart_id';
 const SERVICE_LABEL: Record<ServiceType, string> = {
   DELIVERY: 'Yetkazib berish',
   PICKUP: 'Olib ketish',
-  DINE_IN: 'Zalda (stol)',
+  DINE_IN: 'Stol buyurtmasi',
 };
 
 const newCartTab = (num: number, shop: boolean): CartTab => ({
@@ -668,6 +668,7 @@ const CreateOrderPage: React.FC = () => {
           contact_name: contactName.trim() || undefined,
           contact_phone: contactPhone.trim() || undefined,
           address: serviceType === 'DELIVERY' ? address.trim() : undefined,
+          delivery_type: serviceType,
           delivery_type_display: SERVICE_LABEL[serviceType],
           table_number: serviceType === 'DINE_IN' ? selectedTable?.table_number || null : null,
           items: cart.map((i, idx) => {

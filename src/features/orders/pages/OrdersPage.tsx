@@ -406,12 +406,12 @@ const OrdersPage: React.FC = () => {
     }
   };
 
-  const submitPayment = async (method: PaymentMethod) => {
+  const submitPayment = async (method: PaymentMethod, splitCount: number) => {
     if (!paymentOrder) return;
     setPaymentSaving(true);
     try {
       // To'lov va yakunlash — bitta so'rovda (eski serverda mark-paid bilan to'ldiriladi)
-      await ordersApi.completeWithPayment(paymentOrder.uuid, method);
+      await ordersApi.completeWithPayment(paymentOrder.uuid, method, splitCount);
       freeTableForOrder(paymentOrder);
       toast.success(`${orderNo(paymentOrder)} to'landi va yakunlandi`);
       handlePrintReceipt(paymentOrder.uuid, true);
@@ -677,6 +677,7 @@ const OrdersPage: React.FC = () => {
       <CourierPickerSheet
         order={courierOrder}
         couriers={couriers}
+        filials={filials}
         loading={loadingCouriers}
         assigningUuid={assigningCourierUuid}
         onClose={() => !assigningCourierUuid && setCourierOrder(null)}

@@ -6,6 +6,7 @@ import { formatMoney } from '../../../../core/lib/format';
 import { normalizePayCode, usePaymentMethods } from '../../../../core/lib/payments';
 import type { PayMethod } from '../../../../core/lib/payments';
 import { orderNo } from './actions';
+import { SplitBill } from './SplitBill';
 
 /** Eski nom — endi backend kodlari (core/lib/payments.ts) */
 export type PaymentMethod = PayMethod;
@@ -26,13 +27,15 @@ export const PaymentSheet: React.FC<{
   order: Order | null;
   saving: boolean;
   onClose: () => void;
-  onSubmit: (method: PaymentMethod) => void;
+  onSubmit: (method: PaymentMethod, splitCount: number) => void;
 }> = ({ order, saving, onClose, onSubmit }) => {
   const { methods } = usePaymentMethods();
   const [method, setMethod] = useState<PaymentMethod>('CASH');
+  const [splitCount, setSplitCount] = useState(1);
 
   useEffect(() => {
     if (!order) return;
+    setSplitCount(1);
     const m = normalizePayCode(order.payment_method);
     // Buyurtmadagi usul hamkorda o'chirilgan bo'lsa — birinchi yoqilganini tanlaymiz
     setMethod(methods.some((x) => x.value === m) ? m : methods[0].value);
@@ -52,7 +55,7 @@ export const PaymentSheet: React.FC<{
           <Button variant="secondary" size="lg" disabled={saving} onClick={onClose}>
             Bekor qilish
           </Button>
-          <Button size="lg" loading={saving} onClick={() => onSubmit(method)} className="md:min-w-[180px]">
+          <Button size="lg" loading={saving} onClick={() => onSubmit(method, order.delivery_type === 'DINE_IN' ? splitCount : 1)} className="md:min-w-[180px]">
             Tasdiqlash va yakunlash
           </Button>
         </>
@@ -84,6 +87,9 @@ export const PaymentSheet: React.FC<{
           );
         })}
       </div>
+      {order.delivery_type === 'DINE_IN' && (
+        <SplitBill total={order.total_price} count={splitCount} onChange={setSplitCount} disabled={saving} />
+      )}
       <p className="mt-3 text-[12px] text-muted">Tasdiqlangach buyurtma to'langan va yakunlangan deb belgilanadi, chek avtomatik chop etiladi.</p>
     </Sheet>
   );

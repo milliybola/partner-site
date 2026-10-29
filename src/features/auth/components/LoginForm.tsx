@@ -50,10 +50,11 @@ const LoginForm: React.FC = () => {
 
       const partnerData: PartnerSession =
         user_type === 'partner'
-          ? { ...profile, role: 'superadmin' }
+          ? { ...profile, role: 'superadmin', user_type: 'partner' }
           : {
               ...profile,
               role: 'manager',
+              user_type: 'staff',
               staff_uuid: profile?.uuid,
               uuid: profile?.partner_uuid,
               current_filial: profile?.filial_uuid ? { uuid: profile.filial_uuid, filial_name: profile.filial_name } : profile?.current_filial,

@@ -8,6 +8,7 @@ export const STORAGE_KEYS = {
   ACCESS_TOKEN: 'milliygo_access_token',
   REFRESH_TOKEN: 'milliygo_refresh_token',
   PARTNER_DATA: 'milliygo_partner_data',
+  WORKING_FILIAL: 'milliygo_working_filial',
 };
 
 export const ENDPOINTS = {
@@ -72,6 +73,7 @@ export const ENDPOINTS = {
   COURIERS: {
     BASE: 'partner/couriers/',
     DETAIL: (uuid: string) => `partner/couriers/${uuid}/`,
+    TRANSFER: (uuid: string) => `partner/couriers/${uuid}/transfer/`,
   },
   DELIVERY_ZONES: {
     NEIGHBORHOODS: 'partner/delivery-zones/neighborhoods/',

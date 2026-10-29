@@ -15,6 +15,7 @@ export interface PartnerSession {
   partner_name?: string;
   logo?: string | null;
   role?: PartnerRole;
+  user_type?: 'partner' | 'staff' | string;
   partner_type?: PartnerType;
   is_open?: boolean;
   phone?: string;
@@ -58,12 +59,15 @@ export const clearSession = () => {
     localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
     localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
     localStorage.removeItem(STORAGE_KEYS.PARTNER_DATA);
+    localStorage.removeItem(STORAGE_KEYS.WORKING_FILIAL);
   } catch {
     /* ignore */
   }
 };
 
 export const isManager = (p: PartnerSession | null = getPartner()) => p?.role === 'manager';
+/** Hamkor egasi (rahbar): login/me javobidagi aniq `role` = 'superadmin' (user_type = 'partner'). */
+export const isOwner = (p: PartnerSession | null = getPartner()) => p?.role === 'superadmin';
 export const isShop = (p: PartnerSession | null = getPartner()) =>
   String(p?.partner_type || '').toUpperCase() === 'SHOP';
 

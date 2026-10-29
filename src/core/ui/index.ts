@@ -5,3 +5,4 @@ export * from './Overlay';
 export * from './Page';
 export * from './DataList';
 export * from './ApiGap';
+export * from './Numpad';

@@ -19,6 +19,8 @@ export interface PartnerFilial {
     role?: string;
   } | null;
   is_main?: boolean;
+  /** Bir xil nomli filiallar bir-birining kuryerlaridan foydalanadi; bo'sh — havza yo'q */
+  courier_pool?: string;
   opening_hours?: {
     mon: boolean;
     tue: boolean;

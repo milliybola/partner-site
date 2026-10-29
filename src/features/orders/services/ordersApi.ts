@@ -32,6 +32,9 @@ export interface Order {
   order_number?: string;
   status: 'PENDING' | 'SEARCHING_COURIER' | 'ACCEPTED' | 'REJECTED' | 'PREPARING' | 'READY_FOR_PICKUP' | 'PICKED_UP' | 'ON_THE_WAY' | 'COMPLETED' | 'DELIVERED' | 'CANCELLED';
   partner_uuid?: string;
+  /** Buyurtma qaysi filialga tegishli (null — filialsiz) */
+  filial_uuid?: string | null;
+  filial_name?: string | null;
   contact_phone: string;
   contact_name?: string;
   address: string;
@@ -80,7 +83,7 @@ export const ordersApi = {
   getOrders: async (filters?: { filialUuid?: string; fromDate?: string; toDate?: string }): Promise<Order[]> => {
     const config: any = {};
     const params: Record<string, string> = {};
-    if (filters?.filialUuid) params.filial = filters.filialUuid;
+    if (filters?.filialUuid) params.filial_uuid = filters.filialUuid;
     if (filters?.fromDate) params.from_date = filters.fromDate;
     if (filters?.toDate) params.to_date = filters.toDate;
     if (Object.keys(params).length > 0) {
@@ -124,7 +127,7 @@ export const ordersApi = {
     return response.data?.data;
   },
 
-  completeOrder: async (orderUuid: string, payment?: { payment_method: string; is_paid?: boolean }): Promise<any> => {
+  completeOrder: async (orderUuid: string, payment?: { payment_method: string; is_paid?: boolean; split_count?: number }): Promise<any> => {
     // Backend `complete`: payment_method berilsa to'lov va yakunlash BIR tranzaksiyada (yagona to'lov mantig'i).
     const response = await apiClient.post(`orders/partner-pos/${orderUuid}/complete/`, payment ?? undefined);
     return response.data;
@@ -134,8 +137,11 @@ export const ordersApi = {
    * To'lovni qabul qilib yakunlash — bitta so'rovda. Server javobida `is_paid` true bo'lmasa (eski backend
    * `complete` ga to'lovni e'tiborsiz qoldiradi) — `mark-paid` bilan to'ldiriladi.
    */
-  completeWithPayment: async (orderUuid: string, paymentMethod: string): Promise<any> => {
-    const res = await ordersApi.completeOrder(orderUuid, { payment_method: paymentMethod });
+  completeWithPayment: async (orderUuid: string, paymentMethod: string, splitCount = 1): Promise<any> => {
+    const res = await ordersApi.completeOrder(orderUuid, {
+      payment_method: paymentMethod,
+      ...(splitCount > 1 ? { split_count: splitCount } : {}),
+    });
     if (res?.is_paid !== true) {
       await ordersApi.markOrderPaid(orderUuid, { payment_method: paymentMethod, is_paid: true });
     }
@@ -179,6 +185,7 @@ export const ordersApi = {
   },
 
   createDeliveryOrder: async (payload: {
+    filial_uuid?: string;
     contact_phone?: string;
     contact_name?: string;
     address?: string;
@@ -193,6 +200,7 @@ export const ordersApi = {
   },
 
   createPickupOrder: async (payload: {
+    filial_uuid?: string;
     contact_phone?: string;
     contact_name?: string;
     payment_method: string;

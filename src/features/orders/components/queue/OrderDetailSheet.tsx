@@ -8,6 +8,7 @@ import { getQueueActions, HANDED_NOTE, isFinal, isHandedToCourier, itemName, ite
 import type { ActionContext, QueueAction } from './actions';
 import { ElapsedChip } from './OrderCard';
 import { DeliveryAddressSection, LocationBadge } from './DeliveryAddressSection';
+import { FilialTag } from './FilialTag';
 
 const SOURCE_LABEL: Record<string, string> = {
   WAITER: 'Ofitsiant',
@@ -61,6 +62,7 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
           Buyurtma {orderNo(order)}
           <Badge tone={statusTone(order.status)}>{statusLabel(order.status)}</Badge>
           <LocationBadge order={order} />
+          <FilialTag order={order} />
         </span>
       }
       subtitle={
@@ -228,15 +230,12 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
         {/* Printing */}
         <section>
           <h3 className="text-[12px] font-bold uppercase tracking-wider text-subtle mb-2">Chop etish</h3>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <Button variant="secondary" size="lg" className="flex-col !h-auto py-3 text-[12px]" onClick={() => onPrintPreCheck(order)} icon={<FileText className="w-5 h-5" />}>
               Pre-chek
             </Button>
-            <Button variant="secondary" size="lg" className="flex-col !h-auto py-3 text-[12px]" loading={printing} onClick={() => onPrintReceipt(order, true)} icon={<Printer className="w-5 h-5" />}>
-              Chek (QR)
-            </Button>
-            <Button variant="secondary" size="lg" className="flex-col !h-auto py-3 text-[12px]" disabled={printing} onClick={() => onPrintReceipt(order, false)} icon={<Printer className="w-5 h-5" />}>
-              Chek (QRsiz)
+            <Button variant="secondary" size="lg" className="flex-col !h-auto py-3 text-[12px]" loading={printing} onClick={() => onPrintReceipt(order, false)} icon={<Printer className="w-5 h-5" />}>
+              Chek
             </Button>
           </div>
         </section>

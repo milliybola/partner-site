@@ -7,6 +7,7 @@ import { deliveryTypeLabel, statusLabel, statusTone } from '../../utils/status';
 import { getQueueActions, isFinal, isHandedToCourier, isPendingLike, itemName, orderNo } from './actions';
 import type { ActionContext, QueueAction } from './actions';
 import { LocationBadge } from './DeliveryAddressSection';
+import { FilialTag } from './FilialTag';
 
 const TypeIcon: React.FC<{ type?: string }> = ({ type }) =>
   type === 'DINE_IN' ? <Utensils className="w-3.5 h-3.5" /> : type === 'PICKUP' ? <ShoppingBag className="w-3.5 h-3.5" /> : <Bike className="w-3.5 h-3.5" />;
@@ -72,6 +73,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
           </Badge>
           {showStatus && <Badge tone={statusTone(order.status)}>{statusLabel(order.status)}</Badge>}
           {order.is_paid && <Badge tone="success">To'langan</Badge>}
+          <FilialTag order={order} />
         </div>
 
         {preview.length > 0 && (

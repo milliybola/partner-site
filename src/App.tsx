@@ -27,6 +27,7 @@ const TablesPage = lazy(() => import('./features/tables/pages/TablesPage'));
 const DeliveryZonesPage = lazy(() => import('./features/delivery-zones/pages/DeliveryZonesPage'));
 const PromotionsPage = lazy(() => import('./features/promotions/pages/PromotionsPage'));
 const PlanPage = lazy(() => import('./features/profile/pages/PlanPage'));
+const BranchOverviewPage = lazy(() => import('./features/branches/pages/BranchOverviewPage'));
 
 // Restoran va do'kon uchun alohida bo'limlar (src/venues)
 const RestaurantHomePage = lazy(() => import('./venues/restaurant/pages/RestaurantHomePage'));
@@ -65,6 +66,7 @@ const App: React.FC = () => {
               }
             >
               <Route index element={page(<VenueHome />)} />
+              <Route path="overview" element={<OwnerOnly>{page(<BranchOverviewPage />)}</OwnerOnly>} />
               <Route path="statistics" element={<OwnerOnly>{page(<DashboardPage />)}</OwnerOnly>} />
               <Route path="kitchen" element={<VenueOnly kind="restaurant">{page(<KitchenPage />)}</VenueOnly>} />
               <Route path="inventory" element={<VenueOnly kind="store">{page(<InventoryPage />)}</VenueOnly>} />

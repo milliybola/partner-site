@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_BASE_URL, STORAGE_KEYS } from '../config/constants';
+import { getWorkingFilial } from '../lib/workingFilial';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -26,6 +27,24 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
+// Rahbar tanlagan "ishlayotgan filial": ro'yxat so'rovlariga `filial_uuid` qo'shiladi, buyurtma yaratishda body'ga yoziladi.
+// Xodim uchun getWorkingFilial() doim null — hech narsa o'zgarmaydi. Aniq berilgan filial_uuid ustuvor.
+const FILIAL_SCOPED_LISTS = /^(orders|orders\/partner-pos|orders\/partner-management|partner\/statistics|partner\/couriers)\/?(\?.*)?$/;
+const FILIAL_SCOPED_CREATES = /^orders\/partner-pos\/create-(delivery|pickup)\/?$/;
+apiClient.interceptors.request.use((config) => {
+  const filial = getWorkingFilial();
+  if (!filial) return config;
+  const url = String(config.url || '').replace(/^\//, '');
+  const method = String(config.method || 'get').toLowerCase();
+  if (method === 'get' && FILIAL_SCOPED_LISTS.test(url)) {
+    config.params = { ...(config.params || {}) };
+    if (!config.params.filial_uuid) config.params.filial_uuid = filial;
+  } else if (method === 'post' && FILIAL_SCOPED_CREATES.test(url) && config.data && typeof config.data === 'object' && !(config.data instanceof FormData)) {
+    if (!config.data.filial_uuid) config.data = { ...config.data, filial_uuid: filial };
+  }
+  return config;
+});
+
 let redirectingToLogin = false;
 
 // 401 => session is gone. Clear storage and go to the login screen.
@@ -51,6 +70,7 @@ apiClient.interceptors.response.use(
         localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
         localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
         localStorage.removeItem(STORAGE_KEYS.PARTNER_DATA);
+        localStorage.removeItem(STORAGE_KEYS.WORKING_FILIAL);
       } catch {
         /* ignore */
       }

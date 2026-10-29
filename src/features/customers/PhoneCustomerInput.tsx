@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { History } from 'lucide-react';
-import { Input } from '../../core/ui';
+import { History, Grid3x3 } from 'lucide-react';
+import { Input, Numpad } from '../../core/ui';
 import { formatPhone, maskPhoneInput } from '../../core/lib/format';
 import { customersApi } from './customersApi';
 import type { Customer } from './customersApi';
@@ -25,6 +25,7 @@ export const PhoneCustomerInput: React.FC<{
   onBlur?: () => void;
 }> = ({ value, name, error, onPhoneChange, onNameFound, onFocus, onBlur }) => {
   const [open, setOpen] = useState(false);
+  const [padOpen, setPadOpen] = useState(false);
   const [items, setItems] = useState<Customer[]>([]);
   const lookedUp = useRef('');
   const nameRef = useRef(name);
@@ -101,6 +102,31 @@ export const PhoneCustomerInput: React.FC<{
         }}
         onBlur={onBlur}
         onChange={(e) => onPhoneChange(maskPhoneInput(e.target.value))}
+        rightSlot={
+          <button
+            type="button"
+            aria-label="Raqam panelini ochish"
+            title="Raqam paneli (klaviaturasiz)"
+            // Fokusда emas — faqat shu tugma orqali ochiladi (sensorli monoblok uchun)
+            onClick={() => setPadOpen(true)}
+            className="p-2 text-subtle hover:text-ink"
+          >
+            <Grid3x3 className="w-5 h-5" />
+          </button>
+        }
+      />
+      <Numpad
+        open={padOpen}
+        title="Telefon raqami"
+        initial={localDigits(value)}
+        maxLen={9}
+        format={(d) => maskPhoneInput(d)}
+        onClose={() => setPadOpen(false)}
+        onConfirm={(digits) => {
+          onPhoneChange(maskPhoneInput(digits));
+          const local = digits.replace(/\D/g, '').slice(0, 9);
+          if (local.length === 9) lookedUp.current = '';
+        }}
       />
       {open && items.length > 0 && (
         <ul className="absolute z-30 left-0 right-0 top-full mt-1 rounded-2xl border border-edge bg-surface shadow-lg overflow-hidden">

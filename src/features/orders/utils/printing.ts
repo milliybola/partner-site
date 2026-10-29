@@ -4,10 +4,6 @@ import { ordersApi } from '../services/ordersApi';
 // public assets against document.baseURI instead.
 import { publicAsset } from '../../../core/platform';
 
-// No fiscal (OFD) integration exists yet — this links to the OFD portal's homepage as a
-// placeholder compliance QR code, not a signed per-receipt verification link. Once the
-// backend/cash register integration returns real fiscal data (receipt id, fiscal sign),
-// this should become a per-receipt verification URL instead of a fixed one.
 // SECURITY: receipts are rendered in a same-origin iframe, so every value that can
 // come from a customer (name, address, comment, product names) must be escaped —
 // otherwise a crafted comment could run script with access to the session token.
@@ -18,8 +14,6 @@ const esc = (v: unknown): string =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-
-const OFD_QR_URL = 'https://ofd.soliq.uz';
 
 export interface ReceiptData {
   order_number?: string;
@@ -50,6 +44,7 @@ export interface ReceiptData {
   total_price: number | string;
   payment_method_display?: string;
   payment_method?: string;
+  split_count?: number;
   description?: string;
   partner_name?: string;
   partner_address?: string;
@@ -136,12 +131,8 @@ const withAutoPrintScript = (html: string): string => {
 
 // Build the official receipt HTML markup from receipt data — shared between the
 // backend-fetched (post-order) receipt and the locally-built (pre-order) preview.
-// includeOfdQr is a temporary either/or choice (no fiscal integration yet — see
-// OFD_QR_URL above) offered as two separate print actions rather than a single default.
-const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean): Promise<string> => {
-  const qrCodeSvg = includeOfdQr
-    ? await QRCode.toString(OFD_QR_URL, { type: 'svg', margin: 0, width: 90 }).catch(() => '')
-    : '';
+// Soliq (OFD) QR chekda chiqarilmaydi: `_includeOfdQr` faqat eski chaqiruvlar mosligi uchun qoldirilgan.
+const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean): Promise<string> => {
 
   const isDelivery = receiptData.delivery_type === 'DELIVERY';
   const hasPoint = receiptData.latitude != null && receiptData.longitude != null && receiptData.latitude !== '' && receiptData.longitude !== '';
@@ -371,6 +362,13 @@ const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean)
             <span class="info-value bold">${esc(receiptData.payment_method_display || receiptData.payment_method)}</span>
           </div>
 
+          ${(receiptData.split_count ?? 1) > 1 ? `
+          <div class="divider"></div>
+          <div class="info-row">
+            <span class="info-label">Kishi boshiga (${receiptData.split_count} kishi):</span>
+            <span class="info-value bold">${splitEach(receiptData.total_price, receiptData.split_count!).toLocaleString('uz-UZ')} UZS</span>
+          </div>` : ''}
+
           ${receiptData.description ? `
           <div class="info-row" style="margin-top: 3px;">
             <span class="info-label">Izoh:</span>
@@ -380,11 +378,6 @@ const buildReceiptHtml = async (receiptData: ReceiptData, includeOfdQr: boolean)
 
         <div class="footer">
           <p class="bold" style="font-size: 11px; margin-bottom: 2px;">XARIDINGIZ UCHUN RAHMAT!</p>
-          ${qrCodeSvg ? `
-          <div style="display: flex; flex-direction: column; align-items: center; margin-top: 8px;">
-            ${qrCodeSvg}
-            <p style="margin: 2px 0 0 0; font-size: 8px; color: #000;">Soliq QR kodi</p>
-          </div>` : ''}
         </div>
       </body>
     </html>
@@ -411,6 +404,8 @@ export const printReceiptPreview = async (receiptData: ReceiptData, includeOfdQr
 export interface PreCheckOrderInput {
   table_number?: string | null;
   total_price: number | string;
+  /** Hisob nechta kishiga bo'linadi (1 — bo'linmaydi) */
+  split_count?: number;
   items: Array<{
     product_name?: string;
     name?: string;
@@ -419,6 +414,9 @@ export interface PreCheckOrderInput {
     quantity: number;
   }>;
 }
+
+// Hisobni teng bo'lganda bir kishiga to'g'ri keladigan summa (so'mgacha yaxlitlanadi).
+export const splitEach = (total: number | string, count: number): number => Math.round((Number(total) || 0) / Math.max(1, count));
 
 // Print a simple preliminary (not-yet-paid) receipt built purely from local order data
 export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> => {
@@ -481,6 +479,9 @@ export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> =>
         <div class="divider"></div>
         <div class="total-row"><span>Jami:</span><span>${totalAmount.toLocaleString('uz-UZ')} so'm</span></div>
         <div class="total-row" style="margin-top: 4px;"><span>Jami to'lov:</span><span>${totalAmount.toLocaleString('uz-UZ')} so'm</span></div>
+        ${(order.split_count ?? 1) > 1 ? `
+        <div class="divider"></div>
+        <div class="row"><span>Kishi boshiga (${order.split_count} kishi):</span><span>${splitEach(totalAmount, order.split_count!).toLocaleString('uz-UZ')} so'm</span></div>` : ''}
       </body>
     </html>
   `;

@@ -11,13 +11,16 @@ import {
   clearSession,
   getDisplayName,
   getPartner,
+  isOwner,
   setPartner as savePartner,
   wording,
 } from '../lib/session';
 import type { PartnerSession } from '../lib/session';
 import { getErrorMessage } from '../lib/errors';
+import { clearOwnerFilialsCache, useOwnerFilials, useWorkingFilial } from '../lib/useWorkingFilial';
 import { ensureNotificationPermission } from '../platform';
-import { ApiGap, Sheet, Select } from '../ui';
+import { ApiGap, Sheet } from '../ui';
+import { FilialSwitch } from './FilialSwitch';
 import { venueOf } from '../../venues';
 import { clearTariffCache, useTariff } from '../lib/tariff';
 import { clearPaymentMethodsCache } from '../lib/payments';
@@ -146,6 +149,9 @@ const Shell: React.FC = () => {
   });
   const { unseenNewOrders, markOrdersSeen } = useRealtime();
   const { filials, switchTo } = useFilialSwitcher(partner);
+  const owner = isOwner(partner);
+  const [workingFilial, setWorkingFilial] = useWorkingFilial();
+  const { filials: ownerFilials } = useOwnerFilials();
 
   useEffect(() => {
     const sync = () => setPartnerState(getPartner());
@@ -188,6 +194,7 @@ const Shell: React.FC = () => {
 
   const logout = useCallback(() => {
     clearSession();
+    clearOwnerFilialsCache();
     clearTariffCache();
     clearPaymentMethodsCache();
     navigate('/login', { replace: true });
@@ -198,7 +205,10 @@ const Shell: React.FC = () => {
   const groups = useMemo(() => buildNav(partner, tariff), [partner, tariff]);
   const manager = partner?.role === 'manager';
   const w = wording(partner);
-  const filialName = partner?.current_filial?.filial_name || partner?.filial_name;
+  const ownerMulti = owner && ownerFilials.length > 1;
+  const filialName = ownerMulti
+    ? ownerFilials.find((f) => f.uuid === workingFilial)?.filial_name || 'Barcha filiallar'
+    : partner?.current_filial?.filial_name || partner?.filial_name;
 
   const kind = venueOf(partner);
   const tabs = useMemo(() => buildTabs(kind, tariff), [kind, tariff]);
@@ -212,23 +222,25 @@ const Shell: React.FC = () => {
   const tabPaths = tabs.map((t) => t.to);
   const moreActive = !tabPaths.includes(location.pathname);
 
-  const filialSelect =
-    manager && filials.length > 1 ? (
-      <Select
-        label="Joriy filial"
-        value={partner?.current_filial?.uuid || ''}
-        onChange={(e) => switchTo(e.target.value)}
-      >
-        <option value="" disabled>
-          Filial tanlang
-        </option>
-        {filials.map((f) => (
-          <option key={f.uuid} value={f.uuid}>
-            {f.filial_name} {f.is_main ? '(Asosiy)' : ''}
-          </option>
-        ))}
-      </Select>
-    ) : null;
+  // Filial tanlagich sarlavhada: rahbar — «Barcha filiallar» + filiallar; menejer — faqat o'z filiallari
+  const filialSwitch = ownerMulti ? (
+    <FilialSwitch
+      value={workingFilial || ''}
+      subtitle={getDisplayName(partner)}
+      onChange={(v) => setWorkingFilial(v || null)}
+      options={[
+        { value: '', label: 'Barcha filiallar', hint: 'Hamma filiallar jami' },
+        ...ownerFilials.map((f) => ({ value: f.uuid, label: f.filial_name, hint: f.is_main ? 'Asosiy filial' : undefined })),
+      ]}
+    />
+  ) : manager && filials.length > 1 ? (
+    <FilialSwitch
+      value={partner?.current_filial?.uuid || ''}
+      subtitle={getDisplayName(partner)}
+      onChange={(v) => v && switchTo(v)}
+      options={filials.map((f) => ({ value: f.uuid, label: f.filial_name, hint: f.is_main ? 'Asosiy filial' : undefined }))}
+    />
+  ) : null;
 
   return (
     <div className="min-h-screen bg-canvas text-ink md:flex" style={{ ['--appbar-h' as any]: '56px' }}>
@@ -287,7 +299,6 @@ const Shell: React.FC = () => {
         </nav>
 
         <div className="border-t border-edge p-3 space-y-2">
-          {!collapsed && filialSelect}
           <button
             type="button"
             onClick={logout}
@@ -320,17 +331,21 @@ const Shell: React.FC = () => {
           <div className="h-14 flex items-center justify-between gap-2 px-4 md:px-8">
             <div className="flex items-center gap-2.5 min-w-0 md:hidden">
               <Logo partner={partner} size={32} />
-              <div className="min-w-0">
-                <div className="text-[15px] font-extrabold text-ink truncate tracking-tightest max-w-[46vw]">{getDisplayName(partner)}</div>
-                {filialName && <div className="text-[11px] text-muted truncate max-w-[46vw]">{filialName}</div>}
-              </div>
+              {filialSwitch ? (
+                filialSwitch
+              ) : (
+                <div className="min-w-0">
+                  <div className="text-[15px] font-extrabold text-ink truncate tracking-tightest max-w-[46vw]">{getDisplayName(partner)}</div>
+                  {filialName && <div className="text-[11px] text-muted truncate max-w-[46vw]">{filialName}</div>}
+                </div>
+              )}
             </div>
             <div className="hidden md:flex items-center gap-2 text-[13px] text-muted min-w-0">
               <span className="truncate">{w.venue} boshqaruv paneli</span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
+              {filialSwitch && <div className="hidden md:block mr-1">{filialSwitch}</div>}
               <ConnectionDot />
-              <OpenStatus partner={partner} compact />
               {location.pathname !== '/new-order' && (
                 <NavLink
                   to="/new-order"
@@ -344,7 +359,8 @@ const Shell: React.FC = () => {
         </header>
 
         <main className="flex-1 px-4 md:px-8 pb-[calc(var(--tabbar-h)+var(--safe-bottom)+16px)] md:pb-10">
-          <Outlet />
+          {/* Rahbar ishlayotgan filialni almashtirsa sahifa qayta yuklanadi (ma'lumotlar shu filial bo'yicha) */}
+          <Outlet key={workingFilial ?? 'all'} />
         </main>
       </div>
 
@@ -408,7 +424,6 @@ const Shell: React.FC = () => {
             <div className="text-[14px] font-semibold">Muassasa holati</div>
             <OpenStatus partner={partner} />
           </div>
-          {filialSelect}
           {groups.map((g) => {
             const items = g.items.filter((i) => !tabPaths.includes(i.to) && i.to !== '/new-order');
             if (!items.length) return null;

@@ -34,13 +34,15 @@ import {
   Input,
   QtyStepper,
   SearchInput,
+  Select,
   Sheet,
   Skeleton,
   Textarea,
 } from '../../../core/ui';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { formatMoney, maskPhoneInput } from '../../../core/lib/format';
-import { getPartner, isShop, wording } from '../../../core/lib/session';
+import { getPartner, isOwner, isShop, wording } from '../../../core/lib/session';
+import { useOwnerFilials, useWorkingFilial } from '../../../core/lib/useWorkingFilial';
 import { useTariff } from '../../../core/lib/tariff';
 import { shiftApi } from '../../shifts/services/shiftApi';
 import { callsApi } from '../../calls/callsApi';
@@ -64,7 +66,7 @@ interface Product {
   option_groups?: PosOptionGroup[];
   packagings?: PosPackaging[];
   /** Aksiya (1+1 / 2+1) va set tarkibi — kartada ko'rsatiladi; hisobni server qiladi */
-  promotion?: { label?: string } | null;
+  promotion?: { label?: string; buy_quantity?: number; get_quantity?: number } | null;
   kind?: 'SINGLE' | 'SET';
   set_items?: { name: string; quantity: number }[];
 }
@@ -93,6 +95,32 @@ const qtyText = (i: CartItem) =>
   i.packaging ? `${i.quantity} × ${i.packaging.name}` : i.product.unit === 'KG' ? `${Number(i.quantity.toFixed(3))} kg` : String(i.quantity);
 /** Chekda ko'rinadigan nom: "Lavash (Achchiq, Katta)" */
 const lineName = (i: CartItem) => (i.options?.length ? `${i.product.name} (${i.options.map((o) => o.name).join(', ')})` : i.product.name);
+
+/**
+ * Avtomatik sovg'a (1+1 / 2+1): har [buy_quantity] ta TO'LANGANga [get_quantity] ta sovg'a.
+ * `quantity` — kassir tanlagan (to'langan) son P. Faqat dona mahsulot, qadoqsiz, faol aksiya.
+ * Serverga P + sovg'a yuboriladi; server bepulni = floor(jami/(buy+get))*get = aynan shu sovg'a deb tasdiqlaydi.
+ */
+const giftOf = (i: CartItem): number => {
+  const p = i.product.promotion;
+  if (!p || !p.buy_quantity || !p.get_quantity || p.buy_quantity <= 0 || p.get_quantity <= 0) return 0;
+  if (i.product.unit === 'KG' || i.packaging) return 0;
+  return Math.floor(i.quantity / p.buy_quantity) * p.get_quantity;
+};
+
+/** Serverga yuboriladigan miqdor: dona promo qatorida to'langan + sovg'a, aks holda `quantity` */
+const sendQtyOf = (i: CartItem): number => Number((i.quantity + giftOf(i)).toFixed(3));
+
+/** Sovg'a hali yo'q bo'lsa undaydigan izoh: "1+1 aksiya · yana N ta oling — 1 ta sovg'a" */
+const dealNote = (i: CartItem): string | null => {
+  const p = i.product.promotion;
+  if (!p || !p.buy_quantity || !p.get_quantity || p.buy_quantity <= 0 || p.get_quantity <= 0) return null;
+  if (i.product.unit === 'KG' || i.packaging) return null;
+  const rest = i.quantity % p.buy_quantity;
+  const needPaid = rest === 0 ? p.buy_quantity : p.buy_quantity - rest;
+  const label = p.label || `${p.buy_quantity}+${p.get_quantity}`;
+  return `${label} aksiya · yana ${needPaid} ta oling — ${p.get_quantity} ta sovg'a`;
+};
 
 type ServiceType = 'DELIVERY' | 'PICKUP' | 'DINE_IN';
 
@@ -208,6 +236,16 @@ const CreateOrderPage: React.FC = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  // Rahbar (bir nechta filial): buyurtma qaysi filialga yozilishini tanlaydi. Tanlangan ishlayotgan filial yoki asosiy filial — boshlang'ich.
+  const owner = isOwner();
+  const { filials: ownerFilials } = useOwnerFilials();
+  const [workingFilial] = useWorkingFilial();
+  const [filialChoice, setFilialChoice] = useState<string>('');
+  const needFilialChoice = owner && ownerFilials.length > 1;
+  const effectiveFilial = needFilialChoice
+    ? filialChoice || workingFilial || ownerFilials.find((f) => f.is_main)?.uuid || ownerFilials[0]?.uuid || ''
+    : '';
   const [printingPreCheck, setPrintingPreCheck] = useState(false);
   const [printingReceipt, setPrintingReceipt] = useState(false);
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
@@ -344,7 +382,14 @@ const CreateOrderPage: React.FC = () => {
                     name: p.name,
                     description: p.description || '',
                     price,
-                    promotion: p.promotion && typeof p.promotion === 'object' ? { label: p.promotion.label } : null,
+                    promotion:
+                      p.promotion && typeof p.promotion === 'object'
+                        ? {
+                            label: p.promotion.label,
+                            buy_quantity: Number(p.promotion.buy_quantity) || 0,
+                            get_quantity: Number(p.promotion.get_quantity) || 0,
+                          }
+                        : null,
                     kind: p.kind === 'SET' ? 'SET' : 'SINGLE',
                     set_items: (Array.isArray(p.set_items) ? p.set_items : []).map((s: any) => ({ name: s.name, quantity: Number(s.quantity) || 1 })),
                     original_price: raw,
@@ -515,7 +560,8 @@ const CreateOrderPage: React.FC = () => {
   const buildItems = (lines: CartItem[]): PosItemInput[] =>
     lines.map((i) => ({
       product_uuid: i.product.uuid,
-      quantity: i.quantity,
+      // Promo qatorida to'langan + avto-sovg'a yuboriladi (quote ham, buyurtma ham); server bepulni tasdiqlaydi
+      quantity: sendQtyOf(i),
       ...(i.packaging ? { packaging: i.packaging.uuid } : {}),
       ...(i.options?.length ? { options: i.options.map((o) => o.uuid) } : {}),
     }));
@@ -597,8 +643,8 @@ const CreateOrderPage: React.FC = () => {
         total_price: total,
         items: cart.map((i, idx) => {
           const q = quoteLine(idx);
-          // Aksiya hisobga olingan qator summasi: narx = jami / miqdor
-          const unit = q ? Number(q.line_total) / (Number(q.quantity) || 1) : unitPrice(i.product, i.options, i.packaging);
+          // Aksiya hisobga olingan qator summasi: narx = qator summasi / to'langan dona (sovg'alar bepul)
+          const unit = q ? Number(q.line_total) / (i.quantity || 1) : unitPrice(i.product, i.options, i.packaging);
           return { product_name: lineName(i), price_at_time_of_order: unit, quantity: i.quantity };
         }),
       });
@@ -686,6 +732,7 @@ const CreateOrderPage: React.FC = () => {
     try {
       if (serviceType === 'DELIVERY') {
         created = await ordersApi.createDeliveryOrder({
+          filial_uuid: effectiveFilial || undefined,
           contact_phone: phone || undefined,
           contact_name: contactName.trim() || undefined,
           address: address.trim() || undefined,
@@ -695,6 +742,7 @@ const CreateOrderPage: React.FC = () => {
         });
       } else if (serviceType === 'PICKUP') {
         created = await ordersApi.createPickupOrder({
+          filial_uuid: effectiveFilial || undefined,
           contact_phone: phone || undefined,
           contact_name: contactName.trim() || undefined,
           payment_method: 'CASH',
@@ -895,7 +943,8 @@ const CreateOrderPage: React.FC = () => {
         <div className="divide-y divide-edge">
           {cart.map((i, idx) => {
             const q = quoteLine(idx);
-            const free = Number(q?.free_quantity) || 0;
+            const gift = giftOf(i);
+            const note = dealNote(i);
             return (
             <div key={keyOf(i)} className="py-3 flex items-center gap-3">
               <div className="min-w-0 flex-1">
@@ -910,10 +959,12 @@ const CreateOrderPage: React.FC = () => {
                   {q && <span className="ml-2 font-bold text-ink tabular-nums">= {formatMoney(q.line_total)}</span>}
                   {!i.product.is_available && <span className="ml-2 text-danger-ink font-semibold">Tugagan</span>}
                 </div>
-                {(free > 0 || q?.promotion_label) && (
+                {gift > 0 ? (
                   <div className="text-[12px] font-bold text-brand">
-                    {q?.promotion_label || 'Aksiya'}{free > 0 && `: ${free} ta bepul`}
+                    {i.quantity} ta olindi + {gift} ta sovg'a 🎁
                   </div>
+                ) : (
+                  note && <div className="text-[12px] font-bold text-warning-ink">{note}</div>
                 )}
               </div>
               {i.product.unit === 'KG' && !i.packaging ? (
@@ -956,6 +1007,16 @@ const CreateOrderPage: React.FC = () => {
             O'zgartirish
           </Button>
         </div>
+      )}
+
+      {needFilialChoice && serviceType !== 'DINE_IN' && (
+        <Select label="Filial" hint="Buyurtma shu filialga yoziladi" value={effectiveFilial} onChange={(e) => setFilialChoice(e.target.value)} required>
+          {ownerFilials.map((f) => (
+            <option key={f.uuid} value={f.uuid}>
+              {f.filial_name} {f.is_main ? '(Asosiy)' : ''}
+            </option>
+          ))}
+        </Select>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
@@ -1029,15 +1090,12 @@ const CreateOrderPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <Button size="md" variant="outline" className="px-2 text-[13px]" loading={printingPreCheck} disabled={cart.length === 0} onClick={handlePrintPreCheck} icon={<FileText className="w-4 h-4" />}>
           Pre-chek
         </Button>
-        <Button size="md" variant="outline" className="px-2 text-[13px]" loading={printingReceipt} disabled={cart.length === 0} onClick={() => handlePrintReceipt(true)} icon={<Printer className="w-4 h-4" />}>
-          QR bilan
-        </Button>
-        <Button size="md" variant="outline" className="px-2 text-[13px]" disabled={cart.length === 0 || printingReceipt} onClick={() => handlePrintReceipt(false)} icon={<Printer className="w-4 h-4" />}>
-          QR siz
+        <Button size="md" variant="outline" className="px-2 text-[13px]" loading={printingReceipt} disabled={cart.length === 0} onClick={() => handlePrintReceipt(false)} icon={<Printer className="w-4 h-4" />}>
+          Chek
         </Button>
       </div>
 

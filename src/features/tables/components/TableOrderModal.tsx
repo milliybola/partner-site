@@ -27,6 +27,7 @@ import {
   Tabs,
   Textarea,
 } from '../../../core/ui';
+import { SplitBill } from '../../orders/components/queue/SplitBill';
 import { tablesApi } from '../services/tablesApi';
 import type { TableModel } from '../services/tablesApi';
 
@@ -115,7 +116,8 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   const [printingPreCheck, setPrintingPreCheck] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const { methods: payMethods } = usePaymentMethods();
-  const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>(() => normalizePayCode(table.current_order?.payment_method));
+  const [splitCount, setSplitCount] = useState(1);
+  const [editPaymentMethod, setEditPaymentMethod] =useState<PaymentMethod>(() => normalizePayCode(table.current_order?.payment_method));
   // Tanlangan usul hamkorda o'chirilgan bo'lsa — birinchi yoqilganiga o'tamiz
   useEffect(() => {
     if (!payMethods.some((m) => m.value === editPaymentMethod)) setEditPaymentMethod(payMethods[0].value);
@@ -308,7 +310,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     setPrintingPreCheck(true);
     try {
       if (isEditMode) {
-        await printPreCheckUtil({ table_number: table.table_number, total_price: editItemsTotal, items: orderItems });
+        await printPreCheckUtil({ table_number: table.table_number, total_price: editItemsTotal, split_count: splitCount, items: orderItems });
       } else {
         await printPreCheckUtil({
           table_number: table.table_number,
@@ -331,7 +333,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     setPaymentSaving(true);
     try {
       // To'lov va yakunlash — bitta so'rovda (eski serverda mark-paid bilan to'ldiriladi)
-      await ordersApi.completeWithPayment(orderUuid, editPaymentMethod);
+      await ordersApi.completeWithPayment(orderUuid, editPaymentMethod, splitCount);
     } catch (err) {
       toast.error(getErrorMessage(err, "To'lovni yakunlashda xatolik yuz berdi."));
       setPaymentSaving(false);
@@ -532,6 +534,9 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         </span>
         <span className="text-[20px] font-black text-ink tracking-tightest tabular-nums">{formatMoney(total)}</span>
       </div>
+      {isEditMode && orderItems.length > 0 && (
+        <SplitBill total={editItemsTotal} count={splitCount} onChange={setSplitCount} />
+      )}
       <div className="flex gap-2">
         <Button
           variant="outline"
@@ -628,6 +633,11 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
             <div className="text-[28px] font-black text-ink tracking-tightest tabular-nums">{formatMoney(editItemsTotal)}</div>
           </div>
           <PaymentPicker value={editPaymentMethod} onChange={setEditPaymentMethod} />
+          {splitCount > 1 && (
+            <p className="text-[13px] font-semibold text-ink text-center">
+              Hisob {splitCount} kishiga bo'linadi — chekda ko'rsatiladi
+            </p>
+          )}
           <p className="text-[13px] text-muted">Tasdiqlangandan so'ng buyurtma yakunlanadi, stol bo'shatiladi va chek chop etiladi.</p>
         </div>
       </Sheet>

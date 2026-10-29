@@ -19,6 +19,8 @@ export interface CourierModel {
   vehicle_info?: CourierVehicleInfo;
   filial_uuid?: string;
   filial_name?: string;
+  /** Filialning kuryerlar havzasi (bo'sh — havza yo'q) */
+  filial_pool?: string;
   active_orders?: number;
   max_active_orders?: number;
   created_at?: string;
@@ -101,6 +103,12 @@ export const couriersApi = {
   updateCourier: async (uuid: string, payload: UpdateCourierPayload): Promise<CourierModel> => {
     const response = await apiClient.patch<CourierDetailResponse>(ENDPOINTS.COURIERS.DETAIL(uuid), payload);
     return response.data?.data || (response.data as any);
+  },
+
+  /** Kuryerni boshqa filialga ko'chirish (faqat hamkor egasi). `null` — filialsiz (butun hamkor). */
+  transferCourier: async (uuid: string, filialUuid: string | null): Promise<{ message?: string; data?: CourierModel }> => {
+    const response = await apiClient.post(ENDPOINTS.COURIERS.TRANSFER(uuid), { filial_uuid: filialUuid });
+    return response.data;
   },
 
   deleteCourier: async (uuid: string): Promise<void> => {

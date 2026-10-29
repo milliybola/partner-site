@@ -252,20 +252,10 @@ const AllOrdersPage: React.FC = () => {
         variant="outline"
         loading={printingUuid === o.uuid}
         icon={<Printer className="w-4 h-4" />}
-        onClick={() => handlePrintReceipt(o.uuid, true)}
-        title="Chek (QR bilan)"
-      >
-        QR bilan
-      </Button>
-      <Button
-        size={size}
-        variant="ghost"
-        disabled={printingUuid === o.uuid}
-        icon={<Printer className="w-4 h-4" />}
         onClick={() => handlePrintReceipt(o.uuid, false)}
-        title="Chek (QR siz)"
+        title="Chekni chop etish"
       >
-        QR siz
+        Chek
       </Button>
     </>
   );

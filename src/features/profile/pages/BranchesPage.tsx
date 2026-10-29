@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Building2, Clock, Edit2, ExternalLink, MapPin, Phone, Plus, Star, Trash2, UserCheck, UserPlus } from 'lucide-react';
+import { Building2, Clock, Edit2, ExternalLink, MapPin, Phone, Plus, Share2, Star, Trash2, UserCheck, UserPlus } from 'lucide-react';
 import { filialApi } from '../../orders/services/filialApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
 import { staffApi } from '../../staff/services/staffApi';
@@ -25,6 +25,8 @@ import {
 } from '../../../core/ui';
 import type { BadgeTone } from '../../../core/ui';
 import { getErrorMessage } from '../../../core/lib/errors';
+import { isOwner } from '../../../core/lib/session';
+import { POOL_KEY } from '../../staff/lib/courierFilial';
 import { cleanPhone, formatPhone, maskPhoneInput } from '../../../core/lib/format';
 import { openExternal } from '../../../core/platform';
 import { YandexLocationPicker } from '../components/YandexLocationPicker';
@@ -90,6 +92,13 @@ const BranchesPage: React.FC = () => {
   const [assignUuid, setAssignUuid] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
+
+  // Kuryerlar havzasi (faqat hamkor egasi): belgilangan filiallar bir-birining kuryerlaridan foydalanadi
+  const owner = isOwner();
+  const [poolOpen, setPoolOpen] = useState(false);
+  const [poolSel, setPoolSel] = useState<string[]>([]);
+  const [poolSaving, setPoolSaving] = useState(false);
+  const [poolError, setPoolError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -178,6 +187,40 @@ const BranchesPage: React.FC = () => {
     }
   };
 
+  const openPool = () => {
+    setPoolSel(branches.filter((b) => (b.courier_pool || '').trim()).map((b) => b.uuid));
+    setPoolError(null);
+    setPoolOpen(true);
+  };
+
+  const togglePool = (uuid: string) => setPoolSel((sel) => (sel.includes(uuid) ? sel.filter((x) => x !== uuid) : [...sel, uuid]));
+
+  const submitPool = async () => {
+    if (poolSel.length === 1) return setPoolError('Havza uchun kamida 2 ta filialni belgilang yoki hammasini olib tashlang.');
+    const changes = branches
+      .map((b) => ({ b, next: poolSel.includes(b.uuid) ? POOL_KEY : '' }))
+      .filter(({ b, next }) => (b.courier_pool || '') !== next);
+    if (changes.length === 0) {
+      setPoolOpen(false);
+      return;
+    }
+    setPoolSaving(true);
+    setPoolError(null);
+    try {
+      for (const { b, next } of changes) {
+        await filialApi.updateFilial(b.uuid, { courier_pool: next });
+      }
+      toast.success(poolSel.length ? 'Kuryerlar havzasi saqlandi' : 'Kuryerlar havzasi olib tashlandi');
+      setPoolOpen(false);
+      fetchData();
+    } catch (err) {
+      setPoolError(getErrorMessage(err, 'Kuryerlar havzasini saqlashda xatolik yuz berdi.'));
+      fetchData(); // qisman saqlangan bo'lishi mumkin — ro'yxatni yangilaymiz
+    } finally {
+      setPoolSaving(false);
+    }
+  };
+
   const openAssign = (b: PartnerFilial) => {
     setAssignFor(b);
     setAssignUuid(managerUuidOf(b));
@@ -229,9 +272,16 @@ const BranchesPage: React.FC = () => {
         title="Filiallar"
         subtitle={!loading && !error ? `${branches.length} ta filial` : 'Manzil, ish vaqti va menejerlar'}
         actions={
-          <Button onClick={openCreate} icon={<Plus className="w-4 h-4" />}>
-            <span className="hidden xs:inline">Filial qo'shish</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            {owner && branches.length > 1 && (
+              <Button variant="secondary" onClick={openPool} icon={<Share2 className="w-4 h-4" />}>
+                <span className="hidden xs:inline">Kuryerlar havzasi</span>
+              </Button>
+            )}
+            <Button onClick={openCreate} icon={<Plus className="w-4 h-4" />}>
+              <span className="hidden xs:inline">Filial qo'shish</span>
+            </Button>
+          </div>
         }
       />
 
@@ -273,6 +323,11 @@ const BranchesPage: React.FC = () => {
                       {b.is_main && (
                         <Badge tone="gold">
                           <Star className="w-3 h-3 fill-current" /> Asosiy
+                        </Badge>
+                      )}
+                      {(b.courier_pool || '').trim() && (
+                        <Badge tone="info" title="Bu filial boshqa filiallar bilan kuryerlarni bo'lishadi">
+                          <Share2 className="w-3 h-3" /> Umumiy havza
                         </Badge>
                       )}
                     </div>
@@ -403,6 +458,57 @@ const BranchesPage: React.FC = () => {
           </div>
           <button type="submit" className="hidden" />
         </form>
+      </Sheet>
+
+      {/* Courier pool */}
+      <Sheet
+        open={poolOpen}
+        onClose={() => !poolSaving && setPoolOpen(false)}
+        persistent={poolSaving}
+        size="sm"
+        title="Kuryerlar havzasi"
+        subtitle="Belgilangan filiallar bir-birining kuryerlaridan foydalanadi"
+        footer={
+          <>
+            <Button variant="secondary" size="lg" onClick={() => setPoolOpen(false)} disabled={poolSaving}>
+              Bekor qilish
+            </Button>
+            <Button size="lg" onClick={submitPool} loading={poolSaving}>
+              Saqlash
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {poolError && <InlineAlert>{poolError}</InlineAlert>}
+          <InlineAlert tone="info">
+            Yaqin filiallarni belgilang: kuryer bir filialga biriktirilgan bo'lsa ham, havzadagi boshqa filial buyurtmasini ola oladi. Buyurtma baribir o'z filialiga yoziladi. Belgilanmagan filial faqat o'z kuryerlari bilan ishlaydi.
+          </InlineAlert>
+          <div className="space-y-2">
+            {branches.map((b) => {
+              const on = poolSel.includes(b.uuid);
+              return (
+                <button
+                  key={b.uuid}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={on}
+                  onClick={() => togglePool(b.uuid)}
+                  className={`w-full flex items-center gap-3 p-3 min-h-[56px] rounded-2xl border text-left cursor-pointer transition
+                    ${on ? 'border-brand bg-brand-soft' : 'border-edge hover:bg-field'}`}
+                >
+                  <span className={`w-6 h-6 rounded-md border flex items-center justify-center shrink-0 ${on ? 'bg-brand border-brand text-white' : 'border-edge bg-surface'}`}>
+                    {on && <span className="text-[14px] leading-none font-black">✓</span>}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] font-bold truncate">{b.filial_name}</span>
+                    <span className="block text-[13px] text-muted truncate">{b.address || 'Manzil kiritilmagan'}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </Sheet>
 
       {/* Assign manager */}

@@ -3,6 +3,8 @@ import { Bike } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { Order } from '../../services/ordersApi';
 import type { CourierModel } from '../../../staff/services/couriersApi';
+import type { PartnerFilial } from '../../services/filialApi';
+import { courierServesFilial } from '../../../staff/lib/courierFilial';
 import { Badge, Button, EmptyState, LoadingState, Sheet } from '../../../../core/ui';
 import { formatPhone } from '../../../../core/lib/format';
 import { orderNo } from './actions';
@@ -17,14 +19,19 @@ const courierStatus = (s?: string) => {
 export const CourierPickerSheet: React.FC<{
   order: Order | null;
   couriers: CourierModel[];
+  /** Buyurtma filialining havzasini bilish uchun (bo'sh bo'lsa faqat filial/filialsiz tekshiriladi) */
+  filials?: PartnerFilial[];
   loading: boolean;
   assigningUuid: string | null;
   onClose: () => void;
   onAssign: (courierUuid: string) => void;
-}> = ({ order, couriers, loading, assigningUuid, onClose, onAssign }) => {
+}> = ({ order, couriers, filials = [], loading, assigningUuid, onClose, onAssign }) => {
   const navigate = useNavigate();
   if (!order) return null;
-  const sorted = [...couriers].sort((a, b) => (a.status === 'online' ? -1 : 0) - (b.status === 'online' ? -1 : 0));
+  // Shu buyurtma filialiga xizmat qiladiganlar (o'z filiali, filialsiz, umumiy havza) tepada; qolganlari xira va o'chirilgan.
+  const serves = (c: CourierModel) => courierServesFilial(c, order.filial_uuid, filials);
+  const online = (c: CourierModel) => (c.status === 'online' ? 0 : 1);
+  const sorted = [...couriers].sort((a, b) => Number(!serves(a)) - Number(!serves(b)) || online(a) - online(b));
   return (
     <Sheet open persistent={!!assigningUuid} onClose={onClose} title="Kuryer tanlash" subtitle={`${orderNo(order)} buyurtmasi uchun`} size="sm">
       {loading ? (
@@ -47,8 +54,10 @@ export const CourierPickerSheet: React.FC<{
             const load = c.active_orders ?? 0;
             const limit = c.max_active_orders ?? 1;
             const full = load >= limit;
+            const ok = serves(c);
+            const reason = ok ? undefined : `Kuryer  filialiga biriktirilgan`;
             return (
-              <div key={c.uuid} className="flex items-center justify-between gap-3 p-3 rounded-2xl border border-edge">
+              <div key={c.uuid} title={reason} className={`flex items-center justify-between gap-3 p-3 rounded-2xl border border-edge `}>
                 <div className="min-w-0">
                   <p className="text-[15px] font-bold text-ink truncate">
                     {c.first_name} {c.last_name}
@@ -58,6 +67,8 @@ export const CourierPickerSheet: React.FC<{
                       {st.label}
                     </Badge>
                     <span className="text-[12px] text-muted">{formatPhone(c.phone)}</span>
+                    {!ok && <Badge tone="warning">Boshqa filial{c.filial_name ? `: ` : ''}</Badge>}
+                    {ok && order.filial_uuid && c.filial_name && <Badge tone="neutral">{c.filial_name}</Badge>}
                     {load > 0 && (
                       <Badge tone={full ? 'danger' : 'brand'}>
                         Reys {load}/{limit}
@@ -65,7 +76,7 @@ export const CourierPickerSheet: React.FC<{
                     )}
                   </div>
                 </div>
-                <Button size="md" loading={assigningUuid === c.uuid} disabled={!!assigningUuid || full} onClick={() => onAssign(c.uuid)}>
+                <Button size="md" loading={assigningUuid === c.uuid} disabled={!!assigningUuid || full || !ok} title={reason} onClick={() => onAssign(c.uuid)}>
                   Biriktirish
                 </Button>
               </div>

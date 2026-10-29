@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart2, Bike, Edit, Plus, RefreshCw, Shield, Trash2, Trophy, Users } from 'lucide-react';
+import { ArrowRightLeft, BarChart2, Bike, Edit, Plus, RefreshCw, Shield, Trash2, Trophy, Users } from 'lucide-react';
 import { staffApi } from '../services/staffApi';
 import type { StaffMember, StaffRatingMember } from '../services/staffApi';
 import { couriersApi } from '../services/couriersApi';
@@ -28,9 +28,10 @@ import {
 import type { Column } from '../../../core/ui';
 import { formatMoney, formatPhone } from '../../../core/lib/format';
 import { getErrorMessage } from '../../../core/lib/errors';
-import { isManager as isManagerFn } from '../../../core/lib/session';
+import { isManager as isManagerFn, isOwner as isOwnerFn } from '../../../core/lib/session';
 import { ROLE_LABEL, StaffFormSheet } from '../components/StaffFormSheet';
 import { CourierFormSheet, TRANSPORT_LABEL } from '../components/CourierFormSheet';
+import { CourierTransferSheet } from '../components/CourierTransferSheet';
 import { StaffStatsSheet } from '../components/StaffStatsSheet';
 
 type Tab = 'staff' | 'couriers' | 'ratings';
@@ -61,6 +62,7 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
   const confirm = useConfirm();
   const manager = isManagerFn();
   const canEdit = !manager;
+  const owner = isOwnerFn();
 
   const [tab, setTab] = useState<Tab>(initialTab);
   const [filials, setFilials] = useState<PartnerFilial[]>([]);
@@ -84,6 +86,7 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
   const [courierFilial, setCourierFilial] = useState('');
   const [editingCourier, setEditingCourier] = useState<CourierModel | null>(null);
   const [courierFormOpen, setCourierFormOpen] = useState(false);
+  const [transferCourier, setTransferCourier] = useState<CourierModel | null>(null);
 
   // Ratings
   const [period, setPeriod] = useState<Period>('month');
@@ -320,7 +323,18 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
         </div>
       ),
     },
-    { key: 'filial', header: 'Filial', render: (c) => c.filial_name || '—' },
+    {
+      key: 'filial',
+      header: 'Filial',
+      render: (c) => (
+        <div className="min-w-0 flex flex-wrap items-center gap-1.5">
+          {c.filial_name ? <span className="truncate">{c.filial_name}</span> : <Badge tone="neutral">Barcha filiallar</Badge>}
+          {c.filial_name && c.filial_pool && (
+            <Badge tone="info" title="Bu filial kuryerlari boshqa filiallar bilan umumiy">Umumiy havza</Badge>
+          )}
+        </div>
+      ),
+    },
     { key: 'tg', header: 'Telegram', mobileHidden: true, render: (c) => (c.telegram_id ? <span className="font-mono text-[13px]">{c.telegram_id}</span> : '—') },
     {
       key: 'active',
@@ -502,6 +516,11 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
                     canEdit
                       ? (c) => (
                           <>
+                            {owner && filials.length > 0 && (
+                              <IconButton label="Boshqa filialga ko'chirish" size="sm" variant="secondary" onClick={() => setTransferCourier(c)}>
+                                <ArrowRightLeft className="w-4 h-4" />
+                              </IconButton>
+                            )}
                             <IconButton label="Tahrirlash" size="sm" variant="secondary" onClick={() => { setEditingCourier(c); setCourierFormOpen(true); }}>
                               <Edit className="w-4 h-4" />
                             </IconButton>
@@ -555,6 +574,16 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
           </>
         )}
       </div>
+
+      <CourierTransferSheet
+        courier={transferCourier}
+        filials={filials}
+        onClose={() => setTransferCourier(null)}
+        onDone={() => {
+          setTransferCourier(null);
+          fetchCouriers();
+        }}
+      />
 
       <StaffFormSheet
         open={staffFormOpen}

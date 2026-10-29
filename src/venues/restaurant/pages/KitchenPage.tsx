@@ -4,7 +4,7 @@ import type { Order } from '../../../features/orders/services/ordersApi';
 import { ElapsedChip } from '../../../features/orders/components/queue/OrderCard';
 import { itemName, orderNo } from '../../../features/orders/components/queue/actions';
 import { Badge, Button, EmptyState, ErrorState, PageHeader, SkeletonList, Tabs } from '../../../core/ui';
-import { useConfirm } from '../../../core/components/ConfirmProvider';
+import { useRejectReason } from '../../../core/components/RejectReasonProvider';
 import { parseDate } from '../../../core/lib/format';
 import { useLiveOrders } from '../../shared/useLiveOrders';
 
@@ -101,7 +101,7 @@ const Ticket: React.FC<{
 /** Restoran: oshxona (KDS) ekrani — navbat Yangi → Tayyorlanmoqda → Tayyor, katta shrift va katta tugmalar. */
 const KitchenPage: React.FC = () => {
   const { orders, loading, error, refresh, busyUuid, freshUuids, isConnected, setStatus } = useLiveOrders();
-  const confirm = useConfirm();
+  const askRejectReason = useRejectReason();
   const [tab, setTab] = useState<Column>('NEW');
   const [now, setNow] = useState(() => Date.now());
 
@@ -118,9 +118,8 @@ const KitchenPage: React.FC = () => {
   }, [orders]);
 
   const reject = async (o: Order) => {
-    if (await confirm(`${orderNo(o)} buyurtmani rad etasizmi?`, { danger: true, confirmText: 'Rad etish' })) {
-      await setStatus(o, 'REJECTED', 'Buyurtma rad etildi');
-    }
+    const reason = await askRejectReason({ orderLabel: orderNo(o) });
+    if (reason) await setStatus(o, 'REJECTED', 'Buyurtma rad etildi', reason);
   };
 
   const renderTicket = (col: Column, o: Order) => {

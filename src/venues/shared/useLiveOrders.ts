@@ -68,7 +68,7 @@ export function useLiveOrders() {
 
   /** Holatni o'zgartiradi (optimistik); xatoda avvalgi ro'yxat qaytariladi. */
   const setStatus = useCallback(
-    async (order: Order, next: Order['status'], message?: string): Promise<boolean> => {
+    async (order: Order, next: Order['status'], message?: string, reason?: string): Promise<boolean> => {
       const previous = orders;
       setBusyUuid(order.uuid);
       setFreshUuids((s) => {
@@ -77,9 +77,9 @@ export function useLiveOrders() {
         n.delete(order.uuid);
         return n;
       });
-      setOrders((prev) => prev.map((o) => (o.uuid === order.uuid ? { ...o, status: next } : o)));
+      setOrders((prev) => prev.map((o) => (o.uuid === order.uuid ? { ...o, status: next, ...(reason ? { reject_reason: reason } : {}) } : o)));
       try {
-        await ordersApi.updateOrderStatus(order.uuid, next);
+        await ordersApi.updateOrderStatus(order.uuid, next, reason);
         if (message) toast.success(message);
         void refresh();
         return true;

@@ -4,6 +4,7 @@ import Layout from './core/components/Layout';
 import ProtectedRoute from './core/components/ProtectedRoute';
 import { ToastProvider } from './core/components/ToastProvider';
 import { ConfirmProvider } from './core/components/ConfirmProvider';
+import { RejectReasonProvider } from './core/components/RejectReasonProvider';
 import { LoadingState } from './core/ui';
 import { isManager } from './core/lib/session';
 import LoginPage from './features/auth/pages/LoginPage';
@@ -53,6 +54,7 @@ const App: React.FC = () => {
   return (
     <ToastProvider>
       <ConfirmProvider>
+      <RejectReasonProvider>
         <HashRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -91,6 +93,7 @@ const App: React.FC = () => {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </HashRouter>
+      </RejectReasonProvider>
       </ConfirmProvider>
     </ToastProvider>
   );

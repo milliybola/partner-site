@@ -13,6 +13,7 @@ import { printReceipt as printReceiptUtil, printPreCheck as printPreCheckUtil } 
 import { EditOrderModal } from '../components/EditOrderModal';
 import { useToast } from '../../../core/components/ToastProvider';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
+import { useRejectReason } from '../../../core/components/RejectReasonProvider';
 import { useRealtime } from '../../../core/realtime/RealtimeProvider';
 import type { RealtimeEvent } from '../../../core/realtime/RealtimeProvider';
 import { getPartner, isManager, isShop, wording } from '../../../core/lib/session';
@@ -86,6 +87,7 @@ type TypeFilter = 'ALL' | 'DELIVERY' | 'PICKUP' | 'DINE_IN';
 const OrdersPage: React.FC = () => {
   const toast = useToast();
   const confirm = useConfirm();
+  const askRejectReason = useRejectReason();
   const navigate = useNavigate();
   const partner = getPartner();
   const manager = isManager(partner);
@@ -321,14 +323,14 @@ const OrdersPage: React.FC = () => {
     toast.error(getErrorMessage(err, fallback));
   };
 
-  const updateStatus = async (order: Order, nextStatus: Order['status'], successMsg?: string) => {
+  const updateStatus = async (order: Order, nextStatus: Order['status'], successMsg?: string, reason?: string) => {
     const previous = orders;
     setBusyUuid(order.uuid);
     unmarkFresh(order.uuid);
     // Optimistic: the card moves columns immediately.
-    setOrders((prev) => prev.map((o) => (o.uuid === order.uuid ? { ...o, status: nextStatus } : o)));
+    setOrders((prev) => prev.map((o) => (o.uuid === order.uuid ? { ...o, status: nextStatus, ...(reason ? { reject_reason: reason } : {}) } : o)));
     try {
-      await ordersApi.updateOrderStatus(order.uuid, nextStatus);
+      await ordersApi.updateOrderStatus(order.uuid, nextStatus, reason);
       if (successMsg) toast.success(successMsg);
       if (nextStatus === 'READY_FOR_PICKUP' && order.delivery_type === 'DELIVERY' && autoPrintEnabled()) {
         handlePrintReceipt(order.uuid, true);
@@ -437,12 +439,8 @@ const OrdersPage: React.FC = () => {
         acceptOrder(order);
         return;
       case 'reject': {
-        const ok = await confirm(`${orderNo(order)} buyurtmasini rad etasizmi? Mijozga xabar boradi.`, {
-          title: 'Buyurtmani rad etish',
-          danger: true,
-          confirmText: 'Rad etish',
-        });
-        if (ok) updateStatus(order, 'REJECTED', `${orderNo(order)} rad etildi`);
+        const reason = await askRejectReason({ orderLabel: orderNo(order) });
+        if (reason) updateStatus(order, 'REJECTED', `${orderNo(order)} rad etildi`, reason);
         return;
       }
       case 'cancel': {

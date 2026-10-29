@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bike, CreditCard, FileText, MapPin, MessageSquare, Pencil, Phone, Printer, Store, User, Utensils } from 'lucide-react';
+import { Ban, Bike, CreditCard, FileText, MapPin, MessageSquare, Pencil, Phone, Printer, Store, User, Utensils } from 'lucide-react';
 import type { Order } from '../../services/ordersApi';
 import { Badge, Button, Sheet } from '../../../../core/ui';
 import { formatDateTime, formatMoney, formatPhone } from '../../../../core/lib/format';
@@ -100,6 +100,17 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
       }
     >
       <div className="space-y-5">
+        {order.reject_reason && (order.status === 'REJECTED' || order.status === 'CANCELLED') && (
+          <div className="rounded-2xl bg-danger-soft text-danger-ink px-4 py-3 flex gap-2.5">
+            <Ban className="w-4 h-4 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[12px] font-bold uppercase tracking-wider opacity-80">
+                {order.status === 'REJECTED' ? 'Rad etish sababi' : 'Bekor qilish sababi'}
+              </div>
+              <p className="text-[14px] font-semibold break-words">{order.reject_reason}</p>
+            </div>
+          </div>
+        )}
         {isHandedToCourier(order) && (
           <div className="rounded-2xl bg-info-soft text-info px-4 py-3 flex gap-2.5">
             <Bike className="w-4 h-4 mt-0.5 shrink-0" />

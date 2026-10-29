@@ -107,6 +107,12 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
           </div>
         )}
 
+        {order.reject_reason && (order.status === 'REJECTED' || order.status === 'CANCELLED') && (
+          <p className="mt-2 text-[12px] font-semibold text-danger-ink bg-danger-soft rounded-lg px-2 py-1 line-clamp-2">
+            Sabab: {order.reject_reason}
+          </p>
+        )}
+
         <div className="mt-2.5 flex items-center justify-between">
           <span className="text-[17px] font-black text-ink tracking-tightest tabular-nums">{formatMoney(order.total_price)}</span>
           <ChevronRight className="w-4 h-4 text-subtle" />

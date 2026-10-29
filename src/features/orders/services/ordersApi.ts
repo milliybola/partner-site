@@ -104,10 +104,11 @@ export const ordersApi = {
     return response.data.data || [];
   },
 
-  updateOrderStatus: async (orderUuid: string, status: string): Promise<any> => {
+  /** `reason` — rad etish sababi: `REJECTED` uchun backend majburiy talab qiladi. */
+  updateOrderStatus: async (orderUuid: string, status: string, reason?: string): Promise<any> => {
     const slug = getStatusSlug(status);
     const url = ENDPOINTS.ORDERS.UPDATE_STATUS(orderUuid, slug);
-    const response = await apiClient.post(url);
+    const response = await apiClient.post(url, reason ? { reject_reason: reason } : undefined);
     return response.data;
   },
 

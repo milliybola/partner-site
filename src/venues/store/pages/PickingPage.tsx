@@ -5,6 +5,7 @@ import { ElapsedChip } from '../../../features/orders/components/queue/OrderCard
 import { itemName, orderNo } from '../../../features/orders/components/queue/actions';
 import { Badge, Button, EmptyState, ErrorState, Input, PageHeader, SkeletonList } from '../../../core/ui';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
+import { useRejectReason } from '../../../core/components/RejectReasonProvider';
 import { useToast } from '../../../core/components/ToastProvider';
 import { formatMoney, parseDate } from '../../../core/lib/format';
 import { useLiveOrders } from '../../shared/useLiveOrders';
@@ -50,6 +51,7 @@ const qtyLabel = (it: PickItem) => {
 const PickingPage: React.FC = () => {
   const { orders, loading, error, refresh, busyUuid, freshUuids, setStatus } = useLiveOrders();
   const confirm = useConfirm();
+  const askRejectReason = useRejectReason();
   const toast = useToast();
   const [selected, setSelected] = useState<string | null>(null);
   const [checkedByOrder, setCheckedByOrder] = useState<Record<string, Set<string>>>({});
@@ -117,9 +119,9 @@ const PickingPage: React.FC = () => {
   };
 
   const reject = async () => {
-    if (order && (await confirm(`${orderNo(order)} buyurtmani rad etasizmi?`, { danger: true, confirmText: 'Rad etish' }))) {
-      await setStatus(order, 'REJECTED', 'Buyurtma rad etildi');
-    }
+    if (!order) return;
+    const reason = await askRejectReason({ orderLabel: orderNo(order) });
+    if (reason) await setStatus(order, 'REJECTED', 'Buyurtma rad etildi', reason);
   };
 
   const pending = order && (order.status === 'PENDING' || order.status === 'SEARCHING_COURIER');

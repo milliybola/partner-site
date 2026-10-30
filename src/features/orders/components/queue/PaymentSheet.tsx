@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Banknote, CreditCard, Smartphone, Wallet, ArrowLeftRight } from 'lucide-react';
 import type { Order } from '../../services/ordersApi';
 import { Button, Sheet } from '../../../../core/ui';
@@ -23,25 +23,24 @@ const ICONS: Record<PayMethod, React.ReactNode> = {
  * YAGONA to'lov oynasi (topshirish / yakunlash): faqat hamkor yoqqan usullar ko'rinadi.
  * Tasdiqlansa to'lov va yakunlash bitta so'rovda yuboriladi (OrdersPage → ordersApi.completeWithPayment).
  */
-export const PaymentSheet: React.FC<{
+interface Props {
   order: Order | null;
   saving: boolean;
   onClose: () => void;
   onSubmit: (method: PaymentMethod, splitCount: number) => void;
-}> = ({ order, saving, onClose, onSubmit }) => {
+}
+
+/** Har buyurtma uchun tanlov holati yangidan boshlanadi (key) — qayta renderlar (WS yangilanishi va h.k.) uni tiklamaydi */
+export const PaymentSheet: React.FC<Props> = ({ order, ...rest }) =>
+  order ? <PaymentForm key={order.uuid} order={order} {...rest} /> : null;
+
+const PaymentForm: React.FC<Props & { order: Order }> = ({ order, saving, onClose, onSubmit }) => {
   const { methods } = usePaymentMethods();
-  const [method, setMethod] = useState<PaymentMethod>('CASH');
+  const [picked, setMethod] = useState<PaymentMethod>(() => normalizePayCode(order.payment_method));
   const [splitCount, setSplitCount] = useState(1);
+  // Buyurtmadagi usul hamkorda o'chirilgan bo'lsa — birinchi yoqilganini tanlaymiz
+  const method = methods.some((x) => x.value === picked) ? picked : methods[0].value;
 
-  useEffect(() => {
-    if (!order) return;
-    setSplitCount(1);
-    const m = normalizePayCode(order.payment_method);
-    // Buyurtmadagi usul hamkorda o'chirilgan bo'lsa — birinchi yoqilganini tanlaymiz
-    setMethod(methods.some((x) => x.value === m) ? m : methods[0].value);
-  }, [order, methods]);
-
-  if (!order) return null;
   return (
     <Sheet
       open

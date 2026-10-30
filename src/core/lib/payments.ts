@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import apiClient from '../api/client';
 import { getToken } from './session';
 
@@ -101,6 +101,10 @@ export function usePaymentMethods() {
   }, []);
 
   const refresh = useCallback(() => loadPaymentMethods(true), []);
-  const methods = ALL_PAY_METHODS.filter((m) => info.enabled.includes(m.value));
-  return { methods: methods.length ? methods : ALL_PAY_METHODS, enabled: info.enabled, loading, refresh };
+  // Barqaror havola: har renderda yangi massiv bo'lsa, unga bog'langan effektlar (tanlovni tiklash) qayta-qayta ishlaydi
+  const methods = useMemo(() => {
+    const list = ALL_PAY_METHODS.filter((m) => info.enabled.includes(m.value));
+    return list.length ? list : ALL_PAY_METHODS;
+  }, [info.enabled]);
+  return { methods, enabled: info.enabled, loading, refresh };
 }

@@ -92,7 +92,8 @@ const TableTile: React.FC<{
   );
 };
 
-const TablesPage: React.FC = () => {
+/** `openQr` — sidebar'dagi «Stol QR-kodlari» (/tables/qr): sahifa QR oynasi ochiq holda boshlanadi */
+const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   const toast = useToast();
   const navigate = useNavigate();
   const { tariff, refresh: refreshTariffUsage } = useTariff();
@@ -123,7 +124,7 @@ const TablesPage: React.FC = () => {
   const [editing, setEditing] = useState<TableModel | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
-  const [tableQrOpen, setTableQrOpen] = useState(false);
+  const [tableQrOpen, setTableQrOpen] = useState(openQr);
   const [menuTable, setMenuTable] = useState<TableModel | null>(null);
   const [orderingTable, setOrderingTable] = useState<TableModel | null>(null);
   const [billTable, setBillTable] = useState<TableModel | null>(null);
@@ -446,7 +447,10 @@ const TablesPage: React.FC = () => {
 
       <TableQrSheet
         open={tableQrOpen}
-        onClose={() => setTableQrOpen(false)}
+        onClose={() => {
+          setTableQrOpen(false);
+          if (openQr) navigate('/tables', { replace: true });
+        }}
         enabled={tariff.allow_qr_menu}
         tables={tables}
         restaurantName={partner?.name || partner?.partner_name || 'Restoran'}

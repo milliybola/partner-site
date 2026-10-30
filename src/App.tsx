@@ -87,7 +87,8 @@ const App: React.FC = () => {
               <Route path="staff" element={page(<StaffPage />)} />
               <Route path="couriers" element={page(<StaffPage initialTab="couriers" />)} />
               <Route path="shift" element={page(<ShiftPage />)} />
-              <Route path="tables" element={<VenueOnly kind="restaurant"><FeatureGate feature="dine_in">{page(<TablesPage />)}</FeatureGate></VenueOnly>} />
+              <Route path="tables" element={<VenueOnly kind="restaurant"><FeatureGate feature="dine_in">{page(<TablesPage key="tables" />)}</FeatureGate></VenueOnly>} />
+              <Route path="tables/qr" element={<VenueOnly kind="restaurant"><FeatureGate feature="qr_menu">{page(<TablesPage key="qr" openQr />)}</FeatureGate></VenueOnly>} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

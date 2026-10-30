@@ -1,6 +1,6 @@
 import {
   Bike, BarChart3, BookOpen, LayoutDashboard, Boxes, Building2, ChefHat, ClipboardCheck, Clock, DollarSign, Home, ListOrdered, Lock, MapPin,
-  ScanBarcode, Settings, ShoppingBag, Table, Tag, User, Users, Wallet,
+  ScanBarcode, ScanLine, Settings, ShoppingBag, Table, Tag, User, Users, Wallet,
   type LucideIcon,
 } from 'lucide-react';
 import type { PartnerSession } from '../core/lib/session';
@@ -30,7 +30,8 @@ const RESTAURANT = (owner: boolean): NavGroup[] => [
       ...own(owner, [{ to: '/', label: 'Bosh sahifa', icon: Home, end: true }]),
       { to: '/orders', label: 'Buyurtmalar', icon: ListOrdered },
       { to: '/kitchen', label: 'Oshxona ekrani', icon: ChefHat },
-      { to: '/tables', label: 'Stollar', icon: Table },
+      { to: '/tables', label: 'Stollar', icon: Table, end: true },
+      { to: '/tables/qr', label: 'Stol QR-kodlari', icon: ScanLine },
       // { to: '/new-order', label: 'Yangi buyurtma', icon: PlusCircle },
       { to: '/shift', label: 'Smena', icon: Clock },
     ],
@@ -97,10 +98,19 @@ const management = (owner: boolean): NavGroup[] => [
 const lockIf = (item: NavItem, locked: boolean, need: string): NavItem =>
   locked ? { ...item, to: `/plan?need=${need}`, icon: Lock } : item;
 
+/** Sahifa → tarif imkoniyati. Tarifga kirmaganlari qulflanadi (standart tarifda ham). */
 const applyTariff = (item: NavItem, t?: PartnerTariff): NavItem => {
   if (!t) return item;
-  if (item.to === '/tables') return lockIf(item, !t.allow_dine_in, 'dine_in');
-  return item;
+  switch (item.to) {
+    case '/tables':
+      return lockIf(item, !t.allow_dine_in, 'dine_in');
+    case '/tables/qr':
+      return lockIf(item, !(t.allow_dine_in && t.allow_qr_menu), 'qr_menu');
+    case '/couriers':
+      return lockIf(item, t.max_couriers === 0, 'couriers');
+    default:
+      return item;
+  }
 };
 
 export const buildNav = (p: PartnerSession | null, tariff?: PartnerTariff): NavGroup[] => {
@@ -122,5 +132,5 @@ export const buildTabs = (kind: VenueKind, tariff?: PartnerTariff): NavItem[] =>
     : [
         { to: '/orders', label: 'Buyurtmalar', icon: ListOrdered },
         { to: '/kitchen', label: 'Oshxona', icon: ChefHat },
-        applyTariff({ to: '/tables', label: 'Stollar', icon: Table }, tariff),
+        applyTariff({ to: '/tables', label: 'Stollar', icon: Table, end: true }, tariff),
       ];

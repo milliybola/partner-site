@@ -7,13 +7,17 @@ import { useTariff } from '../lib/tariff';
 const TEXT = {
   pickup: { title: 'Olib ketish', need: 'pickup' },
   dine_in: { title: 'Zal va stollar', need: 'dine_in' },
+  qr_menu: { title: 'Stol QR menyusi', need: 'qr_menu' },
 } as const;
 
 /** Tarifda yo'q bo'limga to'g'ridan-to'g'ri havola bilan kirilsa — ochilmaydi, «Tarif» sahifasiga yo'naltiradi. */
 export const FeatureGate: React.FC<{ feature: keyof typeof TEXT; children: React.ReactElement }> = ({ feature, children }) => {
   const { tariff, loading } = useTariff();
   const navigate = useNavigate();
-  const allowed = feature === 'pickup' ? tariff.allow_pickup : tariff.allow_dine_in;
+  const allowed =
+    feature === 'pickup' ? tariff.allow_pickup
+    : feature === 'qr_menu' ? tariff.allow_dine_in && tariff.allow_qr_menu
+    : tariff.allow_dine_in;
   if (loading) return <LoadingState className="min-h-[40vh]" />;
   if (allowed) return children;
   return (

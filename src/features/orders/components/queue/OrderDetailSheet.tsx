@@ -12,6 +12,7 @@ import { FilialTag } from './FilialTag';
 
 const SOURCE_LABEL: Record<string, string> = {
   WAITER: 'Ofitsiant',
+  QR: 'Stol QR (mijoz)',
   CUSTOMER: 'Mijoz (ilova)',
   PARTNER: 'Kassa',
 };

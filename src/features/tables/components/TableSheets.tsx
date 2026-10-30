@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CheckCircle, Download, Edit, Power, Trash2 } from 'lucide-react';
+import { CheckCircle, Download, Edit, Power, Receipt, Trash2 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { Button, InlineAlert, Input, Select, Sheet, Switch, Tabs, Textarea, SettingRow } from '../../../core/ui';
 import { getErrorMessage } from '../../../core/lib/errors';
@@ -376,7 +376,8 @@ export const TableActionsSheet: React.FC<{
   onToggleActive: (t: TableModel) => void;
   onDelete: (t: TableModel) => void;
   onOpenOrder: (t: TableModel) => void;
-}> = ({ table, onClose, onEdit, onToggleActive, onDelete, onOpenOrder }) => {
+  onOpenBill: (t: TableModel) => void;
+}> = ({ table, onClose, onEdit, onToggleActive, onDelete, onOpenOrder, onOpenBill }) => {
   const active = table?.is_active !== false;
   const row = 'w-full flex items-center gap-3 h-14 px-4 rounded-2xl text-[15px] font-bold cursor-pointer';
   return (
@@ -385,6 +386,9 @@ export const TableActionsSheet: React.FC<{
         <div className="space-y-2 pb-2">
           <button type="button" className={`${row} bg-brand text-white justify-center`} onClick={() => onOpenOrder(table)}>
             <CheckCircle className="w-5 h-5" /> {table.current_order ? 'Buyurtmani ochish' : 'Buyurtma yaratish'}
+          </button>
+          <button type="button" className={`${row} bg-field text-ink`} onClick={() => onOpenBill(table)}>
+            <Receipt className="w-5 h-5 text-muted" /> Hisob va to'lov
           </button>
           <button type="button" className={`${row} bg-field text-ink`} onClick={() => onEdit(table)}>
             <Edit className="w-5 h-5 text-muted" /> Tahrirlash

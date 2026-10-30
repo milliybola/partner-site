@@ -11,6 +11,8 @@ export interface PartnerTariff {
   allow_delivery: boolean;
   allow_pickup: boolean;
   allow_dine_in: boolean;
+  /** stol QR menyusi (Plus) */
+  allow_qr_menu: boolean;
   /** null — cheksiz. `tables_per_filial` bo'lsa — jami (cap × filiallar soni) */
   max_tables: number | null;
   /** stol limiti har filialga nisbatanmi */
@@ -46,7 +48,7 @@ export interface PartnerTariff {
 
 /** Yuklanmaguncha yoki so'rov xato bo'lsa — hech narsani yashirmaymiz (cheklovni baribir server qo'llaydi) */
 export const UNRESTRICTED: PartnerTariff = {
-  code: 'unlimited', name: 'Cheklovsiz', restricted: false, allow_delivery: true, allow_pickup: true, allow_dine_in: true,
+  code: 'unlimited', name: 'Cheklovsiz', restricted: false, allow_delivery: true, allow_pickup: true, allow_dine_in: true, allow_qr_menu: true,
   max_tables: null, tables_per_filial: false, table_per_filial_cap: null, max_filials: null,
   max_products: null, max_couriers: null, free_orders_monthly: null, extra_order_fee: 0,
   price_monthly: 0, price_monthly_original: 0, listing_priority: 0, priority_support: true,

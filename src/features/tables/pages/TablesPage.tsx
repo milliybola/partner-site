@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clock, FileSpreadsheet, MoreVertical, Plus, QrCode, RefreshCw, Table2, Users } from 'lucide-react';
+import { Clock, FileSpreadsheet, MoreVertical, Plus, QrCode, RefreshCw, ScanLine, Table2, Users } from 'lucide-react';
 import { tablesApi } from '../services/tablesApi';
 import type { TableModel } from '../services/tablesApi';
 import { filialApi } from '../../orders/services/filialApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
+import { TableBillSheet } from '../components/TableBillSheet';
 import { TableOrderModal } from '../components/TableOrderModal';
+import { TableQrSheet } from '../components/TableQrPosters';
 import { BulkImportSheet, QrSheet, TableActionsSheet, TableFormSheet, TABLE_STATUS_LABEL } from '../components/TableSheets';
 import { useToast } from '../../../core/components/ToastProvider';
 import { useNavigate } from 'react-router-dom';
@@ -121,8 +123,10 @@ const TablesPage: React.FC = () => {
   const [editing, setEditing] = useState<TableModel | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+  const [tableQrOpen, setTableQrOpen] = useState(false);
   const [menuTable, setMenuTable] = useState<TableModel | null>(null);
   const [orderingTable, setOrderingTable] = useState<TableModel | null>(null);
+  const [billTable, setBillTable] = useState<TableModel | null>(null);
 
   // BUGFIX: every refresh used to flip the whole grid to a spinner. Only the
   // first load shows skeletons now; later refreshes are silent.
@@ -284,6 +288,11 @@ const TablesPage: React.FC = () => {
             <IconButton label="Yangilash" variant="outline" onClick={() => fetchTables(true)} disabled={refreshing}>
               <RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} />
             </IconButton>
+            {canManage && (
+              <IconButton label="Stol QR-kodlari" variant="outline" onClick={() => setTableQrOpen(true)}>
+                <ScanLine className="w-[18px] h-[18px]" />
+              </IconButton>
+            )}
             {canManage && qrUrl && (
               <IconButton label="QR-kod" variant="outline" onClick={() => setQrOpen(true)}>
                 <QrCode className="w-[18px] h-[18px]" />
@@ -400,7 +409,13 @@ const TablesPage: React.FC = () => {
           setMenuTable(null);
           setOrderingTable(t);
         }}
+        onOpenBill={(t) => {
+          setMenuTable(null);
+          setBillTable(t);
+        }}
       />
+
+      <TableBillSheet table={billTable} canPay={manager} onClose={() => setBillTable(null)} onChanged={() => void fetchTables(true)} />
 
       <TableFormSheet
         open={formOpen}
@@ -428,6 +443,25 @@ const TablesPage: React.FC = () => {
       {qrUrl && (
         <QrSheet open={qrOpen} onClose={() => setQrOpen(false)} url={qrUrl} fileName={partner?.name || partner?.partner_name || 'menyu'} />
       )}
+
+      <TableQrSheet
+        open={tableQrOpen}
+        onClose={() => setTableQrOpen(false)}
+        enabled={tariff.allow_qr_menu}
+        tables={tables}
+        restaurantName={partner?.name || partner?.partner_name || 'Restoran'}
+        logo={partner?.logo}
+        canManage={canManage}
+        onReset={async (t) => {
+          try {
+            await tablesApi.resetTableQr(t.uuid);
+            toast.success("QR yangilandi. Eski QR kodlar ishlamaydi, yangisini chop eting.");
+            await fetchTables(true);
+          } catch (err) {
+            toast.error(getErrorMessage(err, "QR'ni yangilab bo'lmadi."));
+          }
+        }}
+      />
 
       {orderingTable && (
         <TableOrderModal

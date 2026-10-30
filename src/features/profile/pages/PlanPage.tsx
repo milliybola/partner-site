@@ -12,6 +12,7 @@ const FEATURE_TEXT: Record<string, string> = {
   tables: 'Stollar limiti',
   filials: 'Filiallar limiti',
   products: 'Mahsulotlar limiti',
+  qr_menu: 'Stol QR menyusi',
   couriers: 'Kuryerlar limiti',
 };
 
@@ -104,6 +105,7 @@ const PlanPage: React.FC = () => {
                 <Feature on title="Yetkazib berish" hint="Kuryer orqali mijoz manziliga" />
                 <Feature on={tariff.allow_pickup} title="Olib ketish" hint={tariff.allow_pickup ? "Mijoz o'zi kelib oladi" : "Tarifni oshirsangiz ochiladi"} />
                 <Feature on={tariff.allow_dine_in} title="Zal va stollar" hint={tariff.allow_dine_in ? 'Stol buyurtmalari, ofitsiantlar' : 'Tarifni oshirsangiz ochiladi'} />
+                <Feature on={tariff.allow_dine_in && tariff.allow_qr_menu} title="Stol QR menyusi" hint={tariff.allow_qr_menu ? "Har stolga alohida QR: buyurtma, ofitsiantni chaqirish, hisob" : 'Plus tarifida ochiladi'} />
                 <Feature on={tariff.listing_priority > 0} title="Ro'yxatda birinchi" hint={tariff.listing_priority > 0 ? "Mijoz ilovasida yuqorida ko'rsatiladi" : "Tarifni oshirsangiz ochiladi"} />
                 <Feature on={tariff.priority_support} title="Ustuvor qo'llab-quvvatlash" hint={tariff.priority_support ? '24/7 ustuvor javob' : '24/7 oddiy navbat'} />
               </ul>

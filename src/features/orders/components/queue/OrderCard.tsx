@@ -71,6 +71,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
             <TypeIcon type={order.delivery_type} />
             {order.delivery_type === 'DINE_IN' && order.table_number ? `${order.table_number}-stol` : deliveryTypeLabel(order.delivery_type)}
           </Badge>
+          {order.order_source === 'QR' && <Badge tone="gold">Stol QR</Badge>}
           {showStatus && <Badge tone={statusTone(order.status)}>{statusLabel(order.status)}</Badge>}
           {order.is_paid && <Badge tone="success">To'langan</Badge>}
           <FilialTag order={order} />

@@ -38,8 +38,36 @@ export interface TableModel {
   partner_name?: string;
   filial_uuid?: string;
   current_order?: TableCurrentOrder | null;
+  /** Stol QR havolasi (token bilan). Tarifda stol QR menyusi bo'lmasa — null */
+  qr_url?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface TableBillOrder {
+  uuid: string;
+  order_number: string | null;
+  status: string;
+  status_display: string;
+  created_at: string;
+  is_paid: boolean;
+  /** Tasdiqlangan va hali to'lanmagan: kassada to'lanadi */
+  billable: boolean;
+  order_source: string;
+  payment_method: string;
+  guest_name: string | null;
+  waiter_name: string | null;
+  items: Array<{ name: string; quantity: number; free_quantity: number; line_total: number | string }>;
+  total_price: number | string;
+}
+
+/** Stolning joriy seansi hisobi (kassa uchun). Ochiq seans yo'q bo'lsa session = null. */
+export interface TableBill {
+  table_uuid: string;
+  table_number: string;
+  session: { uuid: string; opened_at: string } | null;
+  orders: TableBillOrder[];
+  bill: { subtotal: number | string; service_charge_amount: number | string; total: number | string; orders_count: number };
 }
 
 export interface TablesListResponse {
@@ -118,6 +146,27 @@ export const tablesApi = {
   deleteTable: async (uuid: string): Promise<boolean> => {
     await apiClient.delete(ENDPOINTS.TABLES.DETAIL(uuid));
     return true;
+  },
+
+  /** QR'ni yangilash: eski QR kodlar ishlamay qoladi (faqat manager) */
+  resetTableQr: async (uuid: string): Promise<TableModel> => {
+    const response = await apiClient.post<any>(`${ENDPOINTS.TABLES.DETAIL(uuid)}qr-reset/`);
+    return response.data?.data || response.data;
+  },
+
+  /** Stolning joriy seansi hisobi: barcha buyurtmalar va jami */
+  getTableBill: async (uuid: string): Promise<TableBill> => {
+    const response = await apiClient.get<any>(`${ENDPOINTS.TABLES.DETAIL(uuid)}bill/`);
+    return response.data?.data;
+  },
+
+  /** Hisobni kassada to'lash. orderUuids berilmasa — butun stol; berilsa — faqat shu buyurtmalar (bo'lib to'lash) */
+  payTableBill: async (uuid: string, paymentMethod: string, orderUuids?: string[]): Promise<TableBill> => {
+    const response = await apiClient.post<any>(`${ENDPOINTS.TABLES.DETAIL(uuid)}bill/pay/`, {
+      payment_method: paymentMethod,
+      ...(orderUuids ? { order_uuids: orderUuids } : {}),
+    });
+    return response.data?.data;
   },
 
   bulkImportTables: async (payload: BulkImportPayload): Promise<BulkImportResponse> => {

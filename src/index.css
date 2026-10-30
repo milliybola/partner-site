@@ -217,3 +217,19 @@ input[type='number'] { -moz-appearance: textfield; }
   --color-brand-bright: 59 130 246;  /* #3B82F6 */
   --color-brand-soft: 232 240 254;   /* #E8F0FE */
 }
+
+/* Stol QR plakatlari: ekranda yashirin; chop etishda faqat shu qatlam (A5, har stol alohida varaq) */
+.qr-print-root { display: none; }
+.qr-poster { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+@page qrposter { size: A5 portrait; margin: 0; }
+@media print {
+  body.printing-qr > *:not(.qr-print-root) { display: none !important; }
+  body.printing-qr .qr-print-root { display: block !important; }
+  body.printing-qr .qr-print-root .qr-poster {
+    page: qrposter;
+    break-after: page;
+    page-break-after: always;
+    border: 0 !important;
+    border-radius: 0 !important;
+  }
+}

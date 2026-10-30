@@ -52,7 +52,12 @@ export const getQueueActions = (order: Order, ctx: ActionContext): { primary?: Q
     case 'SEARCHING_COURIER':
       if (delivery && ctx.hasOwnCouriers) secondary.push({ kind: 'assign_courier', label: 'Kuryer biriktirish', tone: 'secondary' });
       return {
-        primary: { kind: 'accept', label: delivery ? 'Qabul qilish (MilliyGo kuryeri)' : 'Qabul qilish', tone: 'primary' },
+        primary: {
+          kind: 'accept',
+          // Stol QR buyurtmasini tasdiqlagan xodim buyurtmaning ofitsianti bo'ladi
+          label: order.order_source === 'QR' ? 'Tasdiqlash' : delivery ? 'Qabul qilish (MilliyGo kuryeri)' : 'Qabul qilish',
+          tone: 'primary',
+        },
         secondary,
         danger: { kind: 'reject', label: 'Rad etish', tone: 'danger' },
       };

@@ -100,6 +100,7 @@ const SOURCE_LABEL: Record<string, string> = {
   WAITER: 'Ofitsiant',
   CUSTOMER: 'Mijoz (ilova)',
   PARTNER: 'Kassa',
+  QR: 'Stol QR (mijoz)',
 };
 
 const AllOrdersPage: React.FC = () => {

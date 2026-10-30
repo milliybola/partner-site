@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Check, Lock, Sparkles } from 'lucide-react';
 import { Badge, Card, CardHeader, InlineAlert, PageHeader, Skeleton } from '../../../core/ui';
 import { limitText, useTariff } from '../../../core/lib/tariff';
-import type { PartnerTariff } from '../../../core/lib/tariff';
+import type { PartnerTariff, TariffPlan } from '../../../core/lib/tariff';
 import { formatMoney } from '../../../core/lib/format';
 
 const FEATURE_TEXT: Record<string, string> = {
@@ -46,6 +46,61 @@ const Usage: React.FC<{ label: string; used: number; max: number | null; hint?: 
   );
 };
 
+const PlanLine: React.FC<{ on: boolean; children: React.ReactNode }> = ({ on, children }) => (
+  <li className={`flex items-start gap-2 text-[13.5px] ${on ? 'text-ink' : 'text-subtle'}`}>
+    {on ? <Check className="w-4 h-4 mt-0.5 shrink-0 text-brand" /> : <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+    <span>{children}</span>
+  </li>
+);
+
+const limit = (n: number | null, unit: string) => (n === null ? `Cheksiz ${unit}` : `${n} ta ${unit}`);
+
+/** Tariflarni yonma-yon taqqoslash; hamkorning joriy tarifi belgilangan. Tarifni superadmin almashtiradi. */
+const PlanCard: React.FC<{ plan: TariffPlan; current: boolean }> = ({ plan, current }) => {
+  const promo = plan.price_monthly_original > plan.price_monthly;
+  return (
+    <div
+      aria-current={current ? 'true' : undefined}
+      className={`relative flex flex-col rounded-3xl border-2 p-5 ${current ? 'border-brand bg-brand-soft/40' : 'border-edge bg-surface'}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-[19px] font-black tracking-tightest text-ink">{plan.name}</h3>
+        {current ? (
+          <Badge tone="brand"><Check className="w-3.5 h-3.5 mr-1" />Joriy tarif</Badge>
+        ) : (
+          promo && <Badge tone="gold"><Sparkles className="w-3.5 h-3.5 mr-1" />Aksiya</Badge>
+        )}
+      </div>
+      {plan.description && <p className="mt-1 text-[13px] text-muted">{plan.description}</p>}
+      <div className="mt-3 flex items-end gap-2">
+        <span className="text-[24px] font-black leading-none text-ink tabular-nums">
+          {plan.price_monthly > 0 ? formatMoney(plan.price_monthly) : 'Bepul'}
+        </span>
+        {plan.price_monthly > 0 && <span className="text-[13px] text-muted">/ oy</span>}
+        {promo && <span className="text-[13px] font-semibold text-subtle line-through tabular-nums">{formatMoney(plan.price_monthly_original)}</span>}
+      </div>
+      <ul className="mt-4 space-y-2">
+        <PlanLine on>Yetkazib berish</PlanLine>
+        <PlanLine on={plan.allow_pickup}>Olib ketish</PlanLine>
+        <PlanLine on={plan.allow_dine_in}>
+          Zal va stollar
+          {plan.allow_dine_in && ` · ${limit(plan.max_tables, 'stol')}${plan.tables_per_filial && plan.max_tables !== null ? ' har filialga' : ''}`}
+        </PlanLine>
+        <PlanLine on={plan.allow_qr_menu}>Stol QR menyusi</PlanLine>
+        <PlanLine on>{limit(plan.max_filials, 'filial')}</PlanLine>
+        <PlanLine on>{limit(plan.max_products, 'mahsulot')}</PlanLine>
+        <PlanLine on>{limit(plan.max_couriers, 'kuryer')}</PlanLine>
+        <PlanLine on>
+          {plan.free_orders_monthly === null ? 'Cheksiz bepul buyurtmalar' : `Oyiga ${plan.free_orders_monthly} ta bepul buyurtma`}
+        </PlanLine>
+        <PlanLine on={plan.listing_priority > 0}>Ro'yxatda birinchi</PlanLine>
+        <PlanLine on={plan.priority_support}>Ustuvor qo'llab-quvvatlash</PlanLine>
+      </ul>
+      {!current && <p className="mt-4 text-[12.5px] text-muted">Shu tarifga o'tish uchun MilliyGo qo'llab-quvvatlash xizmatiga yozing.</p>}
+    </div>
+  );
+};
+
 const summary = (t: PartnerTariff) =>
   t.restricted ? `«${t.name}» tarifi` : 'Tarif belgilanmagan — barcha imkoniyatlar ochiq';
 
@@ -55,6 +110,7 @@ const PlanPage: React.FC = () => {
   const [params] = useSearchParams();
   const need = params.get('need');
 
+  const plans = tariff.plans ?? [];
   const hasPromo = tariff.price_monthly_original > tariff.price_monthly;
   const freeOrders = tariff.free_orders_monthly;
   const ordersUsed = tariff.usage.orders_this_month;
@@ -67,7 +123,7 @@ const PlanPage: React.FC = () => {
     <div className="pb-8">
       <PageHeader title="Tarif" subtitle={loading ? 'Yuklanmoqda…' : summary(tariff)} badge={tariff.restricted ? <Badge tone="brand">{tariff.name}</Badge> : undefined} />
 
-      <div className="mt-2 space-y-4 max-w-2xl">
+      <div className="mt-2 space-y-4 max-w-3xl">
         {need && FEATURE_TEXT[need] && (
           <InlineAlert tone="warning">
             «{FEATURE_TEXT[need]}» sizning tarifingizda to'lgan yoki mavjud emas. Tarifni oshirish uchun MilliyGo qo'llab-quvvatlash xizmatiga murojaat qiling.
@@ -78,7 +134,20 @@ const PlanPage: React.FC = () => {
           <Skeleton className="h-64" />
         ) : (
           <>
-            {tariff.restricted && (
+            {plans.length > 0 && (
+              <section>
+                <div className={`grid gap-3 ${plans.length > 1 ? 'md:grid-cols-2' : ''}`}>
+                  {plans.map((p) => (
+                    <PlanCard key={p.code} plan={p} current={tariff.restricted && p.code === tariff.code} />
+                  ))}
+                </div>
+                {!tariff.restricted && (
+                  <p className="mt-2 text-[13px] text-muted">Standart tarif sozlanmagan — hozircha barcha imkoniyatlar ochiq.</p>
+                )}
+              </section>
+            )}
+
+            {tariff.restricted && plans.length === 0 && (
               <Card>
                 <div className="flex items-end justify-between gap-3">
                   <div>
@@ -99,7 +168,8 @@ const PlanPage: React.FC = () => {
               </Card>
             )}
 
-            <Card>
+            {/* Tariflar kartalari bo'lsa, imkoniyatlar ularda ko'rinadi */}
+            {plans.length === 0 && <Card>
               <CardHeader title="Imkoniyatlar" subtitle="Tarifingizga kiritilgan xizmatlar" />
               <ul className="divide-y divide-edge">
                 <Feature on title="Yetkazib berish" hint="Kuryer orqali mijoz manziliga" />
@@ -109,7 +179,7 @@ const PlanPage: React.FC = () => {
                 <Feature on={tariff.listing_priority > 0} title="Ro'yxatda birinchi" hint={tariff.listing_priority > 0 ? "Mijoz ilovasida yuqorida ko'rsatiladi" : "Tarifni oshirsangiz ochiladi"} />
                 <Feature on={tariff.priority_support} title="Ustuvor qo'llab-quvvatlash" hint={tariff.priority_support ? '24/7 ustuvor javob' : '24/7 oddiy navbat'} />
               </ul>
-            </Card>
+            </Card>}
 
             <Card>
               <CardHeader title="Limitlar" subtitle="Hozirgi foydalanish" />

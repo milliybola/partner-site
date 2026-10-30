@@ -44,6 +44,29 @@ export interface PartnerTariff {
   can_add_filial: boolean;
   can_add_product: boolean;
   can_add_courier: boolean;
+  /** Barcha faol tariflar (taqqoslash uchun); joriysi `code` bo'yicha. Eski backendda yo'q. */
+  plans?: TariffPlan[];
+}
+
+/** Tariflar ro'yxatidagi bitta tarif (limitlar xom: `max_tables` — har filialga, agar `tables_per_filial`) */
+export interface TariffPlan {
+  code: string;
+  name: string;
+  description: string;
+  price_monthly: number;
+  price_monthly_original: number;
+  allow_pickup: boolean;
+  allow_dine_in: boolean;
+  allow_qr_menu: boolean;
+  max_tables: number | null;
+  tables_per_filial: boolean;
+  max_filials: number | null;
+  max_products: number | null;
+  max_couriers: number | null;
+  free_orders_monthly: number | null;
+  extra_order_fee: number;
+  listing_priority: number;
+  priority_support: boolean;
 }
 
 /** Yuklanmaguncha yoki so'rov xato bo'lsa — hech narsani yashirmaymiz (cheklovni baribir server qo'llaydi) */

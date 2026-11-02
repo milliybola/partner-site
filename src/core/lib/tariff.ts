@@ -108,6 +108,27 @@ export function clearTariffCache() {
   cached = null;
 }
 
+/** Tarifni superadmin o'zgartirsa — sahifani qayta yuklamasdan yangilanadi (oynaga qaytilganda va har 2 daqiqada) */
+const REFRESH_MS = 2 * 60 * 1000;
+let lastLoad = 0;
+let watching = false;
+const refreshIfStale = () => {
+  if (document.visibilityState !== 'visible' || !cached || Date.now() - lastLoad < 15_000) return;
+  lastLoad = Date.now();
+  void loadTariff(true);
+};
+function watchTariff() {
+  if (watching) return;
+  watching = true;
+  lastLoad = Date.now();
+  document.addEventListener('visibilitychange', refreshIfStale);
+  window.addEventListener('focus', refreshIfStale);
+  setInterval(() => {
+    lastLoad = 0;
+    refreshIfStale();
+  }, REFRESH_MS);
+}
+
 export function useTariff() {
   const [tariff, setTariff] = useState<PartnerTariff>(cached ?? UNRESTRICTED);
   const [loading, setLoading] = useState(!cached);
@@ -116,6 +137,7 @@ export function useTariff() {
     let alive = true;
     const listener = (t: PartnerTariff) => alive && setTariff(t);
     listeners.add(listener);
+    watchTariff();
     loadTariff().then((t) => {
       if (alive) {
         setTariff(t);

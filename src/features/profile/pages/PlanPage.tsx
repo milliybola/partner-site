@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Check, Lock, Sparkles } from 'lucide-react';
 import { Badge, Card, CardHeader, InlineAlert, PageHeader, Skeleton } from '../../../core/ui';
@@ -106,8 +106,13 @@ const summary = (t: PartnerTariff) =>
 
 /** Hamkor tarifi: ochiq imkoniyatlar, limitlar va hozirgi foydalanish. */
 const PlanPage: React.FC = () => {
-  const { tariff, loading } = useTariff();
+  const { tariff, loading, refresh } = useTariff();
   const [params] = useSearchParams();
+
+  // Tarif sahifasi ochilganda — eng so'nggi tarif (superadmin hozirgina o'zgartirgan bo'lishi mumkin)
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
   const need = params.get('need');
 
   const plans = tariff.plans ?? [];

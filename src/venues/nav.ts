@@ -1,5 +1,5 @@
 import {
-  Bike, BarChart3, BookOpen, LayoutDashboard, Boxes, Building2, ChefHat, ClipboardCheck, Clock, DollarSign, Home, ListOrdered, Lock, MapPin,
+  Bike, BarChart3, BookOpen, LayoutDashboard, Boxes, Building2, ChefHat, ClipboardCheck, Clock, DollarSign, Home, ListOrdered, MapPin,
   ScanBarcode, ScanLine, Settings, ShoppingBag, Table, Tag, User, Users, Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -94,22 +94,16 @@ const management = (owner: boolean): NavGroup[] => [
   },
 ];
 
-/** Tarifda yo'q bo'limlar: qulf belgisi bilan ko'rinadi va «Tarif» sahifasiga olib boradi (yashirilmaydi — hamkor nima ochilishini ko'radi) */
-const lockIf = (item: NavItem, locked: boolean, need: string): NavItem =>
-  locked ? { ...item, to: `/plan?need=${need}`, icon: Lock } : item;
-
-/** Sahifa → tarif imkoniyati. Tarifga kirmaganlari qulflanadi (standart tarifda ham). */
-const applyTariff = (item: NavItem, t?: PartnerTariff): NavItem => {
-  if (!t) return item;
+/** Sahifa tarifga kiradimi. Kirmaganlari sidebarda ko'rsatilmaydi (masalan, standart tarifda Plus bo'limlari). */
+const allowedByTariff = (item: NavItem, t?: PartnerTariff): boolean => {
+  if (!t) return true;
   switch (item.to) {
     case '/tables':
-      return lockIf(item, !t.allow_dine_in, 'dine_in');
+      return t.allow_dine_in;
     case '/tables/qr':
-      return lockIf(item, !(t.allow_dine_in && t.allow_qr_menu), 'qr_menu');
-    case '/couriers':
-      return lockIf(item, t.max_couriers === 0, 'couriers');
+      return t.allow_dine_in && t.allow_qr_menu;
     default:
-      return item;
+      return true;
   }
 };
 
@@ -117,7 +111,7 @@ export const buildNav = (p: PartnerSession | null, tariff?: PartnerTariff): NavG
   const owner = p?.role !== 'manager';
   const groups = venueOf(p) === 'store' ? STORE(owner) : RESTAURANT(owner);
   return groups
-    .map((g) => ({ ...g, items: g.items.map((i) => applyTariff(i, tariff)) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => allowedByTariff(i, tariff)) }))
     .filter((g) => g.items.length > 0);
 };
 
@@ -132,5 +126,5 @@ export const buildTabs = (kind: VenueKind, tariff?: PartnerTariff): NavItem[] =>
     : [
         { to: '/orders', label: 'Buyurtmalar', icon: ListOrdered },
         { to: '/kitchen', label: 'Oshxona', icon: ChefHat },
-        applyTariff({ to: '/tables', label: 'Stollar', icon: Table, end: true }, tariff),
-      ];
+        { to: '/tables', label: 'Stollar', icon: Table, end: true },
+      ].filter((i) => allowedByTariff(i, tariff));

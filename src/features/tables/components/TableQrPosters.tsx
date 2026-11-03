@@ -24,6 +24,8 @@ const G_DARK = '#0B4F2A';
 const G = '#15803D';
 const G_LIGHT = '#22A14B';
 const GOLD = '#F5B400';
+const GOLD_SOFT = '#FFF4CC';
+const MINT = '#E7F5EA';
 
 /** Burchakdagi milliy naqsh (romb) — SVG pattern, chop etishda ham aniq */
 const Ornament: React.FC<{ id: string; flip?: boolean }> = ({ id, flip }) => (
@@ -33,8 +35,8 @@ const Ornament: React.FC<{ id: string; flip?: boolean }> = ({ id, flip }) => (
       position: 'absolute',
       top: 0,
       [flip ? 'right' : 'left']: 0,
-      width: '6.2em',
-      height: '3.6em',
+      width: '6.4em',
+      height: '3.7em',
       transform: flip ? 'scaleX(-1)' : undefined,
     }}
     aria-hidden
@@ -50,57 +52,68 @@ const Ornament: React.FC<{ id: string; flip?: boolean }> = ({ id, flip }) => (
       </clipPath>
     </defs>
     <rect width="120" height="70" fill={`url(#${id})`} clipPath={`url(#${id}-c)`} />
-    <path d="M120 0 C95 8 70 22 48 44 C30 62 12 68 0 70" fill="none" stroke={GOLD} strokeWidth="3.5" />
+    <path d="M120 0 C95 8 70 22 48 44 C30 62 12 68 0 70" fill="none" stroke={GOLD} strokeWidth="4" />
   </svg>
 );
 
 /** Pastki manzara: tog'lar, archalar, darvoza va yashil to'lqin */
 const Landscape: React.FC = () => (
   <svg
-    viewBox="0 0 420 90"
+    viewBox="0 0 420 80"
     preserveAspectRatio="none"
     style={{ position: 'absolute', left: 0, right: 0, bottom: 0, width: '100%', height: '100%' }}
     aria-hidden
   >
-    <g transform="translate(0 -14)">
-    <path d="M60 62 L110 30 L130 42 L160 18 L205 58 Z" fill="#CFEBD6" />
-    <path d="M110 30 L118 35 L112 40 L126 39 L130 42 L160 18 L150 32 L140 30 Z" fill="#FFFFFF" opacity="0.8" />
-    <g fill={G}>
-      {[250, 262, 352, 364, 378].map((x, i) => (
-        <path key={x} d={`M${x} ${62 - (i % 2) * 4} l6 -${18 + (i % 2) * 4} l6 ${18 + (i % 2) * 4} Z`} />
+    <path d="M40 44 L95 14 L118 27 L150 4 L205 42 Z" fill="#CFEBD6" />
+    <path d="M95 14 L104 20 L98 25 L113 24 L118 27 L150 4 L139 19 L128 17 Z" fill="#FFFFFF" opacity="0.85" />
+    <g fill={G_LIGHT}>
+      {[236, 248, 356, 368, 381].map((x, i) => (
+        <path key={x} d={`M${x} ${44 - (i % 2) * 3} l6 -${17 + (i % 2) * 4} l6 ${17 + (i % 2) * 4} Z`} />
       ))}
     </g>
     <g fill="none" stroke={G} strokeWidth="2.2">
-      <rect x="290" y="24" width="44" height="38" />
-      <path d="M302 62 V44 a10 10 0 0 1 20 0 V62" />
-      <path d="M286 24 H338 M292 18 H332 V24 M292 18 V24" />
+      <rect x="288" y="12" width="46" height="32" />
+      <path d="M301 44 V30 a10 10 0 0 1 20 0 V44" />
+      <path d="M284 12 H338 M291 6 H331 V12 M291 6 V12" />
     </g>
-    </g>
-    <path d="M0 46 C90 34 170 56 260 44 C330 35 380 38 420 42 V90 H0 Z" fill={GOLD} />
-    <path d="M0 52 C90 40 170 62 260 50 C330 41 380 44 420 48 V90 H0 Z" fill={G} />
+    <path d="M0 40 C90 28 170 50 260 38 C330 29 380 32 420 36 V80 H0 Z" fill={GOLD} />
+    <path d="M0 46 C90 34 170 56 260 44 C330 35 380 38 420 42 V80 H0 Z" fill={G} />
   </svg>
 );
 
 const ICON_STYLE = { width: '100%', height: '100%' } as const;
-const FEATURES: { icon: React.ReactNode; label: string; tone: string }[] = [
-  { icon: <BookOpen style={ICON_STYLE} strokeWidth={2.4} />, label: "Menyuni ko'ring", tone: G },
-  { icon: <ShoppingCart style={ICON_STYLE} strokeWidth={2.4} />, label: 'Buyurtma bering', tone: G_LIGHT },
-  { icon: <BellRing style={ICON_STYLE} strokeWidth={2.4} />, label: 'Ofitsiantni chaqiring', tone: GOLD },
-  { icon: <ReceiptText style={ICON_STYLE} strokeWidth={2.4} />, label: "Hisobingizni ko'ring", tone: G },
+const FEATURES: { icon: React.ReactNode; label: string; fg: string; bg: string }[] = [
+  { icon: <BookOpen style={ICON_STYLE} strokeWidth={2.3} />, label: "Menyuni ko'ring", fg: G, bg: MINT },
+  { icon: <ShoppingCart style={ICON_STYLE} strokeWidth={2.3} />, label: 'Buyurtma bering', fg: G, bg: MINT },
+  { icon: <BellRing style={ICON_STYLE} strokeWidth={2.3} />, label: 'Ofitsiantni chaqiring', fg: '#B07D00', bg: GOLD_SOFT },
+  { icon: <ReceiptText style={ICON_STYLE} strokeWidth={2.3} />, label: "Hisobingizni ko'ring", fg: G, bg: MINT },
 ];
 
 const CORNERS = [
-  { top: '0.3em', left: '0.3em', borderTopWidth: '0.28em', borderLeftWidth: '0.28em', borderTopLeftRadius: '0.7em' },
-  { top: '0.3em', right: '0.3em', borderTopWidth: '0.28em', borderRightWidth: '0.28em', borderTopRightRadius: '0.7em' },
-  { bottom: '0.3em', left: '0.3em', borderBottomWidth: '0.28em', borderLeftWidth: '0.28em', borderBottomLeftRadius: '0.7em' },
-  { bottom: '0.3em', right: '0.3em', borderBottomWidth: '0.28em', borderRightWidth: '0.28em', borderBottomRightRadius: '0.7em' },
+  { top: '0.3em', left: '0.3em', borderTopWidth: '0.26em', borderLeftWidth: '0.26em', borderTopLeftRadius: '0.75em' },
+  { top: '0.3em', right: '0.3em', borderTopWidth: '0.26em', borderRightWidth: '0.26em', borderTopRightRadius: '0.75em' },
+  { bottom: '0.3em', left: '0.3em', borderBottomWidth: '0.26em', borderLeftWidth: '0.26em', borderBottomLeftRadius: '0.75em' },
+  { bottom: '0.3em', right: '0.3em', borderBottomWidth: '0.26em', borderRightWidth: '0.26em', borderBottomRightRadius: '0.75em' },
 ] as const;
 
-/** A5 plakat: hamma o'lcham `em` da, shuning uchun ekranda kichik ko'rinadi, chop etishda A5 to'ldiradi. */
+/**
+ * Nom shrifti: bitta qatorga sig'adigan qilib kichraytiriladi (o'rtacha harf ≈ 0.6em). Juda uzun nom — 1.1em, 2 qator.
+ * Sarlavha balandligi doim bir xil (2.7em), shuning uchun plakat A5 dan oshmaydi.
+ */
+const nameSize = (name: string, hasLogo: boolean) => {
+  const width = hasLogo ? 12.4 : 15.5;
+  const fit = width / (0.6 * Math.max(1, name.trim().length));
+  return `${Math.min(2.6, Math.max(1.1, fit)).toFixed(2)}em`;
+};
+
+/**
+ * A5 plakat (148 × 210 mm): hamma o'lcham `em` da — 21em × 29.7em. Ekranda kichik ko'rinadi, chop etishda A5 to'ldiradi.
+ * Muhim narsalar chetdan kamida ~1.1em (≈8 mm) ichkarida — printer chetini kesib qo'ysa ham ko'rinadi.
+ */
 export const TableQrPoster: React.FC<PosterProps> = ({ table, restaurantName, logo, fontSize }) => {
   const [prefix, number] = splitName(table.table_number);
   const uid = `orn-${table.uuid.replace(/[^a-zA-Z0-9_-]/g, '')}`;
-  const longNum = number.length > 3;
+  const numSize = number.length <= 2 ? '1.3em' : number.length <= 4 ? '0.9em' : '0.7em';
   return (
     <div
       className="qr-poster relative flex flex-col overflow-hidden text-ink"
@@ -110,56 +123,66 @@ export const TableQrPoster: React.FC<PosterProps> = ({ table, restaurantName, lo
         height: '29.7em',
         borderRadius: '1.1em',
         border: '1px solid #EEF0F3',
-        background: 'linear-gradient(180deg, #FFFFFF 0%, #F3F8F4 60%, #EAF4EC 100%)',
+        background: 'linear-gradient(180deg, #FFFFFF 0%, #F6FAF7 55%, #EAF4EC 100%)',
       }}
     >
       <Ornament id={`${uid}-l`} />
       <Ornament id={`${uid}-r`} flip />
 
-      {/* Sarlavha */}
-      <div className="relative flex flex-col items-center text-center" style={{ padding: '2.4em 1.6em 0' }}>
-        {logo && (
-          <img
-            src={logo}
-            alt=""
-            className="bg-white object-cover"
-            style={{ width: '3em', height: '3em', borderRadius: '0.8em', marginBottom: '0.45em', boxShadow: '0 0.15em 0.5em rgba(0,0,0,.12)' }}
-          />
-        )}
-        <div
-          className="font-black leading-none"
-          style={{ fontSize: restaurantName.length > 14 ? '1.6em' : '2.4em', color: G_DARK, letterSpacing: '-0.02em', maxWidth: '11.5em' }}
-        >
-          {restaurantName}
+      {/* Sarlavha: logo nom yonida — plakat balandligi logoga bog'liq emas */}
+      <div className="relative flex flex-col items-center text-center" style={{ padding: '2.2em 1.5em 0' }}>
+        <div className="flex items-center justify-center" style={{ gap: '0.45em', maxWidth: '16em', height: '2.7em' }}>
+          {logo && (
+            <img
+              src={logo}
+              alt=""
+              className="shrink-0 bg-white object-cover"
+              style={{ width: '2.5em', height: '2.5em', borderRadius: '0.7em', boxShadow: '0 0.12em 0.45em rgba(0,0,0,.14)' }}
+            />
+          )}
+          <div
+            className="font-black"
+            style={{
+              fontSize: nameSize(restaurantName, !!logo),
+              lineHeight: 1.02,
+              color: G_DARK,
+              letterSpacing: '-0.02em',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            {restaurantName}
+          </div>
         </div>
-        <div style={{ width: '5.5em', height: '0.22em', borderRadius: '1em', background: GOLD, margin: '0.45em 0 0.5em' }} />
+        <div style={{ width: '4.6em', height: '0.22em', borderRadius: '1em', background: GOLD, margin: '0.45em 0 0.5em' }} />
         <div className="flex items-center" style={{ gap: '0.5em' }}>
-          <span style={{ width: '1.4em', height: '0.12em', background: GOLD }} />
-          <span className="font-black italic" style={{ fontSize: '1.2em', color: G_DARK }}>
+          <span style={{ width: '1.3em', height: '0.12em', borderRadius: '1em', background: GOLD }} />
+          <span className="font-black italic" style={{ fontSize: '1.2em', color: G_DARK, lineHeight: 1.1 }}>
             Barchasi shu yerda!
           </span>
-          <span style={{ width: '1.4em', height: '0.12em', background: GOLD }} />
+          <span style={{ width: '1.3em', height: '0.12em', borderRadius: '1em', background: GOLD }} />
         </div>
-        <div style={{ fontSize: '0.66em', marginTop: '0.3em', color: '#3F4A44', lineHeight: 1.3 }}>
-          QR-kodni skanerlang va restoranning
-          <br />
-          raqamli xizmatlaridan foydalaning
+        <div style={{ fontSize: '0.64em', marginTop: '0.3em', color: '#45514A', lineHeight: 1.3 }}>
+          Kamerani QR-kodga qarating va buyurtma bering
         </div>
       </div>
 
-      {/* QR */}
-      <div className="relative flex justify-center" style={{ marginTop: '0.75em' }}>
+      {/* QR — plakatning yarmidan kengi: 1–1.5 m dan ham oson skanerlanadi */}
+      <div className="relative flex flex-1 items-center justify-center">
         {[-1, 1].map((s) => (
           <svg
             key={s}
             viewBox="0 0 30 40"
             style={{
               position: 'absolute',
-              top: '3.6em',
-              [s < 0 ? 'left' : 'right']: '1.5em',
-              width: '1.5em',
-              height: '2em',
-              transform: s > 0 ? 'scaleX(-1)' : undefined,
+              top: '50%',
+              [s < 0 ? 'left' : 'right']: '1.1em',
+              width: '1.3em',
+              height: '1.75em',
+              transform: `translateY(-50%)${s > 0 ? ' scaleX(-1)' : ''}`,
             }}
             aria-hidden
           >
@@ -172,7 +195,7 @@ export const TableQrPoster: React.FC<PosterProps> = ({ table, restaurantName, lo
         ))}
         <div
           className="relative bg-white"
-          style={{ padding: '0.55em', borderRadius: '1.2em', border: `0.2em solid ${GOLD}`, boxShadow: '0 0.3em 1em rgba(21,128,61,.14)' }}
+          style={{ padding: '0.35em', borderRadius: '1.25em', border: `0.2em solid ${GOLD}`, boxShadow: '0 0.35em 1.1em rgba(21,128,61,.16)' }}
         >
           {CORNERS.map((c, i) => (
             <span key={i} style={{ position: 'absolute', width: '1.6em', height: '1.6em', borderColor: G_LIGHT, borderStyle: 'solid', borderWidth: 0, ...c }} />
@@ -180,32 +203,32 @@ export const TableQrPoster: React.FC<PosterProps> = ({ table, restaurantName, lo
           <div className="relative" style={{ margin: '0.5em' }}>
             <QRCodeSVG
               value={table.qr_url ?? ''}
-              size={320}
+              size={360}
               level="H"
               marginSize={0}
-              fgColor="#111111"
+              fgColor="#0E1A13"
               bgColor="#ffffff"
-              style={{ width: '8.6em', height: '8.6em', display: 'block' }}
+              style={{ width: '10.2em', height: '10.2em', display: 'block' }}
             />
-            {/* Markazdagi stol nishoni (H darajali QR — bir qismi yopilsa ham o'qiladi) */}
+            {/* Markazdagi stol nishoni: QR "H" darajada — markazi yopilsa ham o'qiladi (nishon ≈ 9% maydon) */}
             <div
               className="absolute flex flex-col items-center justify-center text-white"
               style={{
                 left: '50%',
                 top: '50%',
-                width: '3.1em',
-                height: '3.1em',
+                width: '3.3em',
+                height: '3.3em',
                 transform: 'translate(-50%, -50%)',
                 borderRadius: '50%',
                 background: `radial-gradient(circle at 35% 30%, ${G_LIGHT}, ${G_DARK})`,
                 border: `0.2em solid ${GOLD}`,
-                boxShadow: '0 0 0 0.2em #fff',
+                boxShadow: '0 0 0 0.22em #fff',
               }}
             >
-              <span className="font-bold leading-none" style={{ fontSize: '0.55em' }}>
+              <span className="font-bold leading-none" style={{ fontSize: '0.5em', letterSpacing: '0.04em' }}>
                 {prefix ?? 'Stol'}
               </span>
-              <span className="font-black leading-none" style={{ fontSize: longNum ? '0.8em' : '1.25em', marginTop: '0.06em' }}>
+              <span className="font-black leading-none" style={{ fontSize: numSize, marginTop: '0.08em' }}>
                 {number}
               </span>
             </div>
@@ -214,20 +237,20 @@ export const TableQrPoster: React.FC<PosterProps> = ({ table, restaurantName, lo
       </div>
 
       {/* Xizmatlar */}
-      <div className="relative grid grid-cols-4" style={{ gap: '0.4em', padding: '0.8em 1.1em 0' }}>
+      <div className="relative grid grid-cols-4" style={{ gap: '0.4em', padding: '0 1.1em' }}>
         {FEATURES.map((f) => (
           <div
             key={f.label}
             className="flex flex-col items-center bg-white text-center"
-            style={{ gap: '0.35em', padding: '0.55em 0.25em 0.5em', borderRadius: '0.8em', boxShadow: '0 0.1em 0.45em rgba(11,79,42,.10)' }}
+            style={{ gap: '0.32em', padding: '0.5em 0.2em 0.45em', borderRadius: '0.8em', boxShadow: '0 0.1em 0.45em rgba(11,79,42,.10)' }}
           >
             <span
-              className="flex shrink-0 items-center justify-center text-white"
-              style={{ width: '1.9em', height: '1.9em', borderRadius: '0.6em', background: f.tone, padding: '0.38em' }}
+              className="flex shrink-0 items-center justify-center"
+              style={{ width: '1.85em', height: '1.85em', borderRadius: '0.6em', background: f.bg, color: f.fg, padding: '0.36em' }}
             >
               {f.icon}
             </span>
-            <span className="font-extrabold" style={{ fontSize: '0.6em', lineHeight: 1.15, color: G_DARK }}>
+            <span className="font-extrabold" style={{ fontSize: '0.58em', lineHeight: 1.15, color: G_DARK }}>
               {f.label}
             </span>
           </div>
@@ -235,11 +258,11 @@ export const TableQrPoster: React.FC<PosterProps> = ({ table, restaurantName, lo
       </div>
 
       {/* Pastki qism */}
-      <div className="relative mt-auto" style={{ height: '4.4em' }}>
+      <div className="relative shrink-0" style={{ height: '3.6em', marginTop: '0.35em' }}>
         <Landscape />
         <div
           className="absolute inset-x-0 bottom-0 flex items-center justify-center text-white"
-          style={{ height: '2.2em', gap: '0.5em', fontSize: '0.75em' }}
+          style={{ height: '2.1em', gap: '0.5em', fontSize: '0.72em' }}
         >
           <span style={{ width: '1.6em', height: '0.08em', background: '#fff', opacity: 0.8 }} />
           <span className="font-bold">

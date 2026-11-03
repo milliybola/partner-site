@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import apiClient from '../api/client';
 
 /**
  * Kassa qulfi (faqat kassa rejimida): qulflanganda ekranni PIN oynasi yopadi; xodim o'z PIN'i bilan ochadi
@@ -67,4 +68,24 @@ export function useAutoLock(enabled: boolean) {
       events.forEach((e) => window.removeEventListener(e, reset));
     };
   }, [enabled]);
+}
+
+/**
+ * Hamkorda PIN o'rnatilgan kassa xodimi bormi (backend: GET partner/pos/unlock/).
+ * null — hali noma'lum; xato bo'lsa — false (avtomatik qulf yoqilmaydi, PIN'siz qolib ketmaslik uchun).
+ */
+export function usePosHasPins(enabled: boolean, refreshKey?: unknown): boolean | null {
+  const [hasPins, setHasPins] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    apiClient
+      .get('partner/pos/unlock/')
+      .then((r) => alive && setHasPins(Boolean(r.data?.data?.has_pins)))
+      .catch(() => alive && setHasPins(false));
+    return () => {
+      alive = false;
+    };
+  }, [enabled, refreshKey]);
+  return hasPins;
 }

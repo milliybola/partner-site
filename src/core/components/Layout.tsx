@@ -31,7 +31,7 @@ import { TableCallAlerts } from '../../features/tables/TableCallAlerts';
 import { KitchenPrintAgent } from '../../features/orders/KitchenPrintAgent';
 import { OfflineSync } from './OfflineSync';
 import { PosLockScreen } from './PosLockScreen';
-import { lockPos, useAutoLock, usePosLocked } from '../lib/posLock';
+import { lockPos, unlockPos, useAutoLock, usePosHasPins, usePosLocked } from '../lib/posLock';
 import { buildNav, buildTabs } from '../../venues/nav';
 import { posHome, setWorkMode, useWorkMode } from '../lib/workMode';
 import type { WorkMode } from '../lib/workMode';
@@ -226,6 +226,7 @@ const Shell: React.FC = () => {
   };
 
   const logout = useCallback(() => {
+    unlockPos(); // keyingi kirishda qulf ekrani chiqib qolmasin
     clearSession();
     clearOwnerFilialsCache();
     clearTariffCache();
@@ -241,7 +242,9 @@ const Shell: React.FC = () => {
   const manager = isManager(partner);
   const pos = mode === 'pos';
   const locked = usePosLocked();
-  useAutoLock(pos);
+  const hasPins = usePosHasPins(pos, locked);
+  // Avtomatik qulf faqat PIN o'rnatilgan xodim bo'lsa (aks holda kassa hech kim ocholmaydigan bo'lib qoladi)
+  useAutoLock(pos && hasPins === true);
   const staffName = partner?.user_type === 'staff' ? partner?.name : undefined;
   const changeMode = (m: WorkMode) => {
     setWorkMode(m);
@@ -290,7 +293,7 @@ const Shell: React.FC = () => {
       <CallAlerts />
       <TableCallAlerts />
       <KitchenPrintAgent />
-      {pos && locked && <PosLockScreen onLogout={logout} />}
+      {pos && locked && <PosLockScreen onLogout={logout} hasPins={hasPins} />}
       {/* ---------------- Desktop sidebar (kassa rejimida yo'q — butun ekran) ---------------- */}
       <aside
         className={`hidden ${pos ? '' : 'md:flex'} flex-col sticky top-0 h-screen shrink-0 bg-surface border-r border-edge transition-[width] duration-200 ${

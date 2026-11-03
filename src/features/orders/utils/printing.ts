@@ -1,4 +1,3 @@
-import QRCode from 'qrcode';
 import { ordersApi } from '../services/ordersApi';
 // window.location.origin is 'null' under file:// and differs under tauri:// — resolve
 // public assets against document.baseURI instead.
@@ -17,37 +16,47 @@ const PAY_LABEL: Record<string, string> = { CASH: 'Naqd', CARD: 'Karta', TRANSFE
 const itemName = (item: { product_name?: string; name?: string; product?: { name?: string } | null }) =>
   item.product_name || item.name || item.product?.name || "Noma'lum taom";
 
+// Eski (HTML) chek dizayni bilan bir xil tartib va yozuvlar: sarlavha, ma'lumot qatorlari, MAHSULOT/SUMMA jadvali,
+// jami bloki, to'lov turi, rahmat. Logo rasmi matnda yo'q — o'rniga "MilliyGo | NOM" qatori.
 const receiptEscpos = (d: ReceiptData, device: PrinterDevice, drawer: boolean): Uint8Array => {
   const p = new EscPos(device.width, device.codepage);
   const isDelivery = d.delivery_type === 'DELIVERY';
-  p.align('center').bold().size(2, 2).para(d.partner_name || 'MilliyGo', 2).size().bold(false);
+
+  // Sarlavha
+  p.align('center').bold().para(`MilliyGo | ${(d.partner_name || '').toUpperCase()}`.replace(/ \| $/, '')).bold(false);
   const contacts = [d.partner_address, d.partner_phone].filter(Boolean).join(' | ');
   if (contacts) p.para(contacts);
-  p.line('milliyapp.uz').align('left').divider();
-  if (d.order_number) p.bold().pair('Buyurtma:', `#${d.order_number}`).bold(false);
+  p.bold().line('milliyapp.uz').bold(false).align('left').divider();
+
+  // Ma'lumot qatorlari
+  if (d.order_number) p.pair('Buyurtma:', d.order_number);
   p.pair('Sana:', d.created_at || new Date().toLocaleString('uz-UZ'));
-  if (d.delivery_type_display) p.pair('Turi:', d.delivery_type_display);
-  if (d.table_number) p.bold().pair('Stol:', `${d.table_number}-stol`).bold(false);
   if (!isDelivery && d.contact_name) p.pair('Mijoz:', d.contact_name);
   if (!isDelivery && d.contact_phone) p.pair('Tel:', d.contact_phone);
+  if (d.delivery_type_display) p.pair('Turi:', d.delivery_type_display);
+  if (d.table_number) p.pair('Stol:', `${d.table_number}-stol`);
+
+  // Yetkazish: kuryerga manzil va telefon (xarita QR yo'q — kuryer ilovasi bor)
   if (isDelivery) {
     p.divider().bold().line('YETKAZISH').bold(false);
-    if (d.contact_name) p.para(d.contact_name);
+    if (d.contact_name) p.bold().para(d.contact_name).bold(false);
     if (d.contact_phone) p.bold().size(1, 2).line(d.contact_phone).size().bold(false);
-    p.para((d.address || '').trim() || `MANZIL KIRITILMAGAN - mijozga qo'ng'iroq qiling: ${d.contact_phone ?? ''}`);
-    if (d.latitude != null && d.longitude != null && d.latitude !== '' && d.longitude !== '') {
-      p.align('center').qr(`https://www.google.com/maps?q=${Number(d.latitude)},${Number(d.longitude)}`, 5).line('Xaritada ochish').align('left');
-    }
+    if ((d.address || '').trim()) p.bold().para(d.address!.trim()).bold(false);
+    else p.bold().para(`MANZIL KIRITILMAGAN - mijozga qo'ng'iroq qiling: ${d.contact_phone ?? ''}`).bold(false);
   }
-  p.divider();
+
+  // Mahsulotlar
+  p.divider().bold().pair('MAHSULOT', 'SUMMA').bold(false).divider('=');
   for (const item of d.items || []) {
     const qty = item.unit === 'KG' ? `${Number(Number(item.quantity).toFixed(3))} kg` : `${item.quantity}${item.packaging_name ? ` ${item.packaging_name}` : ''}`;
-    p.bold().pair(itemName(item), money(item.line_total)).bold(false);
+    p.bold().pair(itemName(item), `${money(item.line_total)} UZS`).bold(false);
     const opts = (item.options || []).map((o) => o.name).join(', ');
-    if (opts) p.para(`  ${opts}`);
+    if (opts) p.para(opts);
     const free = Number(item.free_quantity) || 0;
-    p.line(`  ${money(item.unit_price)} x ${qty}${free > 0 ? ` (+${free} bepul)` : ''}`);
+    p.para(`${money(item.unit_price)} UZS x ${qty}${free > 0 ? ` (+${free} bepul${item.promotion_label ? `, ${item.promotion_label}` : ''})` : ''}`);
   }
+
+  // Jami bloki
   p.divider().pair('Summa:', `${money(d.subtotal)} UZS`);
   if (isDelivery) p.pair('Yetkazib berish:', `${money(d.delivery_fee)} UZS`);
   if (Number(d.service_charge_amount || 0) > 0) {
@@ -55,14 +64,19 @@ const receiptEscpos = (d: ReceiptData, device: PrinterDevice, drawer: boolean): 
     p.pair(`Xizmat haqi${pct}:`, `${money(d.service_charge_amount)} UZS`);
   }
   p.divider('=').bold().size(1, 2).pair('JAMI:', `${money(d.total_price)} UZS`).size().bold(false).divider('=');
+
+  // To'lov
   if (d.payment_breakdown?.length) {
-    p.pair("To'lov turi:", 'Aralash');
+    p.bold().pair("To'lov turi:", 'Aralash').bold(false);
     for (const part of d.payment_breakdown) p.pair(`  ${PAY_LABEL[part.method] || part.method}:`, `${money(part.amount)} UZS`);
   } else {
-    p.pair("To'lov turi:", d.payment_method_display || d.payment_method || '');
+    p.bold().pair("To'lov turi:", d.payment_method_display || d.payment_method || '').bold(false);
   }
-  if ((d.split_count ?? 1) > 1) p.pair(`Kishi boshiga (${d.split_count}):`, `${money(splitEach(d.total_price, d.split_count!))} UZS`);
-  if (d.description) p.para(`Izoh: ${d.description}`);
+  if ((d.split_count ?? 1) > 1) {
+    p.divider().bold().pair(`Kishi boshiga (${d.split_count} kishi):`, `${money(splitEach(d.total_price, d.split_count!))} UZS`).bold(false);
+  }
+  if (d.description) p.pair('Izoh:', d.description);
+
   p.feed(1).align('center').bold().line('XARIDINGIZ UCHUN RAHMAT!').bold(false);
   if (drawer) p.openDrawer();
   return p.cut().build();
@@ -271,12 +285,7 @@ const withAutoPrintScript = (html: string): string => {
 const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean): Promise<string> => {
 
   const isDelivery = receiptData.delivery_type === 'DELIVERY';
-  const hasPoint = receiptData.latitude != null && receiptData.longitude != null && receiptData.latitude !== '' && receiptData.longitude !== '';
-  const mapUrl = hasPoint ? `https://www.google.com/maps?q=${Number(receiptData.latitude)},${Number(receiptData.longitude)}` : '';
-  const mapQrSvg = isDelivery && mapUrl
-    ? await QRCode.toString(mapUrl, { type: 'svg', margin: 0, width: 110 }).catch(() => '')
-    : '';
-  // Kuryerga yo'l ko'rsatish: ruchka bilan yozish o'rniga chekning o'zida manzil, telefon va xarita QR.
+  // Kuryerga: chekning o'zida manzil va telefon (xarita QR yo'q — kuryer ilovasida yo'l ko'rsatiladi).
   const deliveryBlock = isDelivery ? `
         <div class="divider"></div>
         <div style="font-weight: 800; font-size: 13px; margin-bottom: 3px;">YETKAZISH</div>
@@ -285,7 +294,6 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
         ${(receiptData.address || '').trim()
           ? `<div style="font-size: 13px; font-weight: 700; line-height: 1.3;">${esc(receiptData.address)}</div>`
           : `<div style="font-size: 13px; font-weight: 800; border: 2px solid #000; padding: 4px; margin-top: 3px;">MANZIL KIRITILMAGAN — mijozga qo'ng'iroq qiling: ${esc(receiptData.contact_phone)}</div>`}
-        ${mapQrSvg ? `<div style="text-align: center; margin-top: 6px;">${mapQrSvg}<div style="font-size: 10px;">Xaritada ochish uchun skanerlang</div><div style="font-size: 9px; word-break: break-all;">${esc(mapUrl)}</div></div>` : ''}
   ` : '';
 
   const itemsHtml = (receiptData.items || []).map((item: any) => {
@@ -575,19 +583,23 @@ export const splitEach = (total: number | string, count: number): number => Math
 export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> => {
   const device = escposPrinter('receipt');
   if (device) {
+    // Eski pre-chek (HTML) bilan bir xil: "Buyurtmalaringiz", vaqt, stol, mahsulotlar, Jami, Jami to'lov
     const total = Number(order.total_price || 0);
     const p = new EscPos(device.width, device.codepage);
-    p.align('center').bold().size(1, 2).line('PRE-CHEK').size().bold(false);
-    if (order.table_number) p.line(`${order.table_number}-stol`);
-    p.line(new Date().toLocaleString('uz-UZ')).align('left').divider();
+    p.bold().align('center').size(1, 2).line('Buyurtmalaringiz').size().align('left');
+    p.line(`Chek chiqarilgan vaqti: ${new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`);
+    if (order.table_number) p.line(`stol "${order.table_number}"`);
+    p.divider();
     for (const item of order.items || []) {
       const unit = Number(item.price_at_time_of_order || item.product?.price || 0);
       const qty = item.quantity || 1;
-      p.pair(itemName(item), String(qty)).pair(`  Narxi: ${money(unit)}`, money(unit * qty));
+      p.pair(itemName(item), String(qty)).pair(`Narxi: ${money(unit)}`, money(unit * qty));
     }
-    p.divider().bold().size(1, 2).pair('Jami:', `${money(total)} so'm`).size().bold(false);
-    if ((order.split_count ?? 1) > 1) p.pair(`Kishi boshiga (${order.split_count}):`, `${money(splitEach(total, order.split_count!))} so'm`);
-    p.feed(1).align('center').line("To'lov emas - hisobni tekshirish uchun");
+    p.divider().pair('Jami:', `${money(total)} so'm`).pair("Jami to'lov:", `${money(total)} so'm`);
+    if ((order.split_count ?? 1) > 1) {
+      p.divider().pair(`Kishi boshiga (${order.split_count} kishi):`, `${money(splitEach(total, order.split_count!))} so'm`);
+    }
+    p.bold(false);
     await sendToPrinter(device, p.cut().build());
     return;
   }

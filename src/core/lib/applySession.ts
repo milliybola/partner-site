@@ -2,6 +2,7 @@ import { STORAGE_KEYS } from '../config/constants';
 import { clearSession, setPartner } from './session';
 import type { PartnerSession } from './session';
 import { clearTariffCache } from './tariff';
+import { unlockPos } from './posLock';
 
 /** Login (telefon + parol) va kassa qulfini PIN bilan ochish javobi — backendda bir xil shakl */
 export interface SessionResponse {
@@ -43,5 +44,6 @@ export function applySession(data: SessionResponse): PartnerSession {
         };
   // `is_open` backend yuborganicha qoladi (yo'q bo'lsa — noma'lum)
   setPartner(partnerData);
+  unlockPos(); // yangi kirish (parol yoki PIN) — qulf eski sessiyadan qolib ketmasin
   return partnerData;
 }

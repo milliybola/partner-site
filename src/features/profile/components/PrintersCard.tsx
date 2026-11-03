@@ -114,14 +114,15 @@ export const PrintersCard: React.FC = () => {
   const [agentStatus, setAgentStatus] = useState<'checking' | 'up' | 'down'>('checking');
   const direct = desktop || settings.agent;
 
-  const reload = () => {
+  const load = () => {
     void listPrinters().then(setSystemPrinters);
-    if (!desktop) {
-      setAgentStatus('checking');
-      void pingPrinterAgent().then((a) => setAgentStatus(a ? 'up' : 'down'));
-    }
+    if (!desktop) void pingPrinterAgent().then((a) => setAgentStatus(a ? 'up' : 'down'));
   };
-  useEffect(reload, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const reload = () => {
+    if (!desktop) setAgentStatus('checking');
+    load();
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = (patch: Partial<PrinterSettings>) => {
     const next = { ...settings, ...patch };

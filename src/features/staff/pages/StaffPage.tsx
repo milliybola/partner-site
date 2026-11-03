@@ -249,7 +249,12 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
       key: 'role',
       header: 'Rol',
       mobileAside: true,
-      render: (m) => <Badge tone={m.role === 'manager' ? 'info' : 'neutral'}>{ROLE_LABEL[m.role] || m.role}</Badge>,
+      render: (m) => (
+        <span className="inline-flex items-center gap-1">
+          <Badge tone={m.role === 'manager' ? 'info' : 'neutral'}>{ROLE_LABEL[m.role] || m.role}</Badge>
+          {m.role !== 'waiter' && (m.has_pin ? <Badge tone="success">PIN</Badge> : <span className="text-[11px] text-subtle">PIN yo'q</span>)}
+        </span>
+      ),
     },
     { key: 'phone', header: 'Telefon', mobileHidden: true, render: (m) => <span className="tabular-nums">{formatPhone(m.phone)}</span> },
     {
@@ -405,7 +410,7 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
     <div className="pb-6">
       <PageHeader
         title="Xodimlar"
-        subtitle="Menejerlar, ofitsantlar va o'z kuryerlaringiz"
+        subtitle="Menejerlar, kassirlar, ofitsantlar va o'z kuryerlaringiz"
         actions={
           <>
             <IconButton label="Yangilash" variant="outline" onClick={refresh}>
@@ -468,7 +473,7 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
                     <EmptyState
                       icon={<Users className="w-7 h-7" />}
                       title={staffQuery ? 'Hech narsa topilmadi' : "Xodimlar yo'q"}
-                      description={staffQuery ? "Qidiruv so'zini o'zgartirib ko'ring." : "Menejer yoki ofitsant qo'shing — ular o'z ilovasidan buyurtma qabul qiladi."}
+                      description={staffQuery ? "Qidiruv so'zini o'zgartirib ko'ring." : "Menejer, kassir yoki ofitsant qo'shing: kassir kassa rejimida, ofitsiant o'z ilovasida ishlaydi."}
                       action={canEdit && !staffQuery ? <Button icon={<Plus className="w-4 h-4" />} onClick={() => { setEditingStaff(null); setStaffFormOpen(true); }}>Xodim qo'shish</Button> : undefined}
                     />
                   </Card>

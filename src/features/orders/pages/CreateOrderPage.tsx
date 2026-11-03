@@ -22,7 +22,8 @@ import type { PosItemInput, PosQuote } from '../services/ordersApi';
 import { tablesApi } from '../../tables/services/tablesApi';
 import type { TableModel } from '../../tables/services/tablesApi';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
-import { printPreCheck as printPreCheckUtil, printReceiptPreview as printReceiptPreviewUtil } from '../utils/printing';
+import { printKitchenTicket, printPreCheck as printPreCheckUtil, printReceiptPreview as printReceiptPreviewUtil } from '../utils/printing';
+import { enqueueOrder, isNetworkError, newClientUuid, withCache, type QueuedKind } from '../../../core/lib/offline';
 import { useToast } from '../../../core/components/ToastProvider';
 import {
   ApiGap,
@@ -236,6 +237,10 @@ const CreateOrderPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  /** Oxirgi buyurtma internet yo'qligi sababli navbatga yozildi */
+  const [queuedOffline, setQueuedOffline] = useState(false);
+  /** Menyu/stollar keshdan (internet yo'q) */
+  const [fromCache, setFromCache] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
 
   // Rahbar (bir nechta filial): buyurtma qaysi filialga yozilishini tanlaydi. Tanlangan ishlayotgan filial yoki asosiy filial — boshlang'ich.
@@ -292,7 +297,8 @@ const CreateOrderPage: React.FC = () => {
     setLoadingTables(true);
     setTablesError(null);
     try {
-      const response = await tablesApi.getTables();
+      const { data: response, fromCache: cached } = await withCache('tables', () => tablesApi.getTables());
+      if (cached) setFromCache(true);
       const sorted = response
         .filter((t) => t.is_active !== false)
         .sort((a, b) => {
@@ -363,8 +369,11 @@ const CreateOrderPage: React.FC = () => {
     try {
       const partnerUuid = getPartner()?.uuid;
       if (!partnerUuid) throw new Error("Muassasa ma'lumotlari topilmadi. Qaytadan tizimga kiring.");
-      const res = await apiClient.get(`partner/category/?partner=${partnerUuid}`);
-      const rawCats = res.data?.data?.categories || res.data?.categories || res.data?.data || res.data || [];
+      const { data: rawCats, fromCache: cached } = await withCache(`catalog:${partnerUuid}`, async () => {
+        const res = await apiClient.get(`partner/category/?partner=${partnerUuid}`);
+        return res.data?.data?.categories || res.data?.categories || res.data?.data || res.data || [];
+      });
+      setFromCache(cached);
       const mapped: Category[] = Array.isArray(rawCats)
         ? rawCats.map((c: any) => ({
             id: c.id,
@@ -733,49 +742,84 @@ const CreateOrderPage: React.FC = () => {
     // Mijoz koordinatalari yuborilmaydi: xaritadan tanlash yo'q va muassasa koordinatalarini mijozniki deb yuborish
     // kuryerni noto'g'ri yo'naltirardi. Faqat telefon majburiy; manzil matni ixtiyoriy.
     const items = buildItems(cart);
+    // Har buyurtmaga qurilma ID'si: internet uzilib qayta yuborilsa ham server bir marta yaratadi
+    const clientUuid = newClientUuid();
+    const kind: QueuedKind = serviceType === 'DELIVERY' ? 'DELIVERY' : serviceType === 'PICKUP' ? 'PICKUP' : 'DINE_IN';
+    const payload =
+      kind === 'DELIVERY'
+        ? {
+            filial_uuid: effectiveFilial || undefined,
+            contact_phone: phone || undefined,
+            contact_name: contactName.trim() || undefined,
+            address: address.trim() || undefined,
+            payment_method: 'CASH',
+            description: comment.trim() || "Izoh yo'q",
+            items,
+            client_uuid: clientUuid,
+          }
+        : kind === 'PICKUP'
+          ? {
+              filial_uuid: effectiveFilial || undefined,
+              contact_phone: phone || undefined,
+              contact_name: contactName.trim() || undefined,
+              payment_method: 'CASH',
+              description: comment.trim() || undefined,
+              items,
+              client_uuid: clientUuid,
+            }
+          : {
+              table: selectedTableUuid,
+              payment_method: 'CASH',
+              contact_phone: phone || undefined,
+              contact_name: contactName.trim() || undefined,
+              description: comment.trim() || undefined,
+              items,
+              client_uuid: clientUuid,
+            };
 
-    let created: any = null;
-    try {
-      if (serviceType === 'DELIVERY') {
-        created = await ordersApi.createDeliveryOrder({
-          filial_uuid: effectiveFilial || undefined,
-          contact_phone: phone || undefined,
-          contact_name: contactName.trim() || undefined,
-          address: address.trim() || undefined,
-          payment_method: 'CASH',
-          description: comment.trim() || "Izoh yo'q",
-          items,
-        });
-      } else if (serviceType === 'PICKUP') {
-        created = await ordersApi.createPickupOrder({
-          filial_uuid: effectiveFilial || undefined,
-          contact_phone: phone || undefined,
-          contact_name: contactName.trim() || undefined,
-          payment_method: 'CASH',
-          description: comment.trim() || undefined,
-          items,
-        });
-      } else {
-        created = await ordersApi.createDineInOrder({
-          table: selectedTableUuid,
-          payment_method: 'CASH',
-          contact_phone: phone || undefined,
-          contact_name: contactName.trim() || undefined,
-          description: comment.trim() || undefined,
-          items,
-        });
-        if (selectedTableUuid) tablesApi.updateTableStatus(selectedTableUuid, 'OCCUPIED').catch(() => undefined);
-      }
-
+    const finish = (orderUuid?: string) => {
       // Qo'ng'iroqdan ochilgan bo'lsa — shu call yozuvi yopiladi (xato bo'lsa buyurtmaga ta'sir qilmaydi)
-      if (activeCart.callUuid) callsApi.resolve(activeCart.callUuid, created?.data?.uuid).catch(() => undefined);
+      if (activeCart.callUuid && orderUuid) callsApi.resolve(activeCart.callUuid, orderUuid).catch(() => undefined);
       setCartSheetOpen(false);
       setSubmitSuccess(true);
       if (activeCarts.length > 1) removeTab(currentId);
       else clearCart();
       redirectTimer.current = setTimeout(() => navigate('/orders'), 1800);
+    };
+
+    let created: { data?: { uuid?: string } } | undefined;
+    try {
+      if (kind === 'DELIVERY') created = await ordersApi.createDeliveryOrder(payload as Parameters<typeof ordersApi.createDeliveryOrder>[0]);
+      else if (kind === 'PICKUP') created = await ordersApi.createPickupOrder(payload as Parameters<typeof ordersApi.createPickupOrder>[0]);
+      else {
+        created = await ordersApi.createDineInOrder(payload as Parameters<typeof ordersApi.createDineInOrder>[0]);
+        if (selectedTableUuid) tablesApi.updateTableStatus(selectedTableUuid, 'OCCUPIED').catch(() => undefined);
+      }
+      setQueuedOffline(false);
+      finish(created?.data?.uuid);
     } catch (err) {
-      setSubmitError(getErrorMessage(err, "Buyurtma yaratishda xatolik. Maydonlar va internetni tekshiring."));
+      if (!isNetworkError(err)) {
+        setSubmitError(getErrorMessage(err, "Buyurtma yaratishda xatolik. Maydonlar va internetni tekshiring."));
+        return;
+      }
+      // Internet yo'q: buyurtma navbatga yoziladi, oshxona cheki shu yerning o'zida chiqadi
+      const label =
+        kind === 'DINE_IN'
+          ? `${selectedTable?.table_number ?? ''}-stol`
+          : `${kind === 'PICKUP' ? 'Olib ketish' : 'Yetkazish'}${contactName.trim() ? ` · ${contactName.trim()}` : ''}`;
+      enqueueOrder({ id: clientUuid, kind, payload, label, total: subtotal + serviceCharge });
+      printKitchenTicket({
+        table_number: kind === 'DINE_IN' ? selectedTable?.table_number : null,
+        delivery_type: kind,
+        description: comment.trim() || undefined,
+        items: cart.map((i) => ({
+          name: i.packaging ? i.product.name + ' (' + i.packaging.name + ')' : i.product.name,
+          quantity: i.quantity,
+          options: (i.options || []).map((o) => o.name).join(', '),
+        })),
+      }).catch(() => undefined);
+      setQueuedOffline(true);
+      finish();
     } finally {
       setSubmitting(false);
     }
@@ -992,7 +1036,10 @@ const CreateOrderPage: React.FC = () => {
         </div>
       )}
 
-      {quoteError && <InlineAlert tone="danger">{quoteError}</InlineAlert>}
+      {fromCache && (
+        <InlineAlert tone="warning">Internet yo'q — menyu oxirgi saqlangan nusxadan. Buyurtmalar navbatga yoziladi va keyin yuboriladi.</InlineAlert>
+      )}
+      {quoteError && !fromCache && <InlineAlert tone="danger">{quoteError}</InlineAlert>}
 
       {unavailableInCart.length > 0 && (
         <InlineAlert tone="warning">
@@ -1351,8 +1398,10 @@ const CreateOrderPage: React.FC = () => {
             <span className="mx-auto w-16 h-16 rounded-full bg-brand-soft text-brand flex items-center justify-center">
               <CheckCircle className="w-9 h-9" />
             </span>
-            <h3 className="mt-4 text-[20px] font-black tracking-tightest">Buyurtma yaratildi</h3>
-            <p className="mt-1 text-[14px] text-muted">Buyurtmalar navbatiga o'tilmoqda...</p>
+            <h3 className="mt-4 text-[20px] font-black tracking-tightest">{queuedOffline ? 'Oflayn navbatga yozildi' : 'Buyurtma yaratildi'}</h3>
+            <p className="mt-1 text-[14px] text-muted">
+              {queuedOffline ? 'Internet tiklanganda serverga avtomatik yuboriladi.' : "Buyurtmalar navbatiga o'tilmoqda..."}
+            </p>
             <Button className="mt-5" block size="lg" onClick={() => navigate('/orders')}>
               Buyurtmalarga o'tish
             </Button>

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clock, FileSpreadsheet, MoreVertical, Plus, QrCode, RefreshCw, ScanLine, Table2, Users } from 'lucide-react';
+import { Clock, FileSpreadsheet, Layers, MoreVertical, Plus, QrCode, RefreshCw, ScanLine, Table2, Users } from 'lucide-react';
 import { tablesApi } from '../services/tablesApi';
-import type { TableModel } from '../services/tablesApi';
+import type { Hall, TableModel } from '../services/tablesApi';
+import { HallsSheet, TransferSheet } from '../components/HallSheets';
 import { filialApi } from '../../orders/services/filialApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
 import { TableBillSheet } from '../components/TableBillSheet';
@@ -14,7 +15,7 @@ import { limitText, useTariff } from '../../../core/lib/tariff';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
 import { useRealtime } from '../../../core/realtime/RealtimeProvider';
 import type { RealtimeEvent } from '../../../core/realtime/RealtimeProvider';
-import { getPartner, isManager as isManagerRole } from '../../../core/lib/session';
+import { getPartner, isCashier, isManager as isManagerRole } from '../../../core/lib/session';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { formatMoney, minutesSince } from '../../../core/lib/format';
 import { Button, EmptyState, ErrorState, IconButton, PageHeader, SearchInput, Skeleton, Tabs } from '../../../core/ui';
@@ -104,8 +105,8 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   const confirm = useConfirm();
   const partner = useMemo(() => getPartner(), []);
   const manager = isManagerRole(partner);
-  // Waiters are blocked at login, so everyone who reaches this page can manage tables.
-  const canManage = partner?.role !== ('waiter' as any);
+  // Ofitsiantlar bu panelga kira olmaydi; kassir stollarni tahrirlamaydi (faqat buyurtma, hisob, ko'chirish)
+  const canManage = !isCashier(partner);
 
   const [tables, setTables] = useState<TableModel[]>([]);
   // Stol qo'shilganda/o'chirilganda tarif foydalanishi (limit) yangilanadi
@@ -128,6 +129,18 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   const [menuTable, setMenuTable] = useState<TableModel | null>(null);
   const [orderingTable, setOrderingTable] = useState<TableModel | null>(null);
   const [billTable, setBillTable] = useState<TableModel | null>(null);
+  const [transferFrom, setTransferFrom] = useState<TableModel | null>(null);
+  const [halls, setHalls] = useState<Hall[]>([]);
+  const [hallsOpen, setHallsOpen] = useState(false);
+  /** 'ALL' — hammasi (zallar bo'yicha guruhlab), '' — zalsiz, aks holda zal uuid */
+  const [hallFilter, setHallFilter] = useState<string>('ALL');
+
+  const fetchHalls = useCallback(() => {
+    tablesApi
+      .getHalls()
+      .then(setHalls)
+      .catch(() => setHalls([]));
+  }, []);
 
   // BUGFIX: every refresh used to flip the whole grid to a spinner. Only the
   // first load shows skeletons now; later refreshes are silent.
@@ -149,6 +162,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
 
   useEffect(() => {
     fetchTables();
+    fetchHalls();
     if (!manager) {
       filialApi
         .getFilials()
@@ -221,10 +235,19 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
     return tables.filter((t) => {
       if (filter === 'INACTIVE' && t.is_active !== false) return false;
       if (filter !== 'ALL' && filter !== 'INACTIVE' && (t.status !== filter || t.is_active === false)) return false;
+      if (hallFilter !== 'ALL' && (t.hall || '') !== hallFilter) return false;
       if (!q) return true;
       return String(t.table_number).toLowerCase().includes(q) || String(t.notes || '').toLowerCase().includes(q);
     });
-  }, [tables, filter, search]);
+  }, [tables, filter, search, hallFilter]);
+
+  // «Barchasi» tanlanganda va zallar bo'lsa — stollar zallar bo'yicha bo'limlarga bo'linadi
+  const sections = useMemo(() => {
+    if (hallFilter !== 'ALL' || halls.length === 0) return [{ key: 'all', title: '', items: visible }];
+    const list = [...halls.map((h) => ({ key: h.uuid, title: h.name })), { key: '', title: 'Zalsiz' }];
+    return list.map((h) => ({ ...h, items: visible.filter((t) => (t.hall || '') === h.key) })).filter((h) => h.items.length > 0);
+  }, [visible, halls, hallFilter]);
+  const hasUnassigned = halls.length > 0 && tables.some((t) => !t.hall);
 
   const openBulk = () => (tariff.can_add_table ? setBulkOpen(true) : limitReached());
 
@@ -290,6 +313,11 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
               <RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} />
             </IconButton>
             {canManage && (
+              <IconButton label="Zallar" variant="outline" onClick={() => setHallsOpen(true)}>
+                <Layers className="w-[18px] h-[18px]" />
+              </IconButton>
+            )}
+            {canManage && (
               <IconButton label="Stol QR-kodlari" variant="outline" onClick={() => setTableQrOpen(true)}>
                 <ScanLine className="w-[18px] h-[18px]" />
               </IconButton>
@@ -328,6 +356,17 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
               ...(counts.INACTIVE > 0 ? [{ value: 'INACTIVE' as Filter, label: 'Nofaol', count: counts.INACTIVE }] : []),
             ]}
           />
+          {halls.length > 0 && (
+            <Tabs<string>
+              value={hallFilter}
+              onChange={setHallFilter}
+              options={[
+                { value: 'ALL', label: 'Barcha zallar' },
+                ...halls.map((h) => ({ value: h.uuid, label: h.name, count: tables.filter((t) => t.hall === h.uuid).length })),
+                ...(hasUnassigned ? [{ value: '', label: 'Zalsiz', count: tables.filter((t) => !t.hall).length }] : []),
+              ]}
+            />
+          )}
           {tables.length > 8 && <SearchInput value={search} onChange={setSearch} placeholder="Stol raqami yoki izoh bo'yicha qidirish" className="md:max-w-sm" />}
         </div>
       </PageHeader>
@@ -378,13 +417,21 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             />
           )
         ) : (
+          <div className="space-y-5">
+            {sections.map((sec) => (
+              <section key={sec.key}>
+                {sec.title && (
+                  <h2 className="mb-2 text-[13px] font-extrabold uppercase tracking-wider text-subtle">
+                    {sec.title} <span className="text-muted">· {sec.items.length}</span>
+                  </h2>
+                )}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-            {visible.map((t) => (
+            {sec.items.map((t) => (
               <TableTile
                 key={t.uuid}
                 table={t}
                 now={now}
-                canManage={canManage}
+                canManage
                 onOpen={() => {
                   if (t.is_active === false) {
                     if (canManage) setMenuTable(t);
@@ -395,6 +442,9 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
                 }}
                 onMenu={() => setMenuTable(t)}
               />
+            ))}
+          </div>
+              </section>
             ))}
           </div>
         )}
@@ -414,6 +464,31 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           setMenuTable(null);
           setBillTable(t);
         }}
+        onTransfer={(t) => {
+          setMenuTable(null);
+          setTransferFrom(t);
+        }}
+        canManage={canManage}
+      />
+
+      <TransferSheet
+        from={transferFrom}
+        tables={tables}
+        onClose={() => setTransferFrom(null)}
+        onDone={() => {
+          setTransferFrom(null);
+          void fetchTables(true);
+        }}
+      />
+
+      <HallsSheet
+        open={hallsOpen}
+        halls={halls}
+        onClose={() => setHallsOpen(false)}
+        onChanged={() => {
+          fetchHalls();
+          void fetchTables(true);
+        }}
       />
 
       <TableBillSheet table={billTable} canPay={manager} onClose={() => setBillTable(null)} onChanged={() => void fetchTables(true)} />
@@ -424,11 +499,14 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
         defaultOrder={tables.length + 1}
         isManager={manager}
         filials={filials}
+        halls={halls}
+        defaultHall={hallFilter === 'ALL' ? null : hallFilter}
         onClose={() => setFormOpen(false)}
         onSaved={() => {
           setFormOpen(false);
           toast.success(editing ? 'Stol saqlandi' : "Stol qo'shildi");
           fetchTables(true);
+          fetchHalls();
         }}
       />
 

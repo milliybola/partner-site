@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, BellOff, ChevronDown, Monitor, Printer, Volume2 } from 'lucide-react';
+import { Bell, BellOff, ChevronDown, Lock, Monitor, Printer, Volume2 } from 'lucide-react';
 import { useToast } from '../../../core/components/ToastProvider';
-import { Badge, Button, Card, CardHeader, Divider, InlineAlert, PageHeader, QtyStepper, SettingRow, Switch } from '../../../core/ui';
+import { Badge, Button, Card, CardHeader, Divider, InlineAlert, PageHeader, QtyStepper, Select, SettingRow, Switch } from '../../../core/ui';
+import { getAutoLockMinutes, setAutoLockMinutes } from '../../../core/lib/posLock';
 import { ensureNotificationPermission, isTauri, notify } from '../../../core/platform';
 import { getDisplayName, getPartner, isManager } from '../../../core/lib/session';
 import { PaymentMethodsCard } from '../components/PaymentMethodsCard';
+import { PrintersCard } from '../components/PrintersCard';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { printReceiptPreview } from '../../orders/utils/printing';
 
@@ -56,6 +58,39 @@ const playTestChime = () => {
   tone(783.99, t + 0.15, 0.6, 0.1);
   setTimeout(() => ctx.close().catch(() => {}), 1200);
   return true;
+};
+
+/** Kassa qulfi: harakatsizlikdan keyin avtomatik qulflash (shu qurilma uchun) */
+const PosLockCard: React.FC = () => {
+  const [minutes, setMinutes] = useState(getAutoLockMinutes);
+  return (
+    <Card>
+      <CardHeader title="Kassa qulfi" icon={<Lock className="w-[18px] h-[18px]" />} />
+      <SettingRow
+        title="Avtomatik qulflash"
+        description="Kassa rejimida shuncha vaqt hech kim ishlatmasa — ekran qulflanadi, xodim PIN bilan ochadi"
+        control={
+          <Select
+            value={String(minutes)}
+            onChange={(e) => {
+              const m = parseInt(e.target.value, 10) || 0;
+              setMinutes(m);
+              setAutoLockMinutes(m);
+            }}
+            containerClassName="w-36"
+          >
+            <option value="0">O'chiq</option>
+            {[1, 2, 5, 10, 15, 30].map((m) => (
+              <option key={m} value={m}>
+                {m} daqiqa
+              </option>
+            ))}
+          </Select>
+        }
+      />
+      <p className="mt-2 text-[12px] text-muted">Xodimlarning PIN kodlari «Xodimlar» bo'limida o'rnatiladi.</p>
+    </Card>
+  );
 };
 
 const SettingsPage: React.FC = () => {
@@ -196,14 +231,10 @@ const SettingsPage: React.FC = () => {
         )}
       </Card>
 
+      <PosLockCard />
+
       {desktop ? (
-        <Card>
-          <CardHeader title="Desktop ilova" icon={<Monitor className="w-[18px] h-[18px]" />} />
-          <p className="text-[14px] text-muted">
-            Desktop ilova cheklarni oynasiz, to'g'ridan-to'g'ri Windows'dagi asosiy (default) printerga yuboradi. Chek chiqmasa, printer yoqilganini va
-            Windows sozlamalarida asosiy printer sifatida tanlanganini tekshiring.
-          </p>
-        </Card>
+        <PrintersCard />
       ) : (
         <Card>
           <button

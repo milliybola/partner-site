@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { Bell, ListOrdered, Plus, RefreshCw, SlidersHorizontal, X } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
-import type { Order } from '../services/ordersApi';
+import type { Order, PaymentPart } from '../services/ordersApi';
 import { filialApi } from '../services/filialApi';
 import type { PartnerFilial } from '../services/filialApi';
 import { tablesApi } from '../../tables/services/tablesApi';
@@ -408,12 +408,12 @@ const OrdersPage: React.FC = () => {
     }
   };
 
-  const submitPayment = async (method: PaymentMethod, splitCount: number) => {
+  const submitPayment = async (method: PaymentMethod, splitCount: number, payments?: PaymentPart[]) => {
     if (!paymentOrder) return;
     setPaymentSaving(true);
     try {
-      // To'lov va yakunlash — bitta so'rovda (eski serverda mark-paid bilan to'ldiriladi)
-      await ordersApi.completeWithPayment(paymentOrder.uuid, method, splitCount);
+      // To'lov va yakunlash — bitta so'rovda (eski serverda mark-paid bilan to'ldiriladi); aralash — qismlar bilan
+      await ordersApi.completeWithPayment(paymentOrder.uuid, method, splitCount, payments);
       freeTableForOrder(paymentOrder);
       toast.success(`${orderNo(paymentOrder)} to'landi va yakunlandi`);
       handlePrintReceipt(paymentOrder.uuid, true);

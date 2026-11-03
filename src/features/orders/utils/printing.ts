@@ -2,7 +2,139 @@ import QRCode from 'qrcode';
 import { ordersApi } from '../services/ordersApi';
 // window.location.origin is 'null' under file:// and differs under tauri:// — resolve
 // public assets against document.baseURI instead.
-import { publicAsset } from '../../../core/platform';
+import { publicAsset, sendToPrinter } from '../../../core/platform';
+import { EscPos } from '../../../core/platform/escpos';
+import { escposPrinter, getPrinterSettings, type PrinterDevice } from '../../../core/lib/printerConfig';
+
+const money = (v: unknown) => Math.round(Number(v) || 0).toLocaleString('uz-UZ'); // bo'linmas bo'shliqni EscPos almashtiradi
+const copiesCount = () => parseInt(localStorage.getItem('milliygo_print_copies') || '1', 10) || 1;
+const PAY_LABEL: Record<string, string> = { CASH: 'Naqd', CARD: 'Karta', TRANSFER: "O'tkazma", CLICK: 'Click', PAYME: 'Payme' };
+
+/* ------------------------------------------------------------ ESC/POS (desktop) */
+// Desktop ilovada printer sozlangan bo'lsa chek oynasiz, to'g'ridan-to'g'ri printerga ketadi
+// (Sozlamalar → Printerlar). Aks holda pastdagi HTML + window.print usuli ishlaydi.
+
+const itemName = (item: { product_name?: string; name?: string; product?: { name?: string } | null }) =>
+  item.product_name || item.name || item.product?.name || "Noma'lum taom";
+
+const receiptEscpos = (d: ReceiptData, device: PrinterDevice, drawer: boolean): Uint8Array => {
+  const p = new EscPos(device.width, device.codepage);
+  const isDelivery = d.delivery_type === 'DELIVERY';
+  p.align('center').bold().size(2, 2).para(d.partner_name || 'MilliyGo', 2).size().bold(false);
+  const contacts = [d.partner_address, d.partner_phone].filter(Boolean).join(' | ');
+  if (contacts) p.para(contacts);
+  p.line('milliyapp.uz').align('left').divider();
+  if (d.order_number) p.bold().pair('Buyurtma:', `#${d.order_number}`).bold(false);
+  p.pair('Sana:', d.created_at || new Date().toLocaleString('uz-UZ'));
+  if (d.delivery_type_display) p.pair('Turi:', d.delivery_type_display);
+  if (d.table_number) p.bold().pair('Stol:', `${d.table_number}-stol`).bold(false);
+  if (!isDelivery && d.contact_name) p.pair('Mijoz:', d.contact_name);
+  if (!isDelivery && d.contact_phone) p.pair('Tel:', d.contact_phone);
+  if (isDelivery) {
+    p.divider().bold().line('YETKAZISH').bold(false);
+    if (d.contact_name) p.para(d.contact_name);
+    if (d.contact_phone) p.bold().size(1, 2).line(d.contact_phone).size().bold(false);
+    p.para((d.address || '').trim() || `MANZIL KIRITILMAGAN - mijozga qo'ng'iroq qiling: ${d.contact_phone ?? ''}`);
+    if (d.latitude != null && d.longitude != null && d.latitude !== '' && d.longitude !== '') {
+      p.align('center').qr(`https://www.google.com/maps?q=${Number(d.latitude)},${Number(d.longitude)}`, 5).line('Xaritada ochish').align('left');
+    }
+  }
+  p.divider();
+  for (const item of d.items || []) {
+    const qty = item.unit === 'KG' ? `${Number(Number(item.quantity).toFixed(3))} kg` : `${item.quantity}${item.packaging_name ? ` ${item.packaging_name}` : ''}`;
+    p.bold().pair(itemName(item), money(item.line_total)).bold(false);
+    const opts = (item.options || []).map((o) => o.name).join(', ');
+    if (opts) p.para(`  ${opts}`);
+    const free = Number(item.free_quantity) || 0;
+    p.line(`  ${money(item.unit_price)} x ${qty}${free > 0 ? ` (+${free} bepul)` : ''}`);
+  }
+  p.divider().pair('Summa:', `${money(d.subtotal)} UZS`);
+  if (isDelivery) p.pair('Yetkazib berish:', `${money(d.delivery_fee)} UZS`);
+  if (Number(d.service_charge_amount || 0) > 0) {
+    const pct = Number(d.service_charge_percent || 0) > 0 ? ` (${d.service_charge_percent}%)` : '';
+    p.pair(`Xizmat haqi${pct}:`, `${money(d.service_charge_amount)} UZS`);
+  }
+  p.divider('=').bold().size(1, 2).pair('JAMI:', `${money(d.total_price)} UZS`).size().bold(false).divider('=');
+  if (d.payment_breakdown?.length) {
+    p.pair("To'lov turi:", 'Aralash');
+    for (const part of d.payment_breakdown) p.pair(`  ${PAY_LABEL[part.method] || part.method}:`, `${money(part.amount)} UZS`);
+  } else {
+    p.pair("To'lov turi:", d.payment_method_display || d.payment_method || '');
+  }
+  if ((d.split_count ?? 1) > 1) p.pair(`Kishi boshiga (${d.split_count}):`, `${money(splitEach(d.total_price, d.split_count!))} UZS`);
+  if (d.description) p.para(`Izoh: ${d.description}`);
+  p.feed(1).align('center').bold().line('XARIDINGIZ UCHUN RAHMAT!').bold(false);
+  if (drawer) p.openDrawer();
+  return p.cut().build();
+};
+
+/** Naqd to'lovli chekda pul qutisi ochiladi (sozlamada yoqilgan bo'lsa) */
+const wantsDrawer = (d: ReceiptData) => getPrinterSettings().openDrawer && String(d.payment_method || '').toUpperCase() === 'CASH';
+
+const printReceiptData = async (d: ReceiptData, includeOfdQr: boolean) => {
+  const device = escposPrinter('receipt');
+  if (!device) return printHtmlCopies(await buildReceiptHtml(d, includeOfdQr));
+  const copies = copiesCount();
+  for (let i = 0; i < copies; i++) await sendToPrinter(device, receiptEscpos(d, device, i === 0 && wantsDrawer(d)));
+};
+
+export interface KitchenTicketInput {
+  order_number?: string;
+  table_number?: string | null;
+  delivery_type?: string;
+  waiter_name?: string | null;
+  description?: string;
+  /** true — avval yuborilgan buyurtmaga qo'shimcha taomlar */
+  addition?: boolean;
+  items: Array<{ name: string; quantity: number | string; options?: string }>;
+}
+
+const KIND_LABEL: Record<string, string> = { DINE_IN: 'ZALDA', PICKUP: 'OLIB KETISH', DELIVERY: 'YETKAZISH' };
+
+/** Oshxona cheki: narxsiz, katta shrift — oshpaz uzoqdan o'qiydi */
+export const kitchenTicketEscpos = (t: KitchenTicketInput, device: PrinterDevice): Uint8Array => {
+  const p = new EscPos(device.width, device.codepage);
+  p.align('center').bold().size(2, 2);
+  if (t.addition) p.line("QO'SHIMCHA");
+  p.line(t.table_number ? `${t.table_number}-STOL` : KIND_LABEL[t.delivery_type || ''] || 'BUYURTMA');
+  p.size().bold(false);
+  if (t.order_number) p.line(`#${t.order_number}`);
+  p.line(new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }));
+  if (t.waiter_name) p.line(`Ofitsiant: ${t.waiter_name}`);
+  p.align('left').divider();
+  for (const it of t.items) {
+    p.bold().size(1, 2).pair(it.name, `x${Number(it.quantity)}`).size().bold(false);
+    if (it.options) p.para(`  + ${it.options}`);
+  }
+  p.divider();
+  if (t.description && t.description !== "Izoh yo'q") p.bold().para(`IZOH: ${t.description}`).bold(false);
+  return p.cut().build();
+};
+
+/** Oshxona printeri sozlangan bo'lsa — oshxona chekini chiqaradi. Sozlanmagan bo'lsa false. */
+export const printKitchenTicket = async (t: KitchenTicketInput): Promise<boolean> => {
+  const device = escposPrinter('kitchen');
+  if (!device || !t.items.length) return false;
+  await sendToPrinter(device, kitchenTicketEscpos(t, device));
+  return true;
+};
+
+/** Printer sozlamasini tekshirish uchun qisqa sinov cheki (Sozlamalar sahifasi) */
+export const printTestTicket = async (device: PrinterDevice, label: string) => {
+  const p = new EscPos(device.width, device.codepage);
+  p.align('center').bold().size(2, 2).line('MilliyGo').size().line(label).bold(false).align('left').divider();
+  p.pair('Lotin:', "O'zbekiston, g'isht").pair('Kirill:', 'Ўзбекистон, Ёзув').pair('Raqam:', '1 234 567 UZS');
+  p.divider().align('center').line(new Date().toLocaleString('uz-UZ'));
+  await sendToPrinter(device, p.cut().build());
+};
+
+/** Faqat pul qutisini ochish (kassa printeri orqali) */
+export const openCashDrawer = async () => {
+  const device = escposPrinter('receipt');
+  if (!device) throw new Error('Kassa printeri sozlanmagan');
+  const p = new EscPos(device.width, device.codepage);
+  await sendToPrinter(device, p.openDrawer().build());
+};
 
 // SECURITY: receipts are rendered in a same-origin iframe, so every value that can
 // come from a customer (name, address, comment, product names) must be escaped —
@@ -46,6 +178,8 @@ export interface ReceiptData {
   total_price: number | string;
   payment_method_display?: string;
   payment_method?: string;
+  /** Aralash to'lov qismlari */
+  payment_breakdown?: Array<{ method: string; amount: number | string }>;
   split_count?: number;
   description?: string;
   partner_name?: string;
@@ -62,7 +196,7 @@ export interface ReceiptData {
 // option tried (deviceName, pageSize, silent on/off), while this simpler approach is the
 // same one that's known to actually reach the printer via a real browser tab.
 const printHtmlCopies = async (html: string): Promise<void> => {
-  const printCopies = parseInt(localStorage.getItem('milliygo_print_copies') || '1', 10) || 1;
+  const printCopies = copiesCount();
 
   // The print trigger MUST live inside the written document itself (not on iframe.onload):
   // a freshly-appended, src-less iframe first loads "about:blank" and fires its own load
@@ -373,8 +507,13 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
 
           <div class="info-row" style="margin-top: 4px;">
             <span class="info-label">To'lov turi:</span>
-            <span class="info-value bold">${esc(receiptData.payment_method_display || receiptData.payment_method)}</span>
+            <span class="info-value bold">${esc(receiptData.payment_breakdown?.length ? 'Aralash' : receiptData.payment_method_display || receiptData.payment_method)}</span>
           </div>
+          ${(receiptData.payment_breakdown || []).map((part) => `
+          <div class="info-row">
+            <span class="info-label">&nbsp;&nbsp;${esc(PAY_LABEL[part.method] || part.method)}:</span>
+            <span class="info-value">${money(part.amount)} UZS</span>
+          </div>`).join('')}
 
           ${(receiptData.split_count ?? 1) > 1 ? `
           <div class="divider"></div>
@@ -406,13 +545,13 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
 export const printReceipt = async (orderUuid: string, includeOfdQr: boolean): Promise<void> => {
   const responseData = await ordersApi.getOrderReceipt(orderUuid);
   const receiptData = responseData.data || responseData;
-  await printHtmlCopies(await buildReceiptHtml(receiptData, includeOfdQr));
+  await printReceiptData(receiptData, includeOfdQr);
 };
 
 // Print the same official receipt layout, but built purely from local data —
 // used before the order actually exists on the backend (e.g. reviewing before submit).
 export const printReceiptPreview = async (receiptData: ReceiptData, includeOfdQr: boolean): Promise<void> => {
-  await printHtmlCopies(await buildReceiptHtml(receiptData, includeOfdQr));
+  await printReceiptData(receiptData, includeOfdQr);
 };
 
 export interface PreCheckOrderInput {
@@ -434,6 +573,24 @@ export const splitEach = (total: number | string, count: number): number => Math
 
 // Print a simple preliminary (not-yet-paid) receipt built purely from local order data
 export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> => {
+  const device = escposPrinter('receipt');
+  if (device) {
+    const total = Number(order.total_price || 0);
+    const p = new EscPos(device.width, device.codepage);
+    p.align('center').bold().size(1, 2).line('PRE-CHEK').size().bold(false);
+    if (order.table_number) p.line(`${order.table_number}-stol`);
+    p.line(new Date().toLocaleString('uz-UZ')).align('left').divider();
+    for (const item of order.items || []) {
+      const unit = Number(item.price_at_time_of_order || item.product?.price || 0);
+      const qty = item.quantity || 1;
+      p.pair(itemName(item), String(qty)).pair(`  Narxi: ${money(unit)}`, money(unit * qty));
+    }
+    p.divider().bold().size(1, 2).pair('Jami:', `${money(total)} so'm`).size().bold(false);
+    if ((order.split_count ?? 1) > 1) p.pair(`Kishi boshiga (${order.split_count}):`, `${money(splitEach(total, order.split_count!))} so'm`);
+    p.feed(1).align('center').line("To'lov emas - hisobni tekshirish uchun");
+    await sendToPrinter(device, p.cut().build());
+    return;
+  }
   const now = new Date();
   const timeStr = now.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 

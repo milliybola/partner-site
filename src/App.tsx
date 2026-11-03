@@ -6,7 +6,8 @@ import { ToastProvider } from './core/components/ToastProvider';
 import { ConfirmProvider } from './core/components/ConfirmProvider';
 import { RejectReasonProvider } from './core/components/RejectReasonProvider';
 import { LoadingState } from './core/ui';
-import { isManager } from './core/lib/session';
+import { isCashier, isManager } from './core/lib/session';
+import { getWorkMode, posHome } from './core/lib/workMode';
 import LoginPage from './features/auth/pages/LoginPage';
 import { useVenue } from './venues';
 import { VenueOnly } from './venues/VenueOnly';
@@ -39,11 +40,16 @@ const PickingPage = lazy(() => import('./venues/store/pages/PickingPage'));
 
 /** Owner-only screens: managers were able to open them by typing the URL. */
 const OwnerOnly: React.FC<{ children: React.ReactElement }> = ({ children }) =>
-  isManager() ? <Navigate to="/orders" replace /> : children;
+  isCashier() ? <Navigate to={posHome()} replace /> : isManager() ? <Navigate to="/orders" replace /> : children;
 
-/** `/` — hamkor turiga mos bosh sahifa; menejer to'g'ridan-to'g'ri navbatga o'tadi. */
+/** Boshqaruv bo'limlari (menyu, xodimlar, tarif…): kassir kira olmaydi — kassaga qaytariladi. */
+const ManageOnly: React.FC<{ children: React.ReactElement }> = ({ children }) =>
+  isCashier() ? <Navigate to={posHome()} replace /> : children;
+
+/** `/` — hamkor turiga mos bosh sahifa; kassa rejimida — kassa, menejer — navbat. */
 const VenueHome: React.FC = () => {
   const { isStore } = useVenue();
+  if (getWorkMode() === 'pos') return <Navigate to={posHome()} replace />;
   if (isManager()) return <Navigate to="/orders" replace />;
   return isStore ? <StoreHomePage /> : <RestaurantHomePage />;
 };
@@ -71,24 +77,24 @@ const App: React.FC = () => {
               <Route path="overview" element={<OwnerOnly>{page(<BranchOverviewPage />)}</OwnerOnly>} />
               <Route path="statistics" element={<OwnerOnly>{page(<DashboardPage />)}</OwnerOnly>} />
               <Route path="kitchen" element={<VenueOnly kind="restaurant">{page(<KitchenPage />)}</VenueOnly>} />
-              <Route path="inventory" element={<VenueOnly kind="store">{page(<InventoryPage />)}</VenueOnly>} />
+              <Route path="inventory" element={<ManageOnly><VenueOnly kind="store">{page(<InventoryPage />)}</VenueOnly></ManageOnly>} />
               <Route path="picking" element={<VenueOnly kind="store">{page(<PickingPage />)}</VenueOnly>} />
               <Route path="orders" element={page(<OrdersPage />)} />
               <Route path="new-order" element={page(<CreateOrderPage />)} />
-              <Route path="catalog" element={page(<CatalogPage />)} />
-              <Route path="promotions" element={page(<PromotionsPage />)} />
+              <Route path="catalog" element={<ManageOnly>{page(<CatalogPage />)}</ManageOnly>} />
+              <Route path="promotions" element={<ManageOnly>{page(<PromotionsPage />)}</ManageOnly>} />
               <Route path="finance" element={<OwnerOnly>{page(<FinancePage />)}</OwnerOnly>} />
               <Route path="branches" element={<OwnerOnly>{page(<BranchesPage />)}</OwnerOnly>} />
               <Route path="delivery-zones" element={<OwnerOnly>{page(<DeliveryZonesPage />)}</OwnerOnly>} />
-              <Route path="profile" element={page(<ProfilePage />)} />
+              <Route path="profile" element={<ManageOnly>{page(<ProfilePage />)}</ManageOnly>} />
               <Route path="settings" element={page(<SettingsPage />)} />
-              <Route path="plan" element={page(<PlanPage />)} />
+              <Route path="plan" element={<ManageOnly>{page(<PlanPage />)}</ManageOnly>} />
               <Route path="all-orders" element={page(<AllOrdersPage />)} />
-              <Route path="staff" element={page(<StaffPage />)} />
-              <Route path="couriers" element={page(<StaffPage initialTab="couriers" />)} />
+              <Route path="staff" element={<ManageOnly>{page(<StaffPage />)}</ManageOnly>} />
+              <Route path="couriers" element={<ManageOnly>{page(<StaffPage initialTab="couriers" />)}</ManageOnly>} />
               <Route path="shift" element={page(<ShiftPage />)} />
               <Route path="tables" element={<VenueOnly kind="restaurant"><FeatureGate feature="dine_in">{page(<TablesPage key="tables" />)}</FeatureGate></VenueOnly>} />
-              <Route path="tables/qr" element={<VenueOnly kind="restaurant"><FeatureGate feature="qr_menu">{page(<TablesPage key="qr" openQr />)}</FeatureGate></VenueOnly>} />
+              <Route path="tables/qr" element={<ManageOnly><VenueOnly kind="restaurant"><FeatureGate feature="qr_menu">{page(<TablesPage key="qr" openQr />)}</FeatureGate></VenueOnly></ManageOnly>} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

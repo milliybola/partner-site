@@ -4,10 +4,10 @@ import { Button, IconButton, InlineAlert, Input, Select, Sheet, SettingRow, Swit
 import { cleanPhone, maskPhoneInput } from '../../../core/lib/format';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { staffApi } from '../services/staffApi';
-import type { StaffMember, UpdateStaffPayload } from '../services/staffApi';
+import type { StaffMember, StaffRole, UpdateStaffPayload } from '../services/staffApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
 
-export const ROLE_LABEL: Record<string, string> = { manager: 'Menejer', waiter: 'Ofitsant' };
+export const ROLE_LABEL: Record<string, string> = { manager: 'Menejer', cashier: 'Kassir', waiter: 'Ofitsant' };
 
 export const StaffFormSheet: React.FC<{
   open: boolean;
@@ -20,7 +20,9 @@ export const StaffFormSheet: React.FC<{
   const [phone, setPhone] = useState('+998');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<'manager' | 'waiter'>('waiter');
+  const [pin, setPin] = useState('');
+  const [removePin, setRemovePin] = useState(false);
+  const [role, setRole] = useState<StaffRole>('waiter');
   const [isActive, setIsActive] = useState(true);
   const [homeFilial, setHomeFilial] = useState('');
   const [currentFilial, setCurrentFilial] = useState('');
@@ -34,6 +36,8 @@ export const StaffFormSheet: React.FC<{
     setPhone(maskPhoneInput(staff?.phone || ''));
     setPassword('');
     setShowPassword(false);
+    setPin('');
+    setRemovePin(false);
     setRole(staff?.role || 'waiter');
     setIsActive(staff?.is_active ?? true);
     setHomeFilial(staff?.home_filial?.uuid || '');
@@ -50,6 +54,7 @@ export const StaffFormSheet: React.FC<{
     if (raw.length !== 13) next.phone = "Format: +998 (90) 123-45-67";
     if (!staff && password.length < 4) next.password = "Kamida 4 ta belgi";
     if (staff && password && password.length < 4) next.password = "Kamida 4 ta belgi yoki bo'sh qoldiring";
+    if (pin && !/^d{4,6}$/.test(pin)) next.pin = '4–6 ta raqam';
     setErrors(next);
     if (Object.keys(next).length) return;
 
@@ -64,6 +69,11 @@ export const StaffFormSheet: React.FC<{
         home_filial_uuid: homeFilial || undefined,
         current_filial_uuid: currentFilial || undefined,
       };
+      // PIN faqat kassada ishlaydiganlarga (kassir, menejer)
+      if (role !== 'waiter') {
+        if (pin) payload.pin = pin;
+        else if (removePin) payload.pin = '';
+      }
       if (staff) {
         if (password) payload.password = password;
         await staffApi.updateStaff(staff.uuid, payload);
@@ -84,7 +94,7 @@ export const StaffFormSheet: React.FC<{
       onClose={onClose}
       persistent={saving}
       title={staff ? 'Xodimni tahrirlash' : "Yangi xodim"}
-      subtitle="Menejer va ofitsantlar telefon raqami va parol bilan kiradi"
+      subtitle="Menejer, kassir va ofitsantlar telefon raqami va parol bilan kiradi"
       footer={
         <>
           <Button variant="secondary" size="lg" onClick={onClose} disabled={saving} className="w-full md:w-auto">Bekor qilish</Button>
@@ -119,10 +129,36 @@ export const StaffFormSheet: React.FC<{
             </IconButton>
           }
         />
-        <Select label="Rol" value={role} onChange={(e) => setRole(e.target.value as 'manager' | 'waiter')}>
+        <Select label="Rol" value={role} onChange={(e) => setRole(e.target.value as StaffRole)}>
           <option value="waiter">Ofitsant</option>
+          <option value="cashier">Kassir</option>
           <option value="manager">Menejer</option>
         </Select>
+        {role !== 'waiter' && (
+          <Input
+            label="Kassa PIN kodi"
+            inputMode="numeric"
+            type={showPassword ? 'text' : 'password'}
+            maxLength={6}
+            value={pin}
+            onChange={(e) => {
+              setPin(e.target.value.replace(/D/g, '').slice(0, 6));
+              setRemovePin(false);
+            }}
+            placeholder={staff?.has_pin ? "O'rnatilgan — o'zgartirish uchun yangisini kiriting" : '4–6 raqam (ixtiyoriy)'}
+            hint={
+              staff?.has_pin && !pin ? (
+                <button type="button" className="font-bold text-danger-ink cursor-pointer" onClick={() => setRemovePin((v) => !v)}>
+                  {removePin ? "PIN o'chiriladi — bekor qilish" : "PIN'ni o'chirish"}
+                </button>
+              ) : (
+                'Kassa qulfini shu PIN bilan ochadi. Har xodimda boshqacha bo‘lishi kerak.'
+              )
+            }
+            error={errors.pin}
+            autoComplete="off"
+          />
+        )}
         {filials.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select label="Asosiy filial" value={homeFilial} onChange={(e) => setHomeFilial(e.target.value)}>

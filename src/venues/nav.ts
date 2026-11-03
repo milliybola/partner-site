@@ -1,10 +1,11 @@
 import {
   Bike, BarChart3, BookOpen, LayoutDashboard, Boxes, Building2, ChefHat, ClipboardCheck, Clock, DollarSign, Home, ListOrdered, MapPin,
-  ScanBarcode, ScanLine, Settings, ShoppingBag, Table, Tag, User, Users, Wallet,
+  PlusCircle, ScanBarcode, ScanLine, Settings, ShoppingBag, Table, Tag, User, Users, Wallet,
   type LucideIcon,
 } from 'lucide-react';
-import type { PartnerSession } from '../core/lib/session';
+import { isManager, type PartnerSession } from '../core/lib/session';
 import type { PartnerTariff } from '../core/lib/tariff';
+import type { WorkMode } from '../core/lib/workMode';
 import { venueOf, type VenueKind } from './index';
 
 export interface NavItem {
@@ -107,17 +108,48 @@ const allowedByTariff = (item: NavItem, t?: PartnerTariff): boolean => {
   }
 };
 
-export const buildNav = (p: PartnerSession | null, tariff?: PartnerTariff): NavGroup[] => {
-  const owner = p?.role !== 'manager';
-  const groups = venueOf(p) === 'store' ? STORE(owner) : RESTAURANT(owner);
+/** Kassa rejimi: faqat kassir ishi — sotuv, stollar, navbat, smena. Boshqaruv bo'limlari yo'q. */
+const POS = (kind: VenueKind): NavGroup[] => [
+  {
+    title: 'Kassa',
+    items:
+      kind === 'store'
+        ? [
+            { to: '/new-order', label: 'Kassa', icon: ScanBarcode },
+            { to: '/orders', label: 'Buyurtmalar', icon: ListOrdered },
+            { to: '/picking', label: "Yig'ish", icon: ClipboardCheck },
+          ]
+        : [
+            { to: '/tables', label: 'Stollar', icon: Table, end: true },
+            { to: '/new-order', label: 'Yangi buyurtma', icon: PlusCircle },
+            { to: '/orders', label: 'Buyurtmalar', icon: ListOrdered },
+            { to: '/kitchen', label: 'Oshxona ekrani', icon: ChefHat },
+          ],
+  },
+  {
+    title: 'Smena',
+    items: [
+      { to: '/shift', label: 'Smena', icon: Clock },
+      { to: '/all-orders', label: 'Cheklar tarixi', icon: ShoppingBag },
+      { to: '/settings', label: 'Sozlamalar', icon: Settings },
+    ],
+  },
+];
+
+export const buildNav = (p: PartnerSession | null, tariff?: PartnerTariff, mode: WorkMode = 'manage'): NavGroup[] => {
+  const owner = !isManager(p);
+  const kind = venueOf(p);
+  const groups = mode === 'pos' ? POS(kind) : kind === 'store' ? STORE(owner) : RESTAURANT(owner);
   return groups
     .map((g) => ({ ...g, items: g.items.filter((i) => allowedByTariff(i, tariff)) }))
     .filter((g) => g.items.length > 0);
 };
 
 /** Telefondagi pastki 3 ta asosiy tab (4-chisi "Ko'proq"). Har tur uchun o'z asosiy ishi. */
-export const buildTabs = (kind: VenueKind, tariff?: PartnerTariff): NavItem[] =>
-  kind === 'store'
+export const buildTabs = (kind: VenueKind, tariff?: PartnerTariff, mode: WorkMode = 'manage'): NavItem[] =>
+  mode === 'pos'
+    ? POS(kind)[0].items.filter((i) => allowedByTariff(i, tariff)).slice(0, 3)
+    : kind === 'store'
     ? [
         { to: '/orders', label: 'Buyurtmalar', icon: ListOrdered },
         { to: '/picking', label: "Yig'ish", icon: ClipboardCheck },

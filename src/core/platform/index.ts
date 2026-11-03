@@ -74,6 +74,32 @@ export const saveBlob = (blob: Blob, filename: string) => {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 };
 
+/** Windows'ga o'rnatilgan printerlar (faqat desktop ilova; brauzerda — bo'sh ro'yxat). */
+export const listPrinters = async (): Promise<string[]> => {
+  if (!isTauri()) return [];
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<string[]>('printer_list');
+  } catch {
+    return [];
+  }
+};
+
+/** ESC/POS baytlarini printerga to'g'ridan-to'g'ri yuborish (desktop ilova). Xatoda — Error(matn). */
+export const sendToPrinter = async (device: import('../lib/printerConfig').PrinterDevice, data: Uint8Array): Promise<void> => {
+  if (!isTauri()) throw new Error("To'g'ridan-to'g'ri chop etish faqat desktop ilovada ishlaydi");
+  const { invoke } = await import('@tauri-apps/api/core');
+  const target =
+    device.kind === 'network'
+      ? { kind: 'network', host: device.host?.trim() ?? '', port: device.port || 9100 }
+      : { kind: 'system', name: device.name ?? '' };
+  try {
+    await invoke('printer_send', { target, data: Array.from(data) });
+  } catch (e) {
+    throw new Error(typeof e === 'string' ? e : "Printerga yuborib bo'lmadi", { cause: e });
+  }
+};
+
 /** Absolute URL to a file shipped in /public (works on http(s), tauri:// and file://). */
 export const publicAsset = (path: string) => {
   const clean = path.replace(/^\//, '');

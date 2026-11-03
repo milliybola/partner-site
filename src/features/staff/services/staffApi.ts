@@ -1,12 +1,17 @@
 import apiClient from '../../../core/api/client';
 import { ENDPOINTS } from '../../../core/config/constants';
 
+/** manager — boshqaruv; cashier — faqat kassa rejimi; waiter — ofitsiant ilovasi */
+export type StaffRole = 'manager' | 'cashier' | 'waiter';
+
 export interface StaffMember {
   uuid: string;
   name: string;
   phone: string;
-  role: 'manager' | 'waiter';
+  role: StaffRole;
   is_active: boolean;
+  /** Kassa qulfi PIN'i o'rnatilganmi */
+  has_pin?: boolean;
   created_at?: string;
   partner_uuid?: string;
   partner_name?: string;
@@ -49,7 +54,7 @@ export interface StaffDetailsResponse {
 export interface StaffRatingMember {
   uuid: string;
   name: string;
-  role: 'manager' | 'waiter';
+  role: StaffRole;
   total_orders: number;
   completed_orders: number;
   total_revenue: number;
@@ -65,7 +70,9 @@ export interface CreateStaffPayload {
   name: string;
   phone: string;
   password?: string;
-  role: 'manager' | 'waiter';
+  /** Kassa qulfi PIN'i (4–6 raqam) */
+  pin?: string;
+  role: StaffRole;
   is_active?: boolean;
   home_filial_uuid?: string;
   current_filial_uuid?: string;
@@ -75,7 +82,9 @@ export interface UpdateStaffPayload {
   name?: string;
   phone?: string;
   password?: string;
-  role?: 'manager' | 'waiter';
+  /** Yangi PIN; '' — PIN o'chiriladi */
+  pin?: string;
+  role?: StaffRole;
   is_active?: boolean;
   home_filial_uuid?: string;
   current_filial_uuid?: string;

@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CheckCircle, Download, Edit, Power, Receipt, Trash2 } from 'lucide-react';
+import { ArrowRightLeft, CheckCircle, Download, Edit, Power, Receipt, Trash2 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { Button, InlineAlert, Input, Select, Sheet, Switch, Tabs, Textarea, SettingRow } from '../../../core/ui';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { tablesApi } from '../services/tablesApi';
-import type { TableModel, TableStatus } from '../services/tablesApi';
+import type { Hall, TableModel, TableStatus } from '../services/tablesApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
 
 export const TABLE_STATUS_LABEL: Record<string, string> = {
@@ -20,9 +20,12 @@ export const TableFormSheet: React.FC<{
   defaultOrder: number;
   isManager: boolean;
   filials: PartnerFilial[];
+  halls: Hall[];
+  /** Yangi stol shu zalga qo'shiladi (zal tanlangan bo'lsa) */
+  defaultHall?: string | null;
   onClose: () => void;
   onSaved: () => void;
-}> = ({ open, table, defaultOrder, isManager, filials, onClose, onSaved }) => {
+}> = ({ open, table, defaultOrder, isManager, filials, halls, defaultHall, onClose, onSaved }) => {
   const [tableNumber, setTableNumber] = useState('');
   const [capacity, setCapacity] = useState('4');
   const [status, setStatus] = useState<TableStatus>('AVAILABLE');
@@ -30,6 +33,7 @@ export const TableFormSheet: React.FC<{
   const [isActive, setIsActive] = useState(true);
   const [displayOrder, setDisplayOrder] = useState('0');
   const [filialUuid, setFilialUuid] = useState('');
+  const [hall, setHall] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -43,7 +47,8 @@ export const TableFormSheet: React.FC<{
     setIsActive(table?.is_active ?? true);
     setDisplayOrder(String(table?.display_order ?? defaultOrder));
     setFilialUuid(table?.filial_uuid || '');
-  }, [open, table, defaultOrder]);
+    setHall(table ? table.hall || '' : defaultHall || '');
+  }, [open, table, defaultOrder, defaultHall]);
 
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -61,6 +66,7 @@ export const TableFormSheet: React.FC<{
         is_active: isActive,
         display_order: Number(displayOrder) || 0,
         filial_uuid: isManager ? undefined : filialUuid || undefined,
+        hall: hall || null,
       };
       if (table) await tablesApi.updateTable(table.uuid, payload);
       else await tablesApi.createTable(payload);
@@ -120,6 +126,16 @@ export const TableFormSheet: React.FC<{
             hint="Ro'yxatdagi o'rni"
           />
         </div>
+        {halls.length > 0 && (
+          <Select label="Zal" value={hall} onChange={(e) => setHall(e.target.value)}>
+            <option value="">Zalsiz</option>
+            {halls.map((h) => (
+              <option key={h.uuid} value={h.uuid}>
+                {h.name}
+              </option>
+            ))}
+          </Select>
+        )}
         <Select label="Holat" value={status} onChange={(e) => setStatus(e.target.value as TableStatus)}>
           <option value="AVAILABLE">Bo'sh</option>
           <option value="OCCUPIED">Band</option>
@@ -377,8 +393,13 @@ export const TableActionsSheet: React.FC<{
   onDelete: (t: TableModel) => void;
   onOpenOrder: (t: TableModel) => void;
   onOpenBill: (t: TableModel) => void;
-}> = ({ table, onClose, onEdit, onToggleActive, onDelete, onOpenOrder, onOpenBill }) => {
+  /** Hisobni boshqa stolga o'tkazish (faqat band stolda) */
+  onTransfer: (t: TableModel) => void;
+  /** false — kassir: tahrirlash/o'chirish yo'q */
+  canManage: boolean;
+}> = ({ table, onClose, onEdit, onToggleActive, onDelete, onOpenOrder, onOpenBill, onTransfer, canManage }) => {
   const active = table?.is_active !== false;
+  const busy = !!table?.current_order || table?.status === 'OCCUPIED';
   const row = 'w-full flex items-center gap-3 h-14 px-4 rounded-2xl text-[15px] font-bold cursor-pointer';
   return (
     <Sheet open={!!table} onClose={onClose} size="sm" title={table ? `Stol ${table.table_number}` : ''} subtitle={table ? TABLE_STATUS_LABEL[table.status] : ''}>
@@ -390,7 +411,14 @@ export const TableActionsSheet: React.FC<{
           <button type="button" className={`${row} bg-field text-ink`} onClick={() => onOpenBill(table)}>
             <Receipt className="w-5 h-5 text-muted" /> Hisob va to'lov
           </button>
-          <button type="button" className={`${row} bg-field text-ink`} onClick={() => onEdit(table)}>
+          {busy && (
+            <button type="button" className={`${row} bg-field text-ink`} onClick={() => onTransfer(table)}>
+              <ArrowRightLeft className="w-5 h-5 text-muted" /> Boshqa stolga o'tkazish
+            </button>
+          )}
+          {canManage && (
+            <>
+              <button type="button" className={`${row} bg-field text-ink`} onClick={() => onEdit(table)}>
             <Edit className="w-5 h-5 text-muted" /> Tahrirlash
           </button>
           <button type="button" className={`${row} bg-field text-ink`} onClick={() => onToggleActive(table)}>
@@ -399,6 +427,8 @@ export const TableActionsSheet: React.FC<{
           <button type="button" className={`${row} bg-danger-soft text-danger-ink`} onClick={() => onDelete(table)}>
             <Trash2 className="w-5 h-5" /> O'chirish
           </button>
+            </>
+          )}
         </div>
       )}
     </Sheet>

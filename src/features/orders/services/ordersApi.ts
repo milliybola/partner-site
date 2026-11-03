@@ -26,6 +26,12 @@ export interface OrderItem {
   promotion_label?: string;
 }
 
+/** Aralash to'lovning bir qismi (backend: `payments` / `payment_breakdown`) */
+export interface PaymentPart {
+  method: string;
+  amount: number | string;
+}
+
 export interface Order {
   id: number;
   uuid: string;
@@ -55,6 +61,8 @@ export interface Order {
   payment?: string;
   payment_method?: string;
   payment_method_display?: string;
+  /** Aralash to'lov taqsimoti; bo'sh — butun summa `payment_method` bilan */
+  payment_breakdown?: PaymentPart[];
   order_source?: string;
   order_source_display?: string;
   courier_phone?: string;
@@ -132,7 +140,10 @@ export const ordersApi = {
     return response.data?.data;
   },
 
-  completeOrder: async (orderUuid: string, payment?: { payment_method: string; is_paid?: boolean; split_count?: number }): Promise<any> => {
+  completeOrder: async (
+    orderUuid: string,
+    payment?: { payment_method?: string; payments?: PaymentPart[]; is_paid?: boolean; split_count?: number },
+  ): Promise<any> => {
     // Backend `complete`: payment_method berilsa to'lov va yakunlash BIR tranzaksiyada (yagona to'lov mantig'i).
     const response = await apiClient.post(`orders/partner-pos/${orderUuid}/complete/`, payment ?? undefined);
     return response.data;
@@ -142,20 +153,22 @@ export const ordersApi = {
    * To'lovni qabul qilib yakunlash — bitta so'rovda. Server javobida `is_paid` true bo'lmasa (eski backend
    * `complete` ga to'lovni e'tiborsiz qoldiradi) — `mark-paid` bilan to'ldiriladi.
    */
-  completeWithPayment: async (orderUuid: string, paymentMethod: string, splitCount = 1): Promise<any> => {
+  completeWithPayment: async (orderUuid: string, paymentMethod: string, splitCount = 1, payments?: PaymentPart[]): Promise<any> => {
+    // Aralash to'lov (2+ usul) — qismlar bilan; aks holda bitta usul
+    const pay = payments && payments.length > 1 ? { payments } : { payment_method: paymentMethod };
     const res = await ordersApi.completeOrder(orderUuid, {
-      payment_method: paymentMethod,
+      ...pay,
       ...(splitCount > 1 ? { split_count: splitCount } : {}),
     });
     if (res?.is_paid !== true) {
-      await ordersApi.markOrderPaid(orderUuid, { payment_method: paymentMethod, is_paid: true });
+      await ordersApi.markOrderPaid(orderUuid, { ...pay, is_paid: true });
     }
     return res;
   },
 
   markOrderPaid: async (
     orderUuid: string,
-    payload: { payment_method: string, is_paid: boolean }
+    payload: { payment_method?: string; payments?: PaymentPart[]; is_paid: boolean }
   ): Promise<any> => {
     const response = await apiClient.post(`orders/partner-pos/${orderUuid}/mark-paid/`, payload);
     return response.data;
@@ -199,6 +212,8 @@ export const ordersApi = {
     payment_method: string;
     description: string;
     items: PosItemInput[];
+    /** Oflayn navbat: takror yuborilsa server ikkinchi marta yaratmaydi */
+    client_uuid?: string;
   }): Promise<any> => {
     const response = await apiClient.post('orders/partner-pos/create-delivery/', payload);
     return response.data;
@@ -211,6 +226,8 @@ export const ordersApi = {
     payment_method: string;
     description?: string;
     items: PosItemInput[];
+    /** Oflayn navbat: takror yuborilsa server ikkinchi marta yaratmaydi */
+    client_uuid?: string;
   }): Promise<any> => {
     const response = await apiClient.post('orders/partner-pos/create-pickup/', payload);
     return response.data;
@@ -223,6 +240,8 @@ export const ordersApi = {
     contact_name?: string;
     description?: string;
     items: PosItemInput[];
+    /** Oflayn navbat: takror yuborilsa server ikkinchi marta yaratmaydi */
+    client_uuid?: string;
   }): Promise<any> => {
     const response = await apiClient.post('orders/partner-pos/create-dine-in/', payload);
     return response.data;

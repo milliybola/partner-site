@@ -2,13 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, Phone } from 'lucide-react';
 import apiClient from '../../../core/api/client';
-import { ENDPOINTS, STORAGE_KEYS } from '../../../core/config/constants';
+import { ENDPOINTS } from '../../../core/config/constants';
 import { Button, InlineAlert, Input } from '../../../core/ui';
 import { cleanPhone, maskPhoneInput } from '../../../core/lib/format';
 import { getErrorMessage } from '../../../core/lib/errors';
-import { clearSession, setPartner } from '../../../core/lib/session';
-import type { PartnerSession } from '../../../core/lib/session';
-import { clearTariffCache } from '../../../core/lib/tariff';
+import { applySession } from '../../../core/lib/applySession';
+import { getWorkMode, posHome } from '../../../core/lib/workMode';
 
 const LoginForm: React.FC = () => {
   const navigate = useNavigate();
@@ -34,37 +33,20 @@ const LoginForm: React.FC = () => {
       // Unified login: backend detects owner (partner) vs staff (manager/waiter).
       const res = await apiClient.post(ENDPOINTS.AUTH.LOGIN, { phone: rawPhone, password });
       const data = res.data?.data || res.data || {};
-      const { user_type, dashboard, tokens, profile } = data;
-
-      if (!tokens?.access) throw new Error("Server javobida token yo'q. Qaytadan urinib ko'ring.");
+      const { user_type, dashboard } = data;
 
       if (dashboard === 'waiter') {
         setError('Ofitsiantlar bu panelga kira olmaydi. Iltimos, ofitsiant ilovasidan foydalaning.');
         return;
       }
 
-      clearSession();
-      clearTariffCache(); // boshqa hamkor kirgan bo'lishi mumkin — tarif qayta yuklanadi
-      localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, tokens.access);
-      if (tokens.refresh) localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refresh);
+      const partnerData = applySession(data);
 
-      const partnerData: PartnerSession =
-        user_type === 'partner'
-          ? { ...profile, role: 'superadmin', user_type: 'partner' }
-          : {
-              ...profile,
-              role: 'manager',
-              user_type: 'staff',
-              staff_uuid: profile?.uuid,
-              uuid: profile?.partner_uuid,
-              current_filial: profile?.filial_uuid ? { uuid: profile.filial_uuid, filial_name: profile.filial_name } : profile?.current_filial,
-            };
-      // NOTE: `is_open` used to be forced to true for managers here, so the
-      // header always said "Ochiq" regardless of the real state. We now keep
-      // whatever the backend sent (undefined => shown as unknown/closed).
-      setPartner(partnerData);
-
-      navigate(dashboard === 'superadmin' || user_type === 'partner' ? '/' : '/orders', { replace: true });
+      // Kassir va kassa rejimidagi qurilma — kassaga; ega — bosh sahifaga; menejer — navbatga
+      navigate(
+        getWorkMode(partnerData) === 'pos' ? posHome(partnerData) : dashboard === 'superadmin' || user_type === 'partner' ? '/' : '/orders',
+        { replace: true },
+      );
     } catch (err: any) {
       const status = err?.response?.status;
       setError(

@@ -4,8 +4,9 @@ import { STORAGE_KEYS } from '../config/constants';
  * Normalized view over the partner/staff profile stored at login.
  * Superadmin (partner owner) => role 'superadmin'
  * Manager (staff)            => role 'manager', uuid = partner uuid, staff_uuid = staff uuid
+ * Cashier (staff)            => role 'cashier' — xuddi manager kabi, lekin faqat kassa rejimi
  */
-export type PartnerRole = 'superadmin' | 'manager';
+export type PartnerRole = 'superadmin' | 'manager' | 'cashier';
 export type PartnerType = 'RESTAURANT' | 'SHOP' | string;
 
 export interface PartnerSession {
@@ -65,7 +66,10 @@ export const clearSession = () => {
   }
 };
 
-export const isManager = (p: PartnerSession | null = getPartner()) => p?.role === 'manager';
+/** Xodim (menejer yoki kassir) — ega emas: egaga xos bo'limlar yopiq. */
+export const isManager = (p: PartnerSession | null = getPartner()) => p?.role === 'manager' || p?.role === 'cashier';
+/** Kassir: faqat kassa rejimida ishlaydi, boshqaruv bo'limlariga kira olmaydi. */
+export const isCashier = (p: PartnerSession | null = getPartner()) => p?.role === 'cashier';
 /** Hamkor egasi (rahbar): login/me javobidagi aniq `role` = 'superadmin' (user_type = 'partner'). */
 export const isOwner = (p: PartnerSession | null = getPartner()) => p?.role === 'superadmin';
 export const isShop = (p: PartnerSession | null = getPartner()) =>
@@ -75,7 +79,7 @@ export const getFilialUuid = (p: PartnerSession | null = getPartner()): string |
   p?.current_filial?.uuid || p?.home_filial?.uuid || p?.current_filial_uuid || p?.home_filial_uuid || undefined;
 
 export const getDisplayName = (p: PartnerSession | null = getPartner()) =>
-  (p?.role === 'manager' ? p?.partner_name : p?.name) || p?.name || 'MilliyGo';
+  (isManager(p) ? p?.partner_name : p?.name) || p?.name || 'MilliyGo';
 
 /** Wording that differs for restaurants vs shops. */
 export const wording = (p: PartnerSession | null = getPartner()) => {

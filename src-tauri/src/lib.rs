@@ -17,6 +17,8 @@
 
 use tauri::Manager;
 
+mod printer;
+
 /// Version shown on the Settings screen of the desktop app.
 #[tauri::command]
 fn app_version(app: tauri::AppHandle) -> String {
@@ -45,7 +47,7 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![app_version])
+        .invoke_handler(tauri::generate_handler![app_version, printer::printer_list, printer::printer_send])
         .run(tauri::generate_context!())
         .expect("MilliyGo Hamkor ilovasini ishga tushirishda xatolik");
 }

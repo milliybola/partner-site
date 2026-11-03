@@ -37,11 +37,23 @@ export interface TableModel {
   display_order?: number;
   partner_name?: string;
   filial_uuid?: string;
+  /** Zal uuid (null — zalsiz) va nomi */
+  hall?: string | null;
+  hall_name?: string | null;
   current_order?: TableCurrentOrder | null;
   /** Stol QR havolasi (token bilan). Tarifda stol QR menyusi bo'lmasa — null */
   qr_url?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+/** Zal: stollar guruhi (asosiy zal, terassa, VIP …) */
+export interface Hall {
+  uuid: string;
+  name: string;
+  display_order: number;
+  filial_uuid?: string | null;
+  tables_count?: number;
 }
 
 export interface TableBillOrder {
@@ -167,6 +179,31 @@ export const tablesApi = {
       ...(orderUuids ? { order_uuids: orderUuids } : {}),
     });
     return response.data?.data;
+  },
+
+  /**
+   * Stol hisobini boshqa stolga o'tkazish: nishon bo'sh bo'lsa — ko'chiriladi ('moved'),
+   * band bo'lsa — hisoblar birlashtiriladi ('merged'). Javobda nishon stol hisobi.
+   */
+  transferTable: async (fromUuid: string, toUuid: string): Promise<{ mode: 'moved' | 'merged'; message: string; data: TableBill }> => {
+    const response = await apiClient.post<{ mode: 'moved' | 'merged'; message: string; data: TableBill }>(`${ENDPOINTS.TABLES.DETAIL(fromUuid)}transfer/`, { to_table: toUuid });
+    return response.data;
+  },
+
+  getHalls: async (): Promise<Hall[]> => {
+    const response = await apiClient.get<Hall[] | { results?: Hall[]; data?: Hall[] }>('partner/halls/');
+    const d = response.data;
+    return Array.isArray(d) ? d : d?.results || d?.data || [];
+  },
+
+  createHall: async (payload: { name: string; display_order?: number }): Promise<Hall> =>
+    (await apiClient.post<Hall>('partner/halls/', payload)).data,
+
+  updateHall: async (uuid: string, payload: { name?: string; display_order?: number }): Promise<Hall> =>
+    (await apiClient.patch<Hall>(`partner/halls/${uuid}/`, payload)).data,
+
+  deleteHall: async (uuid: string): Promise<void> => {
+    await apiClient.delete(`partner/halls/${uuid}/`);
   },
 
   bulkImportTables: async (payload: BulkImportPayload): Promise<BulkImportResponse> => {

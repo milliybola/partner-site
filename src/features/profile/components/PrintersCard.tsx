@@ -3,7 +3,7 @@ import { ChefHat, Printer, RefreshCw, Wallet } from 'lucide-react';
 import { Button, Card, CardHeader, Input, Select, SettingRow, Switch } from '../../../core/ui';
 import { useToast } from '../../../core/components/ToastProvider';
 import { getErrorMessage } from '../../../core/lib/errors';
-import { listPrinters } from '../../../core/platform';
+import { isTauri, listPrinters, pingPrinterAgent } from '../../../core/platform';
 import {
   DEFAULT_DEVICE,
   deviceReady,
@@ -109,11 +109,19 @@ export const PrintersCard: React.FC = () => {
   const toast = useToast();
   const [settings, setSettings] = useState<PrinterSettings>(getPrinterSettings);
   const [systemPrinters, setSystemPrinters] = useState<string[]>([]);
+  // Brauzerda chekni kompyuterdagi printer agenti chiqaradi; desktop ilovada agent kerak emas
+  const desktop = isTauri();
+  const [agentStatus, setAgentStatus] = useState<'checking' | 'up' | 'down'>('checking');
+  const direct = desktop || settings.agent;
 
-  const reload = () => listPrinters().then(setSystemPrinters);
-  useEffect(() => {
+  const reload = () => {
     void listPrinters().then(setSystemPrinters);
-  }, []);
+    if (!desktop) {
+      setAgentStatus('checking');
+      void pingPrinterAgent().then((a) => setAgentStatus(a ? 'up' : 'down'));
+    }
+  };
+  useEffect(reload, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = (patch: Partial<PrinterSettings>) => {
     const next = { ...settings, ...patch };
@@ -144,6 +152,21 @@ export const PrintersCard: React.FC = () => {
         Chek oynasiz, to'g'ridan-to'g'ri termal printerga chiqadi: avtomatik kesiladi, pul qutisi ochiladi. Sozlama faqat shu kompyuter uchun.
       </p>
       <div className="divide-y divide-edge">
+        {!desktop && (
+          <SettingRow
+            title="Printer agenti orqali chop etish"
+            description={
+              agentStatus === 'up'
+                ? '✅ Agent ishlayapti'
+                : agentStatus === 'checking'
+                  ? 'Agent tekshirilmoqda…'
+                  : "Agent topilmadi. Kassa kompyuterida printer-agent'ni ishga tushiring (printer-agent/README.md), so'ng “Yangilash”ni bosing."
+            }
+            control={<Switch checked={settings.agent} onChange={(agent) => update({ agent })} label="Printer agenti" />}
+          />
+        )}
+        {direct && (
+          <>
         <DeviceForm
           title="Kassa printeri"
           hint="Mijoz cheki va pre-chek. O'chiq bo'lsa — Windows'dagi asosiy printer ishlatiladi."
@@ -160,7 +183,9 @@ export const PrintersCard: React.FC = () => {
           systemPrinters={systemPrinters}
           onChange={(kitchen) => update({ kitchen })}
         />
-        {settings.receipt && (
+          </>
+        )}
+        {direct && settings.receipt && (
           <SettingRow
             title="Pul qutisi"
             description="Naqd to'lov cheki chiqqanda kassa printeriga ulangan pul qutisi ochiladi"

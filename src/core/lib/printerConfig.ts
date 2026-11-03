@@ -1,8 +1,8 @@
 import { isTauri } from '../platform';
 
 /**
- * Shu kassa qurilmasining printerlari (desktop ilova). Brauzerda ishlatilmaydi —
- * u yerda chek avvalgidek `window.print` orqali chiqadi.
+ * Shu kassa qurilmasining printerlari. Desktop ilovada to'g'ridan-to'g'ri; brauzerda — kompyuterda ishlaydigan
+ * printer agenti orqali (`PrinterSettings.agent`). Ikkalasi ham yo'q bo'lsa chek `window.print` orqali chiqadi.
  */
 export interface PrinterDevice {
   /** network — LAN/Wi-Fi (IP:9100), system — Windows'ga o'rnatilgan (USB) */
@@ -22,12 +22,14 @@ export interface PrinterSettings {
   kitchen: PrinterDevice | null;
   /** Naqd to'lov cheki chiqqanda pul qutisini ochish */
   openDrawer: boolean;
+  /** Brauzerda: chekni shu kompyuterdagi printer agenti (printer-agent/) orqali chiqarish */
+  agent: boolean;
 }
 
 const KEY = 'milliygo_printers';
 
 export const DEFAULT_DEVICE: PrinterDevice = { kind: 'network', host: '', port: 9100, width: 80, codepage: 17 };
-const DEFAULTS: PrinterSettings = { receipt: null, kitchen: null, openDrawer: true };
+const DEFAULTS: PrinterSettings = { receipt: null, kitchen: null, openDrawer: true, agent: false };
 
 export const getPrinterSettings = (): PrinterSettings => {
   try {
@@ -55,7 +57,8 @@ export const deviceReady = (d: PrinterDevice | null): d is PrinterDevice =>
 
 /** To'g'ridan-to'g'ri (ESC/POS) chop etish uchun sozlangan printer; yo'q bo'lsa — null */
 export const escposPrinter = (role: 'receipt' | 'kitchen'): PrinterDevice | null => {
-  if (!isTauri()) return null;
-  const d = getPrinterSettings()[role];
+  const settings = getPrinterSettings();
+  if (!isTauri() && !settings.agent) return null;
+  const d = settings[role];
   return deviceReady(d) ? d : null;
 };

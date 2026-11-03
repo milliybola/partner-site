@@ -233,9 +233,9 @@ const SettingsPage: React.FC = () => {
 
       <PosLockCard />
 
-      {desktop ? (
-        <PrintersCard />
-      ) : (
+      <PrintersCard />
+
+      {!desktop && (
         <Card>
           <button
             type="button"
@@ -248,8 +248,8 @@ const SettingsPage: React.FC = () => {
                 <Monitor className="w-[18px] h-[18px]" />
               </span>
               <span>
-                <span className="block text-[16px] font-extrabold tracking-tightest">Brauzerda oynasiz chop etish</span>
-                <span className="block text-[13px] text-muted">Chrome / Edge uchun “kiosk printing” sozlamasi</span>
+                <span className="block text-[16px] font-extrabold tracking-tightest">Agentsiz usul: brauzerda oynasiz chop etish</span>
+                <span className="block text-[13px] text-muted">Chrome / Edge uchun “kiosk printing” sozlamasi (kesish va pul qutisi ishlamaydi)</span>
               </span>
             </span>
             <ChevronDown className={`w-5 h-5 text-muted transition-transform ${showKiosk ? 'rotate-180' : ''}`} />

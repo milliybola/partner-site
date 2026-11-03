@@ -1,0 +1,6 @@
+{
+  "port": 9101,
+  "allowedOrigins": [
+    "https://boshqa-sayt.example.uz"
+  ]
+}

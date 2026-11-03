@@ -74,9 +74,31 @@ export const saveBlob = (blob: Blob, filename: string) => {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 };
 
-/** Windows'ga o'rnatilgan printerlar (faqat desktop ilova; brauzerda — bo'sh ro'yxat). */
+/** Kassa kompyuteridagi printer agenti (printer-agent/agent.mjs) manzili */
+export const PRINTER_AGENT_URL = 'http://127.0.0.1:9101';
+
+/** Agent ishlayaptimi (qisqa timeout). Ishlamasa — null. */
+export const pingPrinterAgent = async (): Promise<{ version: string } | null> => {
+  try {
+    const r = await fetch(`${PRINTER_AGENT_URL}/health`, { signal: AbortSignal.timeout(1500) });
+    const j = (await r.json()) as { ok?: boolean; version?: string };
+    return j.ok ? { version: j.version ?? '' } : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Windows'ga o'rnatilgan printerlar (desktop ilova yoki printer agenti; ikkalasi yo'q bo'lsa — bo'sh ro'yxat). */
 export const listPrinters = async (): Promise<string[]> => {
-  if (!isTauri()) return [];
+  if (!isTauri()) {
+    try {
+      const r = await fetch(`${PRINTER_AGENT_URL}/printers`, { signal: AbortSignal.timeout(4000) });
+      const j = (await r.json()) as { ok?: boolean; printers?: string[] };
+      return j.ok ? (j.printers ?? []) : [];
+    } catch {
+      return [];
+    }
+  }
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     return await invoke<string[]>('printer_list');
@@ -85,14 +107,37 @@ export const listPrinters = async (): Promise<string[]> => {
   }
 };
 
-/** ESC/POS baytlarini printerga to'g'ridan-to'g'ri yuborish (desktop ilova). Xatoda — Error(matn). */
+const toBase64 = (data: Uint8Array): string => {
+  let bin = '';
+  for (let i = 0; i < data.length; i += 0x8000) bin += String.fromCharCode(...data.subarray(i, i + 0x8000));
+  return btoa(bin);
+};
+
+/** Brauzer: baytlarni kompyuterdagi printer agentiga yuboradi. Xatoda — Error(matn). */
+const sendViaAgent = async (target: Record<string, unknown>, data: Uint8Array): Promise<void> => {
+  let res: Response;
+  try {
+    res = await fetch(`${PRINTER_AGENT_URL}/print`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target, data: toBase64(data) }),
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch {
+    throw new Error("Printer agenti ishlamayapti. Kassa kompyuterida printer-agent'ni ishga tushiring.");
+  }
+  const j = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+  if (!res.ok || !j?.ok) throw new Error(j?.error || "Printerga yuborib bo'lmadi");
+};
+
+/** ESC/POS baytlarini printerga to'g'ridan-to'g'ri yuborish (desktop ilova yoki printer agenti). Xatoda — Error(matn). */
 export const sendToPrinter = async (device: import('../lib/printerConfig').PrinterDevice, data: Uint8Array): Promise<void> => {
-  if (!isTauri()) throw new Error("To'g'ridan-to'g'ri chop etish faqat desktop ilovada ishlaydi");
-  const { invoke } = await import('@tauri-apps/api/core');
   const target =
     device.kind === 'network'
       ? { kind: 'network', host: device.host?.trim() ?? '', port: device.port || 9100 }
       : { kind: 'system', name: device.name ?? '' };
+  if (!isTauri()) return sendViaAgent(target, data);
+  const { invoke } = await import('@tauri-apps/api/core');
   try {
     await invoke('printer_send', { target, data: Array.from(data) });
   } catch (e) {

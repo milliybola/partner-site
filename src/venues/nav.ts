@@ -6,6 +6,7 @@ import {
 import { isManager, type PartnerSession } from '../core/lib/session';
 import type { PartnerTariff } from '../core/lib/tariff';
 import type { WorkMode } from '../core/lib/workMode';
+import type { WorkSettings } from '../core/lib/workSettings';
 import { venueOf, type VenueKind } from './index';
 
 export interface NavItem {
@@ -149,14 +150,26 @@ const POS = (kind: VenueKind): NavGroup[] => [
  * `filialCount` — egasining filiallari soni: «Boshqaruv paneli» (filiallar solishtirmasi) faqat 2+ filialda ma'noli.
  * Noma'lum bo'lsa (undefined) — ko'rsatiladi.
  */
-export const buildNav = (p: PartnerSession | null, tariff?: PartnerTariff, mode: WorkMode = 'manage', filialCount?: number): NavGroup[] => {
+export const buildNav = (
+  p: PartnerSession | null,
+  tariff?: PartnerTariff,
+  mode: WorkMode = 'manage',
+  filialCount?: number,
+  work?: WorkSettings,
+): NavGroup[] => {
   const owner = !isManager(p);
   const kind = venueOf(p);
   const groups = mode === 'pos' ? POS(kind) : kind === 'store' ? STORE(owner) : RESTAURANT(owner);
   return groups
     .map((g) => ({
       ...g,
-      items: g.items.filter((i) => allowedByTariff(i, tariff) && !(i.to === '/overview' && filialCount !== undefined && filialCount < 2)),
+      items: g.items.filter(
+        (i) =>
+          allowedByTariff(i, tariff) &&
+          !(i.to === '/overview' && filialCount !== undefined && filialCount < 2) &&
+          // Ombor kichik kafega og'irlik — Sozlamalarda yoqilgandagina ko'rinadi
+          !(i.to === '/warehouse' && !work?.warehouse_enabled),
+      ),
     }))
     .filter((g) => g.items.length > 0);
 };

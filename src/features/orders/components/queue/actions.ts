@@ -26,6 +26,8 @@ export interface QueueAction {
 
 export interface ActionContext {
   skipPreparing: boolean;
+  /** Tez rejim (kichik kafe): olib ketish/zal buyurtmasi qabul qilingach — bitta tugma bilan beriladi */
+  fastMode?: boolean;
   hasOwnCouriers: boolean;
   shop: boolean;
 }
@@ -39,8 +41,9 @@ export const HANDED_NOTE = 'Buyurtma kuryerga topshirilgan — holatni endi kury
 
 export const isFinal = (s: string) => ['COMPLETED', 'DELIVERED', 'REJECTED', 'CANCELLED'].includes(s);
 
-export const getQueueActions = (order: Order, ctx: ActionContext): { primary?: QueueAction; secondary: QueueAction[]; danger?: QueueAction } => {
+export const getQueueActions = (order: Order, rawCtx: ActionContext): { primary?: QueueAction; secondary: QueueAction[]; danger?: QueueAction } => {
   const delivery = order.delivery_type === 'DELIVERY';
+  const ctx = rawCtx.fastMode ? { ...rawCtx, skipPreparing: true } : rawCtx;
   const secondary: QueueAction[] = [];
   if (isHandedToCourier(order)) return { secondary: [] };
   if (delivery && ctx.hasOwnCouriers && ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(order.status)) {
@@ -61,17 +64,31 @@ export const getQueueActions = (order: Order, ctx: ActionContext): { primary?: Q
         danger: { kind: 'reject', label: 'Rad etish', tone: 'danger' },
       };
     case 'ACCEPTED':
+    case 'PREPARING':
+      if (ctx.fastMode && !delivery) {
+        // Tayyor bo'lishini kutib status almashtirilmaydi: berildi/to'landi — yakunlandi.
+        // Ilovadan olib ketish buyurtmasida «Tayyor» mijozga xabar yuboradi — ixtiyoriy.
+        if (order.order_source === 'CUSTOMER' && order.delivery_type === 'PICKUP') {
+          secondary.push({ kind: 'mark_ready', label: 'Tayyor (mijozga xabar)', tone: 'secondary' });
+        }
+        return {
+          primary: { kind: 'pay_and_complete', label: order.delivery_type === 'DINE_IN' ? "To'lov va yakunlash" : 'Mijozga berish', tone: 'primary' },
+          secondary,
+          danger: order.status === 'ACCEPTED' ? { kind: 'cancel', label: 'Bekor qilish', tone: 'danger' } : undefined,
+        };
+      }
+      if (order.status === 'PREPARING') {
+        return {
+          primary: { kind: 'mark_ready', label: 'Tayyor', tone: 'primary' },
+          secondary: [{ kind: 'back_to_accepted', label: '"Qabul qilindi"ga qaytarish', tone: 'secondary' }],
+        };
+      }
       return {
         primary: ctx.skipPreparing
           ? { kind: 'mark_ready', label: 'Tayyor', tone: 'primary' }
           : { kind: 'start_preparing', label: ctx.shop ? "Yig'ishni boshlash" : 'Tayyorlashni boshlash', tone: 'primary' },
         secondary,
         danger: { kind: 'cancel', label: 'Bekor qilish', tone: 'danger' },
-      };
-    case 'PREPARING':
-      return {
-        primary: { kind: 'mark_ready', label: 'Tayyor', tone: 'primary' },
-        secondary: [{ kind: 'back_to_accepted', label: '"Qabul qilindi"ga qaytarish', tone: 'secondary' }],
       };
     case 'READY_FOR_PICKUP':
       return {

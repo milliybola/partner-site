@@ -4,9 +4,10 @@ import { useToast } from '../../../core/components/ToastProvider';
 import { Badge, Button, Card, CardHeader, Divider, InlineAlert, PageHeader, QtyStepper, Select, SettingRow, Switch } from '../../../core/ui';
 import { getAutoLockMinutes, setAutoLockMinutes } from '../../../core/lib/posLock';
 import { ensureNotificationPermission, isTauri, notify } from '../../../core/platform';
-import { getDisplayName, getPartner, isManager } from '../../../core/lib/session';
+import { getDisplayName, getPartner, isCashier, isManager } from '../../../core/lib/session';
 import { PaymentMethodsCard } from '../components/PaymentMethodsCard';
 import { PrintersCard } from '../components/PrintersCard';
+import { WorkModeCard } from '../components/WorkModeCard';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { printReceiptPreview } from '../../orders/utils/printing';
 
@@ -188,6 +189,9 @@ const SettingsPage: React.FC = () => {
           </Button>
         </div>
       </Card>
+
+      {/* Rahbar va manager: barcha qurilmalar uchun ish tartibi */}
+      {!isCashier() && <WorkModeCard />}
 
       {/* Faqat egasi: qaysi to'lov usullari qabul qilinadi (menejer ko'rmaydi) */}
       {!isManager() && <PaymentMethodsCard />}

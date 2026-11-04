@@ -16,7 +16,8 @@ import { useConfirm } from '../../../core/components/ConfirmProvider';
 import { useRejectReason } from '../../../core/components/RejectReasonProvider';
 import { useRealtime } from '../../../core/realtime/RealtimeProvider';
 import type { RealtimeEvent } from '../../../core/realtime/RealtimeProvider';
-import { getPartner, isManager, isShop, wording } from '../../../core/lib/session';
+import { getPartner, isCashier, isManager, isShop, wording } from '../../../core/lib/session';
+import { useWorkSettings } from '../../../core/lib/workSettings';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { formatMoney, parseDate } from '../../../core/lib/format';
 import {
@@ -94,6 +95,8 @@ const OrdersPage: React.FC = () => {
   const shop = isShop(partner);
   const w = wording(partner);
   const partnerUuid = partner?.uuid;
+  const { settings: work, save: saveWork } = useWorkSettings();
+  const [savingWork, setSavingWork] = useState(false);
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -141,7 +144,19 @@ const OrdersPage: React.FC = () => {
     });
   };
 
-  const ctx: ActionContext = { skipPreparing: prefs.skipPreparing, hasOwnCouriers: couriers.length > 0, shop };
+  const ctx: ActionContext = { skipPreparing: prefs.skipPreparing, fastMode: work.fast_mode, hasOwnCouriers: couriers.length > 0, shop };
+
+  const toggleFastMode = async (on: boolean) => {
+    setSavingWork(true);
+    try {
+      await saveWork({ fast_mode: on });
+      toast.success(on ? 'Tez rejim yoqildi — yangi buyurtmalar o‘zi qabul qilinadi' : "Tez rejim o'chirildi");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Sozlamani saqlab bo'lmadi."));
+    } finally {
+      setSavingWork(false);
+    }
+  };
 
   /* ------------------------------------------------------- loading */
   // BUGFIX: fetchOrders used to be memoized with [] deps while reading the
@@ -701,10 +716,28 @@ const OrdersPage: React.FC = () => {
       <Sheet open={prefsOpen} onClose={() => setPrefsOpen(false)} title="Navbat sozlamalari" size="sm">
         <div className="divide-y divide-edge">
           <SettingRow
+            title="Tez rejim"
+            description={
+              shop
+                ? "Yangi buyurtma o'zi qabul qilinadi. Barcha qurilmalarda amal qiladi."
+                : "Kichik kafe uchun: yangi buyurtma o'zi qabul qilinib oshxonaga chiqadi, olib ketish va zal buyurtmasi bitta tugma bilan beriladi. Barcha qurilmalarda amal qiladi."
+            }
+            control={
+              <Switch
+                checked={work.fast_mode}
+                disabled={savingWork || isCashier(partner)}
+                onChange={toggleFastMode}
+                label="Tez rejim"
+              />
+            }
+          />
+          {!work.fast_mode && (
+          <SettingRow
             title={`"${w.preparing}" bosqichini o'tkazib yuborish`}
             description={`Qabul qilingan buyurtma to'g'ridan-to'g'ri "Tayyor" bo'ladi. Tez xizmat ko'rsatadigan ${shop ? "do'konlar" : 'joylar'} uchun.`}
             control={<Switch checked={prefs.skipPreparing} onChange={(v) => updatePrefs({ skipPreparing: v })} label="Bosqichni o'tkazib yuborish" />}
           />
+          )}
           <SettingRow
             title='"Yakunlangan" ustunini ko‘rsatish'
             description="Faqat kompyuter ekranida. Telefonda bu bo‘lim tabda qoladi."

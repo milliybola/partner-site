@@ -25,6 +25,7 @@ import { ApiGap, Sheet } from '../ui';
 import { FilialSwitch } from './FilialSwitch';
 import { venueOf } from '../../venues';
 import { clearTariffCache, useTariff } from '../lib/tariff';
+import { clearWorkSettingsCache, useWorkSettings } from '../lib/workSettings';
 import { clearPaymentMethodsCache } from '../lib/payments';
 import { CallAlerts } from '../../features/calls/CallAlerts';
 import { TableCallAlerts } from '../../features/tables/TableCallAlerts';
@@ -230,6 +231,7 @@ const Shell: React.FC = () => {
     clearSession();
     clearOwnerFilialsCache();
     clearTariffCache();
+    clearWorkSettingsCache();
     clearPaymentMethodsCache();
     navigate('/login', { replace: true });
     window.location.reload();
@@ -239,7 +241,8 @@ const Shell: React.FC = () => {
   const mode = useWorkMode();
   const cashier = isCashier(partner);
   const filialCount = ownerFilials.length || undefined; // 0 — hali yuklanmagan
-  const groups = useMemo(() => buildNav(partner, tariff, mode, filialCount), [partner, tariff, mode, filialCount]);
+  const { settings: work } = useWorkSettings();
+  const groups = useMemo(() => buildNav(partner, tariff, mode, filialCount, work), [partner, tariff, mode, filialCount, work]);
   const manager = isManager(partner);
   const pos = mode === 'pos';
   const locked = usePosLocked();

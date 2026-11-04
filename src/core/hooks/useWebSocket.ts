@@ -1,35 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { WS_BASE_URL } from '../config/constants';
-
-
-
-let sharedAudioCtx: AudioContext | null = null;
-
-const initSharedAudioCtx = () => {
-  if (typeof window === 'undefined') return null;
-  if (!sharedAudioCtx) {
-    sharedAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-  }
-  if (sharedAudioCtx.state === 'suspended') {
-    sharedAudioCtx.resume().catch((err) => console.warn("[Audio] Failed to resume context:", err));
-  }
-  return sharedAudioCtx;
-};
-
-// Autoplay bypass: unlock audio context on first user click/keypress/touchstart
-if (typeof window !== 'undefined') {
-  const unlockAudio = () => {
-    const ctx = initSharedAudioCtx();
-    if (ctx && ctx.state === 'running') {
-      window.removeEventListener('click', unlockAudio);
-      window.removeEventListener('keydown', unlockAudio);
-      window.removeEventListener('touchstart', unlockAudio);
-    }
-  };
-  window.addEventListener('click', unlockAudio);
-  window.addEventListener('keydown', unlockAudio);
-  window.addEventListener('touchstart', unlockAudio);
-}
+import { playSound, soundForEvent } from '../lib/sounds';
 
 export const useWebSocket = (
   restaurantUuid: string | undefined,
@@ -51,44 +22,6 @@ export const useWebSocket = (
 
   // Keep connect callback in a ref to solve circular dependency with _scheduleReconnect
   const connectRef = useRef<() => void>(() => {});
-
-  // Play standard notification sound
-  const playAlertSound = useCallback(() => {
-    try {
-      const audioCtx = initSharedAudioCtx();
-      if (!audioCtx) return;
-
-      // Force resume in case it was suspended somehow
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-      
-      // Create a chime sound programmatically
-      const playTone = (freq: number, startTime: number, duration: number, volume: number) => {
-        const osc = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
-        
-        osc.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, startTime);
-        
-        gainNode.gain.setValueAtTime(volume, startTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
-        
-        osc.start(startTime);
-        osc.stop(startTime + duration);
-      };
-
-      const now = audioCtx.currentTime;
-      playTone(523.25, now, 0.4, 0.15); // C5
-      playTone(659.25, now + 0.15, 0.6, 0.15); // E5
-      playTone(783.99, now + 0.15, 0.6, 0.1); // G5
-    } catch (e) {
-      console.warn("Failed to play audio alert:", e);
-    }
-  }, []);
 
   // Helper to schedule a reconnection attempt
   const _scheduleReconnect = useCallback((delayMs: number = 3000) => {
@@ -178,9 +111,8 @@ export const useWebSocket = (
           return;
         }
 
-        if (data.type === 'new_order_alert') {
-          playAlertSound();
-        }
+        const sound = soundForEvent(data);
+        if (sound) playSound(sound);
 
         // Forward every typed event (new_order_alert, order_status_update,
         // table_status_update, staff_update, category_update, product_update, ...)
@@ -211,7 +143,7 @@ export const useWebSocket = (
     socket.onerror = (error) => {
       console.error('[WS] Error occurred:', error);
     };
-  }, [restaurantUuid, token, playAlertSound, _scheduleReconnect, filialUuid]);
+  }, [restaurantUuid, token, _scheduleReconnect, filialUuid]);
 
   // Keep connectRef pointing to the latest connect function
   useEffect(() => {
@@ -238,8 +170,8 @@ export const useWebSocket = (
 
   const triggerMockNotification = useCallback(() => {
     console.log("Triggering mock WebSocket notification...");
-    playAlertSound();
-    
+    playSound('new_order');
+
     const mockEvent = {
       type: 'new_order_alert',
       message: 'Yangi buyurtma qabul qilindi (Test)',
@@ -251,7 +183,7 @@ export const useWebSocket = (
       }
     };
     onNewOrderRef.current(mockEvent);
-  }, [playAlertSound]);
+  }, []);
 
   return { isConnected, triggerMockNotification };
 };

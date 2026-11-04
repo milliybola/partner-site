@@ -1,5 +1,5 @@
-import React from 'react';
-import { Bike, Check, ChevronRight, Clock, MapPin, ShoppingBag, User, Utensils, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Bike, Check, ChevronRight, Clock, MapPin, Timer, ShoppingBag, User, Utensils, X } from 'lucide-react';
 import type { Order } from '../../services/ordersApi';
 import { Badge, Button } from '../../../../core/ui';
 import { formatMoney, formatTime, minutesSince } from '../../../../core/lib/format';
@@ -30,6 +30,37 @@ export const ElapsedChip: React.FC<{ createdAt: string; now: number; final?: boo
     </span>
   );
 };
+
+/** Muddatgacha orqaga sanash (mm:ss): 5 daqiqa qolganda sariq, o'tib ketsa qizil «−mm:ss». */
+export const DeadlineChip: React.FC<{ deadlineAt: string }> = ({ deadlineAt }) => {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const end = new Date(deadlineAt).getTime();
+  if (!Number.isFinite(end)) return null;
+  const left = Math.round((end - now) / 1000);
+  const abs = Math.abs(left);
+  const h = Math.floor(abs / 3600);
+  const m = Math.floor((abs % 3600) / 60);
+  const s = abs % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const text = `${left < 0 ? '−' : ''}${h ? `${h}:${pad(m)}` : pad(m)}:${pad(s)}`;
+  const tone = left < 0 ? 'bg-danger text-white' : left <= 300 ? 'bg-warning-soft text-warning-ink' : 'bg-brand-soft text-brand';
+  return (
+    <span
+      title={left < 0 ? 'Tayyorlash muddati o‘tib ketdi' : `Tayyorlash muddati: ${formatTime(deadlineAt)} gacha`}
+      className={`inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[12px] font-bold tabular-nums ${tone}`}
+    >
+      <Timer className="w-3.5 h-3.5" />
+      {text}
+    </span>
+  );
+};
+
+/** Muddat faqat tayyor bo'lguncha sanaladi (Yangi / Qabul qilingan / Tayyorlanmoqda). */
+const COUNTDOWN_STATUSES = new Set(['PENDING', 'NEW', 'SEARCHING_COURIER', 'ACCEPTED', 'PREPARING']);
 
 interface OrderCardProps {
   order: Order;
@@ -63,7 +94,11 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
             <span className="text-[15px] font-black text-ink tracking-tightest truncate">{orderNo(order)}</span>
             {highlighted && <Badge tone="brand">Yangi</Badge>}
           </div>
-          <ElapsedChip createdAt={order.created_at} now={now} final={final} />
+          {order.deadline_at && COUNTDOWN_STATUSES.has(order.status) ? (
+            <DeadlineChip deadlineAt={order.deadline_at} />
+          ) : (
+            <ElapsedChip createdAt={order.created_at} now={now} final={final} />
+          )}
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">

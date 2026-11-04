@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, ListOrdered, Plus, RefreshCw, SlidersHorizontal, X } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
@@ -27,7 +27,6 @@ import {
   IconButton,
   PageHeader,
   Segmented,
-  Select,
   SettingRow,
   Sheet,
   SkeletonList,
@@ -122,7 +121,6 @@ const OrdersPage: React.FC = () => {
   const [assigningCourierUuid, setAssigningCourierUuid] = useState<string | null>(null);
 
   const [filials, setFilials] = useState<PartnerFilial[]>([]);
-  const [filialUuid, setFilialUuid] = useState('');
   const [tables, setTables] = useState<TableModel[]>([]);
 
   // Orders that arrived via realtime and haven't been opened/actioned yet.
@@ -159,17 +157,12 @@ const OrdersPage: React.FC = () => {
   };
 
   /* ------------------------------------------------------- loading */
-  // BUGFIX: fetchOrders used to be memoized with [] deps while reading the
-  // selected filial from state, so every silent/realtime refresh dropped the
-  // filial filter. The filter now lives in a ref.
-  const filialRef = useRef('');
-  filialRef.current = filialUuid;
-
+  // Filial filtri — headerdagi «ishlayotgan filial» (API klient filial_uuid ni o'zi qo'shadi; almashsa sahifa qayta yuklanadi).
   const fetchOrders = useCallback(async (mode: 'initial' | 'silent' | 'manual' = 'silent') => {
     if (mode === 'initial') setLoading(true);
     if (mode === 'manual') setRefreshing(true);
     try {
-      const data = await ordersApi.getOrders({ filialUuid: filialRef.current || undefined });
+      const data = await ordersApi.getOrders();
       setOrders(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err) {
@@ -552,26 +545,6 @@ const OrdersPage: React.FC = () => {
           />
           <div className="flex items-center gap-2 min-w-0">
             {typeOptions.length > 2 && <Segmented value={typeFilter} onChange={setTypeFilter} options={typeOptions} />}
-            {!manager && filials.length > 1 && (
-              <Select
-                aria-label="Filial"
-                value={filialUuid}
-                onChange={(e) => {
-                  setFilialUuid(e.target.value);
-                  filialRef.current = e.target.value;
-                  fetchOrders('initial');
-                }}
-                containerClassName="min-w-[150px] max-w-[220px]"
-                className="!min-h-[40px] h-10 text-[13px] font-semibold"
-              >
-                <option value="">Barcha filiallar</option>
-                {filials.map((f) => (
-                  <option key={f.uuid} value={f.uuid}>
-                    {f.filial_name}
-                  </option>
-                ))}
-              </Select>
-            )}
           </div>
           {!isConnected && (
             <span className="lg:ml-auto text-[12px] font-semibold text-warning-ink">Real-vaqt aloqa uzilgan — har 30 soniyada yangilanadi</span>

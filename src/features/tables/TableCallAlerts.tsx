@@ -6,7 +6,7 @@ import { useRealtime } from '../../core/realtime/RealtimeProvider';
 import { useToast } from '../../core/components/ToastProvider';
 import { getErrorMessage } from '../../core/lib/errors';
 import { notify } from '../../core/platform';
-import { playCallRing } from '../calls/callSound';
+import { playSound } from '../../core/lib/sounds';
 import { useTariff } from '../../core/lib/tariff';
 import { getPartner, isManager as isManagerRole } from '../../core/lib/session';
 import { TableBillSheet } from './components/TableBillSheet';
@@ -40,7 +40,7 @@ function useTableCalls() {
       // Ilk yuklashda (sahifa ochilganda) eski chaqiruvlar uchun ovoz chiqarmaymiz
       list.forEach((c) => {
         if (!known.current.has(c.uuid) && !first.current) {
-          playCallRing();
+          playSound(c.kind === 'BILL' ? 'table_bill' : 'table_call');
           notify(`${c.table_number} — ${what(c)}`, 'Stolga boring va "Boraman" ni bosing');
         }
         known.current.add(c.uuid);

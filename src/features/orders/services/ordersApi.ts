@@ -64,6 +64,8 @@ export interface Order {
   /** Aralash to'lov taqsimoti; bo'sh — butun summa `payment_method` bilan */
   payment_breakdown?: PaymentPart[];
   order_source?: string;
+  /** MilliyGo ilovasidan kelgan buyurtmaning tayyorlash muddati (ISO); boshqalarda null */
+  deadline_at?: string | null;
   order_source_display?: string;
   courier_phone?: string;
   distance?: number;

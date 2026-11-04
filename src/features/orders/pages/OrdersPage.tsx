@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, ListOrdered, Plus, RefreshCw, SlidersHorizontal, X } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
@@ -116,6 +116,8 @@ const OrdersPage: React.FC = () => {
   const [paymentSaving, setPaymentSaving] = useState(false);
 
   const [courierOrder, setCourierOrder] = useState<Order | null>(null);
+  /** «Tayyor» bosilganda kuryer yo'q edi: kuryer biriktirilgach buyurtma tayyor deb belgilanadi */
+  const readyAfterAssign = useRef(false);
   const [couriers, setCouriers] = useState<CourierModel[]>([]);
   const [loadingCouriers, setLoadingCouriers] = useState(false);
   const [assigningCourierUuid, setAssigningCourierUuid] = useState<string | null>(null);
@@ -360,7 +362,8 @@ const OrdersPage: React.FC = () => {
     updateStatus(order, 'ACCEPTED', `${orderNo(order)} qabul qilindi`);
   };
 
-  const openCourierPicker = (order: Order) => {
+  const openCourierPicker = (order: Order, thenReady = false) => {
+    readyAfterAssign.current = thenReady;
     setCourierOrder(order);
     setLoadingCouriers(true);
     couriersApi
@@ -378,8 +381,11 @@ const OrdersPage: React.FC = () => {
       unmarkFresh(courierOrder.uuid);
       setOrders((prev) => prev.map((o) => (o.uuid === courierOrder.uuid ? { ...o, status: 'ACCEPTED' } : o)));
       toast.success('Kuryer biriktirildi, buyurtma qabul qilindi.');
+      const goReady = readyAfterAssign.current;
+      readyAfterAssign.current = false;
       setCourierOrder(null);
-      fetchOrders('silent');
+      if (goReady) void updateStatus({ ...courierOrder, status: 'ACCEPTED' }, 'READY_FOR_PICKUP', `${orderNo(courierOrder)} tayyor`);
+      else fetchOrders('silent');
     } catch (err) {
       reportActionError(err, 'Kuryerni biriktirishda xatolik yuz berdi.');
     } finally {
@@ -449,6 +455,11 @@ const OrdersPage: React.FC = () => {
         updateStatus(order, 'PREPARING');
         return;
       case 'mark_ready':
+        // Yetkazib berishda kuryer yo'q: xato o'rniga kuryer biriktirish oynasi ochiladi
+        if (order.delivery_type === 'DELIVERY' && !order.courier && !order.courier_phone && ctx.hasOwnCouriers) {
+          openCourierPicker(order, true);
+          return;
+        }
         updateStatus(order, 'READY_FOR_PICKUP', `${orderNo(order)} tayyor`);
         return;
       case 'back_to_accepted':

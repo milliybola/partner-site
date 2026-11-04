@@ -8,6 +8,7 @@ import { getDisplayName, getPartner } from '../../../core/lib/session';
 import { useLiveOrders } from '../../shared/useLiveOrders';
 import { useTodayStats } from '../../shared/useTodayStats';
 import { LiveTile, QuickAction } from '../../shared/HomeParts';
+import { SetupChecklist } from '../../shared/SetupChecklist';
 import { inventoryApi } from '../inventoryApi';
 import type { InventoryList } from '../inventoryApi';
 
@@ -34,6 +35,8 @@ const StoreHomePage: React.FC = () => {
   return (
     <div className="pb-8 space-y-5">
       <PageHeader title={getDisplayName(getPartner())} subtitle="Do'kon · bugungi ko'rinish" />
+
+      <SetupChecklist />
 
       <div className="grid grid-cols-3 gap-3">
         <LiveTile label="Yangi" value={live.fresh} to="/picking" tone="gold" pulse={live.fresh > 0} />

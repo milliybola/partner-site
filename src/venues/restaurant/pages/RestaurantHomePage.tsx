@@ -9,6 +9,7 @@ import type { TableModel } from '../../../features/tables/services/tablesApi';
 import { useLiveOrders } from '../../shared/useLiveOrders';
 import { useTodayStats } from '../../shared/useTodayStats';
 import { LiveTile, QuickAction } from '../../shared/HomeParts';
+import { SetupChecklist } from '../../shared/SetupChecklist';
 
 /** Restoran bosh sahifasi: oshxona navbati, zal (stollar band/bo'sh) va bugungi savdo. */
 const RestaurantHomePage: React.FC = () => {
@@ -32,6 +33,8 @@ const RestaurantHomePage: React.FC = () => {
   return (
     <div className="pb-8 space-y-5">
       <PageHeader title={getDisplayName(getPartner())} subtitle="Restoran · bugungi ko'rinish" />
+
+      <SetupChecklist />
 
       <div className="grid grid-cols-3 gap-3">
         <LiveTile label="Yangi" value={live.fresh} to="/kitchen" tone="gold" pulse={live.fresh > 0} />

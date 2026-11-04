@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FolderOpen, Pencil, Plus, Settings2, ShoppingBag, Trash2 } from 'lucide-react';
+import { FileSpreadsheet, FolderOpen, Pencil, Plus, Settings2, ShoppingBag, Trash2 } from 'lucide-react';
 import ProductFormModal from '../components/ProductFormModal';
+import { MenuImportSheet } from '../components/MenuImportSheet';
 import type { ProductData, ProductExtras } from '../components/ProductFormModal';
 import { catalogApi } from '../services/catalogApi';
 import type { BaseCategory, CatalogCategory, CatalogProduct } from '../services/catalogApi';
@@ -18,7 +19,7 @@ import {
   Switch,
   Tabs,
 } from '../../../core/ui';
-import { getPartner, isManager as isManagerFn, isShop as isShopFn, wording } from '../../../core/lib/session';
+import { getPartner, isCashier, isManager as isManagerFn, isShop as isShopFn, wording } from '../../../core/lib/session';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { formatMoney } from '../../../core/lib/format';
 
@@ -128,6 +129,8 @@ const CatalogPage: React.FC = () => {
   const [togglingCats, setTogglingCats] = useState<Set<string>>(new Set());
 
   const [productModalOpen, setProductModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const canImport = !isCashier(partner);
   const [selectedProduct, setSelectedProduct] = useState<ProductData | null>(null);
 
   const fetchCatalogData = useCallback(async (silent = false) => {
@@ -298,10 +301,19 @@ const CatalogPage: React.FC = () => {
         loading ? 'Yuklanmoqda...' : `${totalProducts} ta ${w.product.toLowerCase()}${unavailableCount ? ` · ${unavailableCount} ta tugagan` : ''}`
       }
       actions={
-        view === 'menu' && canAddProduct ? (
-          <Button icon={<Plus className="w-4 h-4" />} onClick={openCreate} className="hidden md:inline-flex">
-            {w.product} qo'shish
-          </Button>
+        view === 'menu' && (canAddProduct || canImport) ? (
+          <div className="flex gap-2">
+            {canImport && (
+              <Button variant="outline" icon={<FileSpreadsheet className="w-4 h-4" />} onClick={() => setImportOpen(true)}>
+                Excel'dan yuklash
+              </Button>
+            )}
+            {canAddProduct && (
+              <Button icon={<Plus className="w-4 h-4" />} onClick={openCreate} className="hidden md:inline-flex">
+                {w.product} qo'shish
+              </Button>
+            )}
+          </div>
         ) : null
       }
     >
@@ -350,7 +362,20 @@ const CatalogPage: React.FC = () => {
                 ? "Menyu turkumlari hali yoqilmagan. Muassasa egasidan turkumlarni faollashtirishni so'rang."
                 : `${w.products} qo'shishdan oldin menyuga mos turkumlarni yoqing.`
             }
-            action={!isManager ? <Button onClick={() => setView('categories')}>Turkumlarni sozlash</Button> : undefined}
+            action={
+              canImport ? (
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button icon={<FileSpreadsheet className="w-4 h-4" />} onClick={() => setImportOpen(true)}>
+                    Menyuni Excel'dan yuklash
+                  </Button>
+                  {!isManager && (
+                    <Button variant="outline" onClick={() => setView('categories')}>
+                      Turkumlarni sozlash
+                    </Button>
+                  )}
+                </div>
+              ) : undefined
+            }
           />
         ) : (
           <div className="md:grid md:grid-cols-[220px_1fr] lg:grid-cols-[260px_1fr] md:gap-6 md:items-start">
@@ -510,6 +535,8 @@ const CatalogPage: React.FC = () => {
         defaultCategoryId={activeCategory?.id}
         categories={categories.map((c) => ({ id: c.id, name: c.name, uuid: c.uuid }))}
       />
+
+      <MenuImportSheet open={importOpen} onClose={() => setImportOpen(false)} onDone={() => fetchCatalogData(true)} />
     </div>
   );
 };

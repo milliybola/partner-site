@@ -8,6 +8,7 @@ import { getDisplayName, getPartner, isCashier, isManager } from '../../../core/
 import { PaymentMethodsCard } from '../components/PaymentMethodsCard';
 import { PrintersCard } from '../components/PrintersCard';
 import { WorkModeCard } from '../components/WorkModeCard';
+import { TelegramReportCard } from '../components/TelegramReportCard';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { printReceiptPreview } from '../../orders/utils/printing';
 
@@ -192,6 +193,9 @@ const SettingsPage: React.FC = () => {
 
       {/* Rahbar va manager: barcha qurilmalar uchun ish tartibi */}
       {!isCashier() && <WorkModeCard />}
+
+      {/* Faqat egasi: kunlik tushum hisoboti Telegram'ga */}
+      {!isManager() && <TelegramReportCard />}
 
       {/* Faqat egasi: qaysi to'lov usullari qabul qilinadi (menejer ko'rmaydi) */}
       {!isManager() && <PaymentMethodsCard />}

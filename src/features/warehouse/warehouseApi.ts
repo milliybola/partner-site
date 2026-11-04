@@ -118,11 +118,14 @@ export const UNIT_OPTIONS: { value: IngredientUnit; label: string }[] = [
   { value: 'PIECE', label: 'Dona' },
 ];
 
-/** 0.25 kg · 3 dona — dona butun, kg/l 3 xonagacha. */
+/** 0.25 kg · 3 dona — dona butun, kg/l 4 xonagacha (0.0002 kg = 0.2 g). */
 export const formatQty = (qty: number, unit: IngredientUnit): string =>
-  `${unit === 'PIECE' ? Math.round(qty) : Number(qty.toFixed(3))} ${UNIT_LABEL[unit]}`;
+  `${unit === 'PIECE' ? Math.round(qty) : Number(qty.toFixed(4))} ${UNIT_LABEL[unit]}`;
 
 /** Kiritilgan matnni songa: vergul ham qabul qilinadi. NaN — noto'g'ri. */
+/** Server 4 ta kasr xonagacha qabul qiladi (0.0001 kg = 0.1 g). */
+export const tooPrecise = (v: string): boolean => (v.trim().split(/[.,]/)[1] || '').length > 4;
+
 export const parseNum = (v: string): number => (v.trim() === '' ? NaN : Number(v.replace(',', '.')));
 
 export const STATE_META: Record<StockState, { label: string; tone: 'success' | 'warning' | 'danger' }> = {

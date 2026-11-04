@@ -4,7 +4,7 @@ import { Button, IconButton, InlineAlert, Input, LoadingState, Select, Sheet } f
 import { useToast } from '../../../core/components/ToastProvider';
 import { formatMoney } from '../../../core/lib/format';
 import { getErrorMessage } from '../../../core/lib/errors';
-import { parseNum, UNIT_LABEL, warehouseApi } from '../warehouseApi';
+import { parseNum, tooPrecise, UNIT_LABEL, warehouseApi } from '../warehouseApi';
 import type { Ingredient, RecipeDetail, RecipeSummary } from '../warehouseApi';
 
 interface Line {
@@ -54,7 +54,7 @@ export const RecipeSheet: React.FC<{
   const rows = lines.map((l) => {
     const ing = byUuid.get(l.ingredient);
     const q = parseNum(l.quantity);
-    const bad = l.quantity.trim() !== '' && (!Number.isFinite(q) || q <= 0 || (ing?.unit === 'PIECE' && !Number.isInteger(q)));
+    const bad = l.quantity.trim() !== '' && (!Number.isFinite(q) || q <= 0 || tooPrecise(l.quantity) || (ing?.unit === 'PIECE' && !Number.isInteger(q)));
     return { l, ing, q, bad, cost: ing && Number.isFinite(q) && q > 0 ? q * ing.cost_price : 0 };
   });
   const valid = rows.filter((r) => r.ing && !r.bad && r.q > 0);
@@ -156,7 +156,7 @@ export const RecipeSheet: React.FC<{
                       placeholder={ing ? (ing.unit === 'PIECE' ? '1' : `0.150 ${UNIT_LABEL[ing.unit]}`) : 'Miqdor'}
                       value={l.quantity}
                       onChange={(e) => set(l.key, { quantity: e.target.value })}
-                      error={bad ? (ing?.unit === 'PIECE' ? 'Butun son' : "To'g'ri son") : null}
+                      error={bad ? (ing?.unit === 'PIECE' ? 'Butun son' : tooPrecise(l.quantity) ? 'Eng kami 0.0001 (0.1 g)' : "To'g'ri son") : null}
                     />
                     <div className="w-24 h-11 flex items-center justify-end text-[13px] font-bold text-muted tabular-nums">
                       {c > 0 ? formatMoney(Math.round(c)) : ''}
@@ -176,7 +176,7 @@ export const RecipeSheet: React.FC<{
                 <Button variant="ghost" onClick={onAddIngredient}>Yangi xom ashyo yaratish</Button>
               </div>
               <p className="text-[12px] text-muted">
-                Miqdor xom ashyo birligida: 150 g go'sht = <b>0.150</b> kg. Taom sotilib, buyurtma yakunlanganda omborda shuncha ayiriladi.
+                Miqdor xom ashyo birligida: 150 g go'sht = <b>0.150</b> kg, 0.2 g ziravor = <b>0.0002</b> kg. Taom sotilib, buyurtma yakunlanganda omborda shuncha ayiriladi.
               </p>
             </>
           )}

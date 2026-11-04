@@ -4,7 +4,7 @@ import { Button, IconButton, InlineAlert, Input, Select, Sheet } from '../../../
 import { useToast } from '../../../core/components/ToastProvider';
 import { formatMoney } from '../../../core/lib/format';
 import { getErrorMessage } from '../../../core/lib/errors';
-import { formatQty, parseNum, UNIT_LABEL, warehouseApi } from '../warehouseApi';
+import { formatQty, parseNum, tooPrecise, UNIT_LABEL, warehouseApi } from '../warehouseApi';
 import type { Ingredient, ManualKind } from '../warehouseApi';
 
 const META: Record<ManualKind, { title: string; subtitle: string; qty: string; save: string }> = {
@@ -64,6 +64,7 @@ export const MovementSheet: React.FC<{
     const q = parseNum(l.quantity);
     if (!Number.isFinite(q) || q < 0 || (kind !== 'COUNT' && q === 0)) return "To'g'ri son kiriting";
     if (ing.unit === 'PIECE' && !Number.isInteger(q)) return 'Dona — butun son';
+    if (tooPrecise(l.quantity)) return 'Eng kami 0.0001';
     return null;
   };
 
@@ -149,7 +150,7 @@ export const MovementSheet: React.FC<{
                     aria-label={meta.qty}
                     containerClassName="flex-1 min-w-[110px]"
                     inputMode="decimal"
-                    placeholder={kind === 'COUNT' && ing ? String(Number(ing.quantity.toFixed(3))) : `${meta.qty}${u ? `, ${u}` : ''}`}
+                    placeholder={kind === 'COUNT' && ing ? String(Number(ing.quantity.toFixed(4))) : `${meta.qty}${u ? `, ${u}` : ''}`}
                     value={l.quantity}
                     onChange={(e) => set(l.key, { quantity: e.target.value })}
                     error={err}

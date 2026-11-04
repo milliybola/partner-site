@@ -19,6 +19,16 @@ export const getErrorMessage = (err: any, fallback = "Xatolik yuz berdi. Qaytada
       if (Array.isArray(v) && typeof v[0] === 'string') return `${key}: ${v[0]}`;
       if (typeof v === 'string' && key !== 'success') return `${key}: ${v}`;
     }
+    // Ichma-ich (ro'yxat) xatolar: { items: [{}, { quantity: ["msg"] }] } → "items 2: msg"
+    for (const key of Object.keys(src)) {
+      const v = src[key];
+      if (!Array.isArray(v)) continue;
+      const idx = v.findIndex((x) => x && typeof x === 'object' && Object.keys(x).length);
+      if (idx < 0) continue;
+      const inner = Object.values(v[idx] as Record<string, unknown>)[0];
+      const msg = Array.isArray(inner) ? inner[0] : inner;
+      if (typeof msg === 'string') return `${idx + 1}-qator: ${msg}`;
+    }
   }
   const status = err.response?.status;
   if (status === 403) return "Bu amal uchun ruxsatingiz yo'q.";

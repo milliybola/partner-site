@@ -31,10 +31,14 @@ const sortTables = (list: TableModel[]): TableModel[] =>
     return String(a.table_number).localeCompare(String(b.table_number), undefined, { numeric: true, sensitivity: 'base' });
   });
 
-const TILE_THEME: Record<string, { tile: string; chip: string; dot: string }> = {
-  AVAILABLE: { tile: 'bg-brand-soft border-brand/20', chip: 'bg-surface/80 text-brand', dot: 'bg-brand-bright' },
-  OCCUPIED: { tile: 'bg-gold-soft border-gold/50', chip: 'bg-surface/80 text-gold-ink', dot: 'bg-gold' },
-  RESERVED: { tile: 'bg-info-soft border-info/25', chip: 'bg-surface/80 text-info', dot: 'bg-info' },
+/**
+ * Stol kartasi (kassa uslubida): bo'sh — oq, «+» bilan; band — yashil, summa · vaqt · ofitsiant; bron — ko'k.
+ * 60 daqiqadan oshgan band stolda vaqt qizil bo'ladi.
+ */
+const TILE_THEME: Record<string, { tile: string; num: string }> = {
+  AVAILABLE: { tile: 'bg-surface border-edge hover:border-brand/40', num: 'text-ink' },
+  OCCUPIED: { tile: 'bg-brand-soft border-brand/45', num: 'text-brand-dark' },
+  RESERVED: { tile: 'bg-info-soft border-info/40', num: 'text-info' },
 };
 
 const TableTile: React.FC<{
@@ -48,48 +52,118 @@ const TableTile: React.FC<{
   const theme = TILE_THEME[table.status] || TILE_THEME.AVAILABLE;
   const order = table.current_order;
   const mins = order?.created_at ? minutesSince(order.created_at, now) : null;
+  const busy = !!order || table.status === 'OCCUPIED';
   return (
     <div
-      className={`relative rounded-2xl border min-h-[148px] flex flex-col transition hover:shadow-card ${
+      className={`relative rounded-2xl border-2 min-h-[124px] flex flex-col transition hover:shadow-card ${
         inactive ? 'border-dashed border-edge-strong bg-surface opacity-60' : theme.tile
       }`}
     >
       <button
         type="button"
         onClick={onOpen}
-        className="flex-1 text-left p-3.5 pr-12 flex flex-col gap-2 cursor-pointer rounded-2xl"
-        aria-label={`Stol ${table.table_number}`}
+        className="flex-1 text-left p-3 flex flex-col gap-1.5 cursor-pointer rounded-2xl active:scale-[0.98] transition"
+        aria-label={`Stol ${table.table_number}${busy ? ', band' : ", bo'sh"}`}
       >
-        <span className={`inline-flex self-start items-center gap-1.5 h-6 px-2 rounded-lg text-[11px] font-extrabold ${inactive ? 'bg-field text-muted' : theme.chip}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${inactive ? 'bg-subtle' : theme.dot}`} />
-          {inactive ? 'Nofaol' : TABLE_STATUS_LABEL[table.status] || table.status}
+        <span className="flex items-start justify-between gap-2 pr-7">
+          <span className={`text-[24px] font-black tracking-tightest leading-none break-words ${inactive ? 'text-muted' : theme.num}`}>
+            {table.table_number}
+          </span>
         </span>
-        <span className="text-[26px] font-black text-ink tracking-tightest leading-none break-words">{table.table_number}</span>
-        <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-muted">
-          <Users className="w-3.5 h-3.5" /> {table.capacity} kishi
-        </span>
-        <span className="mt-auto">
-          {order ? (
-            <span className="flex items-end justify-between gap-2">
-              <span className="text-[15px] font-extrabold text-ink tabular-nums">{formatMoney(order.total_price)}</span>
+
+        {inactive ? (
+          <span className="mt-auto text-[12px] font-bold text-muted">Nofaol</span>
+        ) : order ? (
+          <span className="mt-auto flex flex-col gap-1">
+            <span className="text-[17px] font-black text-ink tabular-nums leading-tight">{formatMoney(order.total_price)}</span>
+            <span className="flex items-center justify-between gap-2 text-[12px] font-bold">
               {mins !== null && (
-                <span className={`inline-flex items-center gap-1 text-[12px] font-bold tabular-nums ${mins >= 60 ? 'text-danger-ink' : 'text-muted'}`}>
+                <span className={`inline-flex items-center gap-1 tabular-nums ${mins >= 60 ? 'text-danger-ink' : 'text-muted'}`}>
                   <Clock className="w-3.5 h-3.5" />
-                  {mins} daq
+                  {mins >= 60 ? `${Math.floor(mins / 60)} s ${mins % 60} daq` : `${mins} daq`}
                 </span>
               )}
+              <span className="inline-flex items-center gap-1 text-muted">
+                <Users className="w-3.5 h-3.5" />
+                {table.capacity}
+              </span>
             </span>
-          ) : table.notes ? (
-            <span className="block text-[12px] text-muted truncate">{table.notes}</span>
-          ) : null}
-        </span>
+            {order.waiter_name && <span className="text-[12px] font-semibold text-muted truncate">{order.waiter_name}</span>}
+          </span>
+        ) : table.status === 'RESERVED' ? (
+          <span className="mt-auto flex flex-col gap-0.5">
+            <span className="text-[13px] font-extrabold text-info">{TABLE_STATUS_LABEL.RESERVED || 'Bron'}</span>
+            {table.notes && <span className="text-[12px] text-muted truncate">{table.notes}</span>}
+          </span>
+        ) : (
+          <span className="mt-auto flex items-end justify-between gap-2">
+            <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-muted">
+              <Users className="w-3.5 h-3.5" /> {table.capacity} kishi
+            </span>
+            <span className="w-8 h-8 rounded-xl border-2 border-dashed border-edge-strong text-subtle flex items-center justify-center">
+              <Plus className="w-4 h-4" />
+            </span>
+          </span>
+        )}
       </button>
       {canManage && (
-        <IconButton label="Amallar" onClick={onMenu} className="absolute top-1 right-1">
+        <IconButton label="Amallar" onClick={onMenu} className="absolute top-0.5 right-0.5">
           <MoreVertical className="w-5 h-5" />
         </IconButton>
       )}
     </div>
+  );
+};
+
+/** Katta ekranda chap ustun: zallar ro'yxati (band / jami) — kassadagi kabi */
+const HallRail: React.FC<{
+  halls: Hall[];
+  tables: TableModel[];
+  value: string;
+  onChange: (v: string) => void;
+  hasUnassigned: boolean;
+  onManage?: () => void;
+}> = ({ halls, tables, value, onChange, hasUnassigned, onManage }) => {
+  const active = tables.filter((t) => t.is_active !== false);
+  const stat = (key: string | null) => {
+    const list = key === null ? active : active.filter((t) => (t.hall || '') === key);
+    return { busy: list.filter((t) => t.current_order || t.status === 'OCCUPIED').length, all: list.length };
+  };
+  const items = [
+    { key: 'ALL', label: 'Barcha zallar', s: stat(null) },
+    ...halls.map((h) => ({ key: h.uuid, label: h.name, s: stat(h.uuid) })),
+    ...(hasUnassigned ? [{ key: '', label: 'Zalsiz', s: stat('') }] : []),
+  ];
+  return (
+    <aside className="hidden lg:flex flex-col gap-1 w-48 shrink-0 self-start sticky top-[calc(var(--appbar-h,56px)+12px)]">
+      {items.map((it) => {
+        const on = value === it.key;
+        return (
+          <button
+            key={it.key || 'none'}
+            type="button"
+            onClick={() => onChange(it.key)}
+            className={`w-full min-h-[48px] px-3 rounded-xl flex items-center justify-between gap-2 text-left text-[14px] font-extrabold transition cursor-pointer ${
+              on ? 'bg-brand text-white' : 'bg-surface border border-edge text-ink hover:border-brand/40'
+            }`}
+          >
+            <span className="truncate">{it.label}</span>
+            <span className={`shrink-0 text-[12px] font-bold tabular-nums ${on ? 'text-white/85' : 'text-muted'}`}>
+              {it.s.busy}/{it.s.all}
+            </span>
+          </button>
+        );
+      })}
+      {onManage && (
+        <button
+          type="button"
+          onClick={onManage}
+          className="mt-1 w-full min-h-[40px] px-3 rounded-xl flex items-center gap-2 text-[13px] font-bold text-muted hover:text-ink cursor-pointer"
+        >
+          <Layers className="w-4 h-4" /> Zallarni sozlash
+        </button>
+      )}
+    </aside>
   );
 };
 
@@ -357,6 +431,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             ]}
           />
           {halls.length > 0 && (
+            <div className="lg:hidden">
             <Tabs<string>
               value={hallFilter}
               onChange={setHallFilter}
@@ -366,16 +441,28 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
                 ...(hasUnassigned ? [{ value: '', label: 'Zalsiz', count: tables.filter((t) => !t.hall).length }] : []),
               ]}
             />
+            </div>
           )}
           {tables.length > 8 && <SearchInput value={search} onChange={setSearch} placeholder="Stol raqami yoki izoh bo'yicha qidirish" className="md:max-w-sm" />}
         </div>
       </PageHeader>
 
-      <div className="mt-2">
+      <div className="mt-2 flex gap-4">
+        {halls.length > 0 && !loading && !error && (
+          <HallRail
+            halls={halls}
+            tables={tables}
+            value={hallFilter}
+            onChange={setHallFilter}
+            hasUnassigned={hasUnassigned}
+            onManage={canManage ? () => setHallsOpen(true) : undefined}
+          />
+        )}
+        <div className="flex-1 min-w-0">
         {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-7 gap-2.5">
             {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-[148px] rounded-2xl" />
+              <Skeleton key={i} className="h-[124px] rounded-2xl" />
             ))}
           </div>
         ) : error ? (
@@ -425,7 +512,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
                     {sec.title} <span className="text-muted">· {sec.items.length}</span>
                   </h2>
                 )}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-7 gap-2.5">
             {sec.items.map((t) => (
               <TableTile
                 key={t.uuid}
@@ -448,6 +535,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             ))}
           </div>
         )}
+        </div>
       </div>
 
       <TableActionsSheet

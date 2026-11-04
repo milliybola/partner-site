@@ -183,13 +183,6 @@ export const ordersApi = {
     return response.data;
   },
 
-  // Push the order out to the global courier pool (used when the partner's own
-  // couriers are busy/unavailable). Backend runs a 5-minute acceptance timer.
-  dispatchGlobally: async (orderUuid: string): Promise<any> => {
-    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/dispatch-globally/`);
-    return response.data;
-  },
-
   createOrder: async (payload: {
     description: string;
     address: string;

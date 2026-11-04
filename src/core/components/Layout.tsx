@@ -238,7 +238,8 @@ const Shell: React.FC = () => {
   const { tariff } = useTariff();
   const mode = useWorkMode();
   const cashier = isCashier(partner);
-  const groups = useMemo(() => buildNav(partner, tariff, mode), [partner, tariff, mode]);
+  const filialCount = ownerFilials.length || undefined; // 0 — hali yuklanmagan
+  const groups = useMemo(() => buildNav(partner, tariff, mode, filialCount), [partner, tariff, mode, filialCount]);
   const manager = isManager(partner);
   const pos = mode === 'pos';
   const locked = usePosLocked();

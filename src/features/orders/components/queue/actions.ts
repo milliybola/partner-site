@@ -9,7 +9,6 @@ export type QueueActionKind =
   | 'accept'
   | 'reject'
   | 'assign_courier'
-  | 'dispatch_global'
   | 'start_preparing'
   | 'mark_ready'
   | 'back_to_accepted'
@@ -55,14 +54,13 @@ export const getQueueActions = (order: Order, ctx: ActionContext): { primary?: Q
         primary: {
           kind: 'accept',
           // Stol QR buyurtmasini tasdiqlagan xodim buyurtmaning ofitsianti bo'ladi
-          label: order.order_source === 'QR' ? 'Tasdiqlash' : delivery ? 'Qabul qilish (MilliyGo kuryeri)' : 'Qabul qilish',
+          label: order.order_source === 'QR' ? 'Tasdiqlash' : 'Qabul qilish',
           tone: 'primary',
         },
         secondary,
         danger: { kind: 'reject', label: 'Rad etish', tone: 'danger' },
       };
     case 'ACCEPTED':
-      if (delivery) secondary.push({ kind: 'dispatch_global', label: 'Global kuryerlarga yuborish', tone: 'secondary' });
       return {
         primary: ctx.skipPreparing
           ? { kind: 'mark_ready', label: 'Tayyor', tone: 'primary' }

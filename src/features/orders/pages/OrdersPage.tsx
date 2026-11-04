@@ -379,19 +379,6 @@ const OrdersPage: React.FC = () => {
     }
   };
 
-  const dispatchGlobally = async (order: Order) => {
-    setBusyUuid(order.uuid);
-    try {
-      await ordersApi.dispatchGlobally(order.uuid);
-      toast.success('Buyurtma MilliyGo kuryerlariga yuborildi.');
-      fetchOrders('silent');
-    } catch (err) {
-      reportActionError(err, 'Global kuryerlarga yuborishda xatolik yuz berdi.');
-    } finally {
-      setBusyUuid(null);
-    }
-  };
-
   const completeOrder = async (order: Order) => {
     setBusyUuid(order.uuid);
     try {
@@ -427,15 +414,9 @@ const OrdersPage: React.FC = () => {
     }
   };
 
-  const runAction = async (order: Order, a: QueueAction, fromCard = false) => {
+  const runAction = async (order: Order, a: QueueAction) => {
     switch (a.kind) {
       case 'accept':
-        // Delivery orders with own couriers need a choice (own vs MilliyGo courier) — show details.
-        if (fromCard && order.delivery_type === 'DELIVERY' && ctx.hasOwnCouriers) {
-          setSelectedUuid(order.uuid);
-          unmarkFresh(order.uuid);
-          return;
-        }
         acceptOrder(order);
         return;
       case 'reject': {
@@ -455,9 +436,6 @@ const OrdersPage: React.FC = () => {
       }
       case 'assign_courier':
         openCourierPicker(order);
-        return;
-      case 'dispatch_global':
-        dispatchGlobally(order);
         return;
       case 'start_preparing':
         updateStatus(order, 'PREPARING');
@@ -514,7 +492,7 @@ const OrdersPage: React.FC = () => {
             highlighted={freshUuids.has(o.uuid) && isPendingLike(o.status)}
             busy={busyUuid === o.uuid}
             onOpen={() => openOrder(o)}
-            onAction={(a) => runAction(o, a, true)}
+            onAction={(a) => runAction(o, a)}
           />
         ))}
         {opts.group === 'DONE' && list.length > DONE_LIMIT && (

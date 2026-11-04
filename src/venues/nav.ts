@@ -1,6 +1,6 @@
 import {
-  Bike, BarChart3, BookOpen, LayoutDashboard, Boxes, Building2, ChefHat, ClipboardCheck, Clock, DollarSign, Home, ListOrdered, MapPin,
-  PlusCircle, ScanBarcode, ScanLine, Settings, ShoppingBag, Table, Tag, User, Users, Wallet,
+  Bike, BarChart3, BookOpen, LayoutDashboard, Boxes, Building2, ChefHat, ClipboardCheck, Clock, Home, ListOrdered, MapPin,
+  PlusCircle, ScanBarcode, Settings, ShoppingBag, Table, Tag, User, Users, Wallet,
   type LucideIcon,
 } from 'lucide-react';
 import { isManager, type PartnerSession } from '../core/lib/session';
@@ -19,22 +19,28 @@ export interface NavGroup {
   title: string;
   items: NavItem[];
 }
-console.log("gffg");
 
 
 const own = (owner: boolean, items: NavItem[]) => (owner ? items : []);
 
+/*
+ * Boshqaruv rejimi sidebar'i — ish tartibida (eng ko'p ishlatiladigani tepada):
+ *   1. Kundalik ish   — bosh sahifa, buyurtmalar, zal/oshxona yoki yig'ish/kassa, smena
+ *   2. Menyu / Ombor  — nima sotiladi
+ *   3. Yetkazib berish — kuryerlar, hududlar
+ *   4. Biznes         — hisobotlar, filiallar, xodimlar
+ *   5. Hisob          — profil, tarif, sozlamalar
+ */
 const RESTAURANT = (owner: boolean): NavGroup[] => [
   {
-    title: 'Zal va oshxona',
+    title: 'Kundalik ish',
     items: [
       ...own(owner, [{ to: '/', label: 'Bosh sahifa', icon: Home, end: true }]),
       { to: '/orders', label: 'Buyurtmalar', icon: ListOrdered },
-      { to: '/kitchen', label: 'Oshxona ekrani', icon: ChefHat },
       { to: '/tables', label: 'Stollar', icon: Table, end: true },
-      { to: '/tables/qr', label: 'Stol QR-kodlari', icon: ScanLine },
-      // { to: '/new-order', label: 'Yangi buyurtma', icon: PlusCircle },
+      { to: '/kitchen', label: 'Oshxona ekrani', icon: ChefHat },
       { to: '/shift', label: 'Smena', icon: Clock },
+      { to: '/all-orders', label: 'Buyurtmalar tarixi', icon: ShoppingBag },
     ],
   },
   {
@@ -42,6 +48,7 @@ const RESTAURANT = (owner: boolean): NavGroup[] => [
     items: [
       { to: '/catalog', label: 'Menyu', icon: BookOpen },
       { to: '/promotions', label: 'Setlar va aksiyalar', icon: Tag },
+      { to: '/warehouse', label: 'Ombor va texkarta', icon: Boxes },
     ],
   },
   ...management(owner),
@@ -49,20 +56,21 @@ const RESTAURANT = (owner: boolean): NavGroup[] => [
 
 const STORE = (owner: boolean): NavGroup[] => [
   {
-    title: 'Savdo',
+    title: 'Kundalik ish',
     items: [
       ...own(owner, [{ to: '/', label: 'Bosh sahifa', icon: Home, end: true }]),
       { to: '/orders', label: 'Buyurtmalar', icon: ListOrdered },
       { to: '/picking', label: "Yig'ish", icon: ClipboardCheck },
       { to: '/new-order', label: 'Kassa', icon: ScanBarcode },
       { to: '/shift', label: 'Smena', icon: Clock },
+      { to: '/all-orders', label: 'Buyurtmalar tarixi', icon: ShoppingBag },
     ],
   },
   {
     title: 'Ombor',
     items: [
-      { to: '/inventory', label: 'Ombor va qoldiq', icon: Boxes },
       { to: '/catalog', label: 'Mahsulotlar', icon: BookOpen },
+      { to: '/inventory', label: 'Ombor va qoldiq', icon: Boxes },
       { to: '/promotions', label: 'Aksiyalar (1+1)', icon: Tag },
     ],
   },
@@ -71,18 +79,21 @@ const STORE = (owner: boolean): NavGroup[] => [
 
 const management = (owner: boolean): NavGroup[] => [
   {
-    title: 'Boshqaruv',
+    title: 'Yetkazib berish',
+    items: [
+      { to: '/couriers', label: 'Kuryerlar', icon: Bike },
+      ...own(owner, [{ to: '/delivery-zones', label: 'Yetkazish hududlari', icon: MapPin }]),
+    ],
+  },
+  {
+    title: 'Biznes',
     items: [
       ...own(owner, [
-        { to: '/overview', label: 'Boshqaruv paneli', icon: LayoutDashboard },
-        { to: '/statistics', label: 'Statistika', icon: BarChart3 },
-        { to: '/finance', label: 'Moliya', icon: DollarSign },
+        { to: '/reports', label: 'Hisobotlar', icon: BarChart3 },
+        { to: '/overview', label: 'Filiallar solishtirmasi', icon: LayoutDashboard },
         { to: '/branches', label: 'Filiallar', icon: Building2 },
-        { to: '/delivery-zones', label: 'Yetkazish hududlari', icon: MapPin },
       ]),
-      { to: '/all-orders', label: 'Buyurtmalar tarixi', icon: ShoppingBag },
       { to: '/staff', label: 'Xodimlar', icon: Users },
-      { to: '/couriers', label: 'Kuryerlar', icon: Bike },
     ],
   },
   {
@@ -101,8 +112,6 @@ const allowedByTariff = (item: NavItem, t?: PartnerTariff): boolean => {
   switch (item.to) {
     case '/tables':
       return t.allow_dine_in;
-    case '/tables/qr':
-      return t.allow_dine_in && t.allow_qr_menu;
     default:
       return true;
   }
@@ -136,12 +145,19 @@ const POS = (kind: VenueKind): NavGroup[] => [
   },
 ];
 
-export const buildNav = (p: PartnerSession | null, tariff?: PartnerTariff, mode: WorkMode = 'manage'): NavGroup[] => {
+/**
+ * `filialCount` — egasining filiallari soni: «Boshqaruv paneli» (filiallar solishtirmasi) faqat 2+ filialda ma'noli.
+ * Noma'lum bo'lsa (undefined) — ko'rsatiladi.
+ */
+export const buildNav = (p: PartnerSession | null, tariff?: PartnerTariff, mode: WorkMode = 'manage', filialCount?: number): NavGroup[] => {
   const owner = !isManager(p);
   const kind = venueOf(p);
   const groups = mode === 'pos' ? POS(kind) : kind === 'store' ? STORE(owner) : RESTAURANT(owner);
   return groups
-    .map((g) => ({ ...g, items: g.items.filter((i) => allowedByTariff(i, tariff)) }))
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((i) => allowedByTariff(i, tariff) && !(i.to === '/overview' && filialCount !== undefined && filialCount < 2)),
+    }))
     .filter((g) => g.items.length > 0);
 };
 

@@ -14,10 +14,8 @@ import { VenueOnly } from './venues/VenueOnly';
 import { FeatureGate } from './core/components/FeatureGate';
 
 // Route-level code splitting keeps the first load small on phones.
-const DashboardPage = lazy(() => import('./features/dashboard/pages/DashboardPage'));
 const OrdersPage = lazy(() => import('./features/orders/pages/OrdersPage'));
 const CatalogPage = lazy(() => import('./features/catalog/pages/CatalogPage'));
-const FinancePage = lazy(() => import('./features/finance/pages/FinancePage'));
 const ProfilePage = lazy(() => import('./features/profile/pages/ProfilePage'));
 const SettingsPage = lazy(() => import('./features/profile/pages/SettingsPage'));
 const BranchesPage = lazy(() => import('./features/profile/pages/BranchesPage'));
@@ -29,6 +27,7 @@ const TablesPage = lazy(() => import('./features/tables/pages/TablesPage'));
 const DeliveryZonesPage = lazy(() => import('./features/delivery-zones/pages/DeliveryZonesPage'));
 const PromotionsPage = lazy(() => import('./features/promotions/pages/PromotionsPage'));
 const PlanPage = lazy(() => import('./features/profile/pages/PlanPage'));
+const ReportsPage = lazy(() => import('./features/reports/pages/ReportsPage'));
 const BranchOverviewPage = lazy(() => import('./features/branches/pages/BranchOverviewPage'));
 
 // Restoran va do'kon uchun alohida bo'limlar (src/venues)
@@ -36,6 +35,7 @@ const RestaurantHomePage = lazy(() => import('./venues/restaurant/pages/Restaura
 const KitchenPage = lazy(() => import('./venues/restaurant/pages/KitchenPage'));
 const StoreHomePage = lazy(() => import('./venues/store/pages/StoreHomePage'));
 const InventoryPage = lazy(() => import('./venues/store/pages/InventoryPage'));
+const WarehousePage = lazy(() => import('./features/warehouse/pages/WarehousePage'));
 const PickingPage = lazy(() => import('./venues/store/pages/PickingPage'));
 
 /** Owner-only screens: managers were able to open them by typing the URL. */
@@ -75,7 +75,10 @@ const App: React.FC = () => {
             >
               <Route index element={page(<VenueHome />)} />
               <Route path="overview" element={<OwnerOnly>{page(<BranchOverviewPage />)}</OwnerOnly>} />
-              <Route path="statistics" element={<OwnerOnly>{page(<DashboardPage />)}</OwnerOnly>} />
+              <Route path="reports" element={<OwnerOnly>{page(<ReportsPage />)}</OwnerOnly>} />
+              {/* eski havolalar: Statistika va Moliya endi «Hisobotlar» ichida */}
+              <Route path="statistics" element={<Navigate to="/reports" replace />} />
+              <Route path="warehouse" element={<ManageOnly><VenueOnly kind="restaurant">{page(<WarehousePage />)}</VenueOnly></ManageOnly>} />
               <Route path="kitchen" element={<VenueOnly kind="restaurant">{page(<KitchenPage />)}</VenueOnly>} />
               <Route path="inventory" element={<ManageOnly><VenueOnly kind="store">{page(<InventoryPage />)}</VenueOnly></ManageOnly>} />
               <Route path="picking" element={<VenueOnly kind="store">{page(<PickingPage />)}</VenueOnly>} />
@@ -83,7 +86,7 @@ const App: React.FC = () => {
               <Route path="new-order" element={page(<CreateOrderPage />)} />
               <Route path="catalog" element={<ManageOnly>{page(<CatalogPage />)}</ManageOnly>} />
               <Route path="promotions" element={<ManageOnly>{page(<PromotionsPage />)}</ManageOnly>} />
-              <Route path="finance" element={<OwnerOnly>{page(<FinancePage />)}</OwnerOnly>} />
+              <Route path="finance" element={<Navigate to="/reports?tab=finance" replace />} />
               <Route path="branches" element={<OwnerOnly>{page(<BranchesPage />)}</OwnerOnly>} />
               <Route path="delivery-zones" element={<OwnerOnly>{page(<DeliveryZonesPage />)}</OwnerOnly>} />
               <Route path="profile" element={<ManageOnly>{page(<ProfilePage />)}</ManageOnly>} />

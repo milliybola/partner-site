@@ -80,21 +80,25 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
       }
       footer={
         primary || danger || secondary.length ? (
-          <div className="w-full flex flex-col md:flex-row-reverse gap-2">
+          <div className="w-full min-w-0 flex flex-col gap-2">
             {primary && (
-              <Button size="xl" block className="md:w-auto md:flex-1" loading={busy} onClick={() => onAction(order, primary)}>
+              <Button size="xl" block loading={busy} onClick={() => onAction(order, primary)}>
                 {primary.label}
               </Button>
             )}
-            {secondary.map((a) => (
-              <Button key={a.kind} variant="outline" size="lg" block className="md:w-auto" disabled={busy} onClick={() => onAction(order, a)}>
-                {a.label}
-              </Button>
-            ))}
-            {danger && (
-              <Button variant="danger-soft" size="lg" block className="md:w-auto" disabled={busy} onClick={() => onAction(order, danger)}>
-                {danger.label}
-              </Button>
+            {(secondary.length > 0 || danger) && (
+              <div className="flex flex-wrap gap-2">
+                {secondary.map((a) => (
+                  <Button key={a.kind} variant="outline" size="lg" className="flex-1 min-w-[150px]" disabled={busy} onClick={() => onAction(order, a)}>
+                    {a.label}
+                  </Button>
+                ))}
+                {danger && (
+                  <Button variant="danger-soft" size="lg" className="flex-1 min-w-[150px]" disabled={busy} onClick={() => onAction(order, danger)}>
+                    {danger.label}
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         ) : undefined

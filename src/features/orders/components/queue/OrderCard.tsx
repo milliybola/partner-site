@@ -127,7 +127,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
       {(primary || danger) && (
         <div className="px-3.5 pb-3.5">
           {pending ? (
-            <div className="grid grid-cols-[auto_1fr] gap-2">
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
               {danger && (
                 <Button
                   variant="danger-soft"
@@ -142,15 +142,15 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
                 </Button>
               )}
               {primary && (
-                <Button variant="success" size="lg" block loading={busy} onClick={() => onAction(primary)} icon={<Check className="w-5 h-5" />}>
-                  Qabul qilish
+                <Button variant="success" size="lg" block className="min-w-0 px-3" loading={busy} onClick={() => onAction(primary)} icon={<Check className="w-5 h-5 shrink-0" />}>
+                  <span className="truncate">{primary.label}</span>
                 </Button>
               )}
             </div>
           ) : (
             primary && (
-              <Button variant="primary" size="lg" block loading={busy} onClick={() => onAction(primary)}>
-                {primary.label}
+              <Button variant="primary" size="lg" block className="min-w-0 px-3" loading={busy} onClick={() => onAction(primary)}>
+                <span className="truncate">{primary.label}</span>
               </Button>
             )
           )}

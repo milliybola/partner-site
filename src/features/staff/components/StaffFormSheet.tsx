@@ -54,7 +54,7 @@ export const StaffFormSheet: React.FC<{
     if (raw.length !== 13) next.phone = "Format: +998 (90) 123-45-67";
     if (!staff && password.length < 4) next.password = "Kamida 4 ta belgi";
     if (staff && password && password.length < 4) next.password = "Kamida 4 ta belgi yoki bo'sh qoldiring";
-    if (pin && !/^d{4,6}$/.test(pin)) next.pin = '4–6 ta raqam';
+    if (pin && !/^\d{4,6}$/.test(pin)) next.pin = '4–6 ta raqam';
     setErrors(next);
     if (Object.keys(next).length) return;
 
@@ -142,7 +142,7 @@ export const StaffFormSheet: React.FC<{
             maxLength={6}
             value={pin}
             onChange={(e) => {
-              setPin(e.target.value.replace(/D/g, '').slice(0, 6));
+              setPin(e.target.value.replace(/\D/g, '').slice(0, 6));
               setRemovePin(false);
             }}
             placeholder={staff?.has_pin ? "O'rnatilgan — o'zgartirish uchun yangisini kiriting" : '4–6 raqam (ixtiyoriy)'}

@@ -93,6 +93,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-[15px] font-black text-ink tracking-tightest truncate">{orderNo(order)}</span>
             {highlighted && <Badge tone="brand">Yangi</Badge>}
+            {order.delivery_type === 'DELIVERY' && !final && !(order.courier || order.courier_phone) && <Badge tone="danger">Kuryer yo'q</Badge>}
           </div>
           {order.deadline_at && COUNTDOWN_STATUSES.has(order.status) ? (
             <DeadlineChip deadlineAt={order.deadline_at} />

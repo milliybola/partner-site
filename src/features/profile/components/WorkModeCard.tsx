@@ -33,8 +33,8 @@ export const WorkModeCard: React.FC = () => {
           title="Tez rejim"
           description={
             shop
-              ? "Yangi buyurtma o'zi qabul qilinadi — «Qabul qilish» bosish shart emas."
-              : "Kichik kafe uchun. Yangi buyurtma (ilova, stol QR) o'zi qabul qilinib oshxona printeriga chiqadi. Olib ketish va zal buyurtmasi bitta tugma bilan beriladi — «Tayyorlanmoqda», «Tayyor» bosqichlari yo'q. Keraksizini bekor qilasiz, xolos."
+              ? "Yangi buyurtma o'zi qabul qilinadi — «Qabul qilish» bosish shart emas. Stol QR buyurtmasini baribir xodim tasdiqlaydi."
+              : "Kichik kafe uchun. Yangi buyurtma (ilova, telegram) o'zi qabul qilinib oshxona printeriga chiqadi. Olib ketish va zal buyurtmasi bitta tugma bilan beriladi — «Tayyorlanmoqda», «Tayyor» bosqichlari yo'q. Keraksizini bekor qilasiz, xolos. Stol QR buyurtmasini esa har doim xodim tasdiqlaydi — u buyurtma uchun javobgar."
           }
           control={
             <Switch

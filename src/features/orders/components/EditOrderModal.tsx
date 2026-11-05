@@ -143,6 +143,16 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
     }
   };
 
+  // Katalogdagi badge: shu mahsulot buyurtmada nechta
+  const qtyByProduct = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of items) {
+      const id = i.product_uuid || i.product?.uuid;
+      if (id) m.set(id, (m.get(id) || 0) + (Number(i.quantity) || 0));
+    }
+    return m;
+  }, [items]);
+
   const filteredCatalog = useMemo(() => {
     const query = catalogSearch.trim().toLowerCase();
     if (!query) {
@@ -232,7 +242,9 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
             <div key={ci}>
               <div className="text-[12px] font-bold uppercase tracking-wider text-subtle mb-1.5">{cat.name}</div>
               <div className="space-y-1.5">
-                {cat.products.map((p) => (
+                {cat.products.map((p) => {
+                  const inOrder = qtyByProduct.get(p.uuid) || 0;
+                  return (
                   <button
                     key={p.uuid}
                     type="button"
@@ -241,14 +253,22 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
                     className="w-full min-h-[52px] px-3 py-2 rounded-xl bg-field hover:bg-edge-strong flex items-center justify-between gap-3 text-left disabled:opacity-50 cursor-pointer"
                   >
                     <span className="min-w-0">
-                      <span className="block text-[14px] font-semibold text-ink truncate">{p.name}</span>
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[14px] font-semibold text-ink truncate">{p.name}</span>
+                        {inOrder > 0 && (
+                          <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-brand text-white text-[12px] font-extrabold flex items-center justify-center tabular-nums" title="Buyurtmada">
+                            ×{inOrder}
+                          </span>
+                        )}
+                      </span>
                       <span className="block text-[13px] text-brand font-bold tabular-nums">{formatMoney(p.price)}</span>
                     </span>
                     <span className="w-9 h-9 rounded-xl bg-brand text-white flex items-center justify-center shrink-0">
                       {actionLoading === p.uuid ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                     </span>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}

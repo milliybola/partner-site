@@ -15,12 +15,14 @@ export interface SheetProps {
   subtitle?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full' | 'screen';
   /** prevent closing by backdrop click (e.g. while saving) */
   persistent?: boolean;
   /** remove default body padding */
   flush?: boolean;
   headerAction?: React.ReactNode;
+  /** pastki panel (footer) uchun qo'shimcha klass, masalan `md:hidden` */
+  footerClassName?: string;
 }
 
 const SIZES = {
@@ -29,11 +31,13 @@ const SIZES = {
   lg: 'md:max-w-2xl',
   xl: 'md:max-w-4xl',
   full: 'md:max-w-6xl',
+  /** butun ekran (kassa: stol buyurtmasi) */
+  screen: '',
 };
 
 let openCount = 0;
 
-export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, subtitle, children, footer, size = 'md', persistent, flush, headerAction }) => {
+export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, subtitle, children, footer, size = 'md', persistent, flush, headerAction, footerClassName = '' }) => {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -54,14 +58,17 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, subtitle, ch
 
   if (!open) return null;
 
+  const screen = size === 'screen';
+
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-end md:items-center justify-center md:p-6" role="dialog" aria-modal="true">
+    <div className={`fixed inset-0 z-[120] flex items-end md:items-center justify-center ${screen ? '' : 'md:p-6'}`} role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={() => !persistent && onClose()} />
       <div
-        className={`relative w-full ${SIZES[size]} bg-surface flex flex-col max-h-[92vh] md:max-h-[88vh]
-          rounded-t-3xl md:rounded-3xl shadow-sheet md:shadow-pop animate-sheet-up md:animate-slide-up`}
+        className={`relative w-full ${SIZES[size]} bg-surface flex flex-col animate-sheet-up md:animate-slide-up ${
+          screen ? 'h-full' : 'max-h-[92vh] md:max-h-[88vh] rounded-t-3xl md:rounded-3xl shadow-sheet md:shadow-pop'
+        }`}
       >
-        <div className="md:hidden flex justify-center pt-2.5 pb-1">
+        <div className={`${screen ? 'hidden' : 'md:hidden flex'} justify-center pt-2.5 pb-1`}>
           <span className="w-10 h-1.5 rounded-full bg-edge-strong" />
         </div>
         {(title || headerAction) && (
@@ -83,9 +90,9 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, subtitle, ch
             </div>
           </div>
         )}
-        <div className={`flex-1 overflow-y-auto overscroll-contain ${flush ? '' : 'px-5 py-4'}`}>{children}</div>
+        <div className={`flex-1 min-h-0 overscroll-contain ${screen ? 'overflow-hidden' : 'overflow-y-auto'} ${flush ? '' : 'px-5 py-4'}`}>{children}</div>
         {footer && (
-          <div className="border-t border-edge px-5 py-3 pb-[calc(12px+var(--safe-bottom))] md:pb-3 flex flex-col-reverse md:flex-row md:justify-end gap-2 bg-surface rounded-b-none md:rounded-b-3xl">
+          <div className={`border-t border-edge px-5 py-3 pb-[calc(12px+var(--safe-bottom))] md:pb-3 flex flex-col-reverse md:flex-row md:justify-end gap-2 bg-surface rounded-b-none ${screen ? '' : 'md:rounded-b-3xl'} ${footerClassName}`}>
             {footer}
           </div>
         )}

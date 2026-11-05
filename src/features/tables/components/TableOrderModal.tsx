@@ -1,11 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle, CreditCard, FileText, ImageOff, Plus, ShoppingBag, Trash2 } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, CheckCircle, ChevronDown, CreditCard, FileText, ImageOff, Plus, Save, ShoppingBag, Trash2 } from 'lucide-react';
+import { filialApi } from '../../orders/services/filialApi';
+import { clearDraft, getDraft, saveDraft } from '../lib/tableDrafts';
 import { ordersApi } from '../../orders/services/ordersApi';
 import { printReceipt as printReceiptUtil, printPreCheck as printPreCheckUtil } from '../../orders/utils/printing';
 import apiClient from '../../../core/api/client';
 import { useToast } from '../../../core/components/ToastProvider';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
-import { getPartner, wording } from '../../../core/lib/session';
+import { getFilialUuid, getPartner, isManager, wording } from '../../../core/lib/session';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { normalizePayCode, usePaymentMethods } from '../../../core/lib/payments';
 import type { PayMethod } from '../../../core/lib/payments';
@@ -19,7 +21,6 @@ import {
   InlineAlert,
   Input,
   QtyStepper,
-  SearchInput,
   Segmented,
   Sheet,
   Skeleton,
@@ -86,6 +87,10 @@ const PaymentPicker: React.FC<{ value: PaymentMethod; onChange: (v: PaymentMetho
 
 export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose }) => {
   const toast = useToast();
+  const toastRef = useRef(toast);
+  useEffect(() => {
+    toastRef.current = toast;
+  });
   const confirm = useConfirm();
   const w = wording();
   const isEditMode = !!table.current_order;
@@ -96,12 +101,38 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   // Catalog
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeCategoryUuid, setActiveCategoryUuid] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  /** Mijoz ismi, telefon, izoh — odatda yashirin (kerak bo'lsa ochiladi) */
+  const [showExtra, setShowExtra] = useState(false);
+  /** Filialning xizmat haqi foizi (stol buyurtmasiga qo'shiladi; 0 — olinmaydi) */
+  const [scPercent, setScPercent] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    // Server (partner_order_serializers) bilan bir xil tanlov: xodimning joriy filiali → stol filiali → asosiy filial
+    const staff = isManager(getPartner());
+    const known = (staff ? getFilialUuid() : undefined) || table.filial_uuid || undefined;
+    const load = async () => {
+      let percent: number | undefined;
+      if (known) {
+        percent = Number((await filialApi.getFilialDetail(known)).service_charge_percent) || 0;
+      } else {
+        const list = await filialApi.getFilials();
+        const main = list.find((f) => f.is_main) || list[0];
+        percent = Number(main?.service_charge_percent) || 0;
+      }
+      if (alive) setScPercent(percent);
+    };
+    load().catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [table.filial_uuid]);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [errorCatalog, setErrorCatalog] = useState<string | null>(null);
 
   // Create mode
   const [cart, setCart] = useState<CartItem[]>([]);
+  /** Oxirgi saqlangan (yoki tiklangan) savat holati: chiqishda o'zgarish bor-yo'qligini bilish uchun */
+  const savedSnap = useRef('');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [comment, setComment] = useState('');
@@ -157,13 +188,32 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
               : [],
           }))
         : [];
-      setCategories(mapped.filter((c) => c.is_active));
+      const activeCats = mapped.filter((c) => c.is_active);
+      setCategories(activeCats);
+      const draft = isEditMode ? null : getDraft(table.uuid);
+      if (draft) {
+        const byUuid = new Map(activeCats.flatMap((c) => c.products).map((p) => [p.uuid, p] as const));
+        const restored: CartItem[] = [];
+        let dropped = 0;
+        for (const it of draft.items) {
+          const product = byUuid.get(it.product_uuid);
+          if (product && product.is_available) restored.push({ product, quantity: it.quantity });
+          else dropped++;
+        }
+        setCart(restored);
+        setContactName(draft.contact_name);
+        setContactPhone(draft.contact_phone);
+        setComment(draft.comment);
+        if (draft.contact_name || draft.contact_phone.length > 4 || draft.comment) setShowExtra(true);
+        savedSnap.current = JSON.stringify([restored.map((i) => [i.product.uuid, i.quantity]), draft.contact_name, draft.contact_phone, draft.comment]);
+        if (dropped > 0) toastRef.current.info(`Qoralamadagi ${dropped} ta mahsulot menyuda yo'q yoki tugagan — olib tashlandi.`);
+      }
     } catch (err) {
       setErrorCatalog(getErrorMessage(err, "Menyuni yuklashda xatolik yuz berdi."));
     } finally {
       setLoadingCatalog(false);
     }
-  }, []);
+  }, [table.uuid, isEditMode]);
 
   const fetchOrderItems = useCallback(async () => {
     if (!orderUuid) return;
@@ -207,10 +257,8 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     } else {
       list = categories.find((c) => c.uuid === activeCategoryUuid)?.products || [];
     }
-    const q = searchQuery.trim().toLowerCase();
-    if (q) list = list.filter((p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q));
     return list;
-  }, [categories, activeCategoryUuid, searchQuery]);
+  }, [categories, activeCategoryUuid]);
 
   /* ----------------------------------------------------- create mode cart */
   const setCartQty = (product: Product, qty: number) => {
@@ -243,6 +291,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         description: comment.trim() || undefined,
         items: cart.map((i) => ({ product_uuid: i.product.uuid, quantity: i.quantity })),
       });
+      clearDraft(table.uuid);
       toast.success(`Stol ${table.table_number}: buyurtma yaratildi`);
       onClose(true);
     } catch (err) {
@@ -253,12 +302,71 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     }
   };
 
+  const snapshot = () => JSON.stringify([cart.map((i) => [i.product.uuid, i.quantity]), contactName, contactPhone, comment]);
+  const hasContent = cart.length > 0 || !!contactName.trim() || contactPhone.length > 4 || !!comment.trim();
+
+  /** Savatni qoralama sifatida saqlab, stollar ro'yxatiga qaytadi (boshqa stol bilan ishlash uchun) */
+  const handleSaveDraft = () => {
+    if (cart.length === 0) return;
+    saveDraft(table.uuid, {
+      items: cart.map((i) => ({ product_uuid: i.product.uuid, quantity: i.quantity })),
+      contact_name: contactName,
+      contact_phone: contactPhone,
+      comment,
+      count: cartCount,
+      subtotal: cartSubtotal,
+    });
+    toast.success(`Stol ${table.table_number}: savat saqlandi`);
+    onClose(false);
+  };
+
+  /** Orqaga: saqlanmagan o'zgarish bo'lsa so'raydi */
+  const handleBack = async () => {
+    if (!isEditMode && cart.length > 0 && snapshot() !== savedSnap.current) {
+      const ok = await confirm("Savatdagi o'zgarishlar saqlanmagan. Saqlamasdan chiqasizmi?", {
+        title: 'Orqaga qaytish',
+        confirmText: 'Chiqish',
+        cancelText: 'Qolish',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    onClose(false);
+  };
+
+  const handleClearCart = async () => {
+    if (!hasContent) return;
+    const ok = await confirm('Savat tozalansinmi? Qoralama ham o\'chadi.', {
+      title: 'Savatni tozalash',
+      confirmText: 'Tozalash',
+      cancelText: 'Bekor qilish',
+      danger: true,
+    });
+    if (!ok) return;
+    setCart([]);
+    setContactName('');
+    setContactPhone('');
+    setComment('');
+    setSubmitError(null);
+    clearDraft(table.uuid);
+    savedSnap.current = '';
+  };
+
   /* -------------------------------------------------- edit mode (live order) */
   const editItemsTotal = useMemo(
     () => orderItems.reduce((s, i) => s + Number(i.price_at_time_of_order || i.product?.price || 0) * (i.quantity || 0), 0),
     [orderItems],
   );
   const editItemsCount = useMemo(() => orderItems.reduce((s, i) => s + (i.quantity || 0), 0), [orderItems]);
+  // Menyu kartasidagi badge: shu mahsulot buyurtmada nechta (bir mahsulot bir necha qatorda bo'lishi mumkin)
+  const orderQtyByProduct = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of orderItems) {
+      const id = i.product_uuid || i.product?.uuid;
+      if (id) m.set(id, (m.get(id) || 0) + Number(i.quantity || 0));
+    }
+    return m;
+  }, [orderItems]);
 
   const handleAddProductToOrder = async (product: Product) => {
     if (!orderUuid || actionLoading) return;
@@ -310,11 +418,11 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     setPrintingPreCheck(true);
     try {
       if (isEditMode) {
-        await printPreCheckUtil({ table_number: table.table_number, total_price: editItemsTotal, split_count: splitCount, items: orderItems });
+        await printPreCheckUtil({ table_number: table.table_number, total_price: total, split_count: splitCount, items: orderItems });
       } else {
         await printPreCheckUtil({
           table_number: table.table_number,
-          total_price: cartSubtotal,
+          total_price: total,
           items: cart.map((i) => ({ product_name: i.product.name, price_at_time_of_order: i.product.price, quantity: i.quantity })),
         });
       }
@@ -355,14 +463,59 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   };
 
   const orderMins = table.current_order?.created_at ? minutesSince(table.current_order.created_at) : null;
-  const total = isEditMode ? editItemsTotal : cartSubtotal;
+  const subtotal = isEditMode ? editItemsTotal : cartSubtotal;
+  // Server bilan bir xil: foiz summaning so'mgacha yaxlitlangani (backend: service_charge_for)
+  const serviceAmount = scPercent > 0 && subtotal > 0 ? Math.round((subtotal * scPercent) / 100) : 0;
+  const total = subtotal + serviceAmount;
   const count = isEditMode ? editItemsCount : cartCount;
+
+  /** Mahsulot bosilganda uning rasmi savat tomon uchib boradi (telefonda savat yashirin bo'lsa — animatsiya yo'q) */
+  const cartRef = useRef<HTMLDivElement>(null);
+  const flyToCart = (card: HTMLElement) => {
+    const target = cartRef.current?.getBoundingClientRect();
+    const src = (card.querySelector('img') ?? card.firstElementChild) as HTMLElement | null;
+    if (!target || target.width === 0 || !src) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const from = src.getBoundingClientRect();
+    const size = 56;
+    const ghost = document.createElement('div');
+    Object.assign(ghost.style, {
+      position: 'fixed',
+      left: from.left + from.width / 2 - size / 2 + 'px',
+      top: from.top + from.height / 2 - size / 2 + 'px',
+      width: size + 'px',
+      height: size + 'px',
+      borderRadius: '16px',
+      overflow: 'hidden',
+      zIndex: '200',
+      pointerEvents: 'none',
+      boxShadow: '0 8px 24px rgba(0,0,0,.25)',
+      background: 'rgb(var(--color-brand))',
+    });
+    if (src instanceof HTMLImageElement && src.src) {
+      const img = document.createElement('img');
+      img.src = src.src;
+      Object.assign(img.style, { width: '100%', height: '100%', objectFit: 'cover' });
+      ghost.appendChild(img);
+    }
+    document.body.appendChild(ghost);
+    const dx = target.left + target.width / 2 - (from.left + from.width / 2);
+    const dy = target.top + Math.min(90, target.height / 3) - (from.top + from.height / 2);
+    const anim = ghost.animate(
+      [
+        { transform: 'translate(0,0) scale(1)', opacity: 1 },
+        { transform: `translate(${dx * 0.55}px, ${dy * 0.55 - 40}px) scale(0.85)`, opacity: 1, offset: 0.55 },
+        { transform: `translate(${dx}px, ${dy}px) scale(0.25)`, opacity: 0.35 },
+      ],
+      { duration: 650, easing: 'cubic-bezier(.4,0,.2,1)' },
+    );
+    anim.onfinish = anim.oncancel = () => ghost.remove();
+  };
 
   /* --------------------------------------------------------------- panes */
   const menuPane = (
-    <div className={`${mobilePane === 'menu' ? 'flex' : 'hidden'} md:flex md:col-span-7 flex-col min-h-0 md:border-r border-edge`}>
+    <div className={`${mobilePane === 'menu' ? 'flex' : 'hidden'} md:flex md:col-span-8 flex-col min-h-0 md:border-r border-edge`}>
       <div className="px-4 md:px-5 pt-3 space-y-2.5 shrink-0">
-        <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder={`${w.product} nomi bo'yicha qidirish`} />
         {categories.length > 0 && (
           <Tabs
             size="sm"
@@ -382,26 +535,30 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         ) : errorCatalog ? (
           <ErrorState message={errorCatalog} onRetry={fetchCatalog} />
         ) : filteredProducts.length === 0 ? (
-          <EmptyState title={searchQuery ? 'Hech narsa topilmadi' : `${w.products} yo'q`} description={searchQuery ? "Boshqa so'z bilan qidirib ko'ring." : undefined} />
+          <EmptyState title={`${w.products} yo'q`} />
         ) : (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 items-start">
             {filteredProducts.map((p) => {
-              const qty = isEditMode ? 0 : cartQty(p.uuid);
+              const qty = isEditMode ? orderQtyByProduct.get(p.uuid) || 0 : cartQty(p.uuid);
               const adding = actionLoading === p.uuid;
               return (
                 <div
                   key={p.uuid}
-                  className={`rounded-2xl border bg-surface overflow-hidden flex flex-col ${
+                  className={`relative rounded-2xl border bg-surface overflow-hidden flex flex-col ${
                     !p.is_available ? 'opacity-50 border-edge' : qty > 0 ? 'border-brand/40 ring-2 ring-brand/10' : 'border-edge'
                   }`}
                 >
                   <button
                     type="button"
                     disabled={!p.is_available || (isEditMode && !!actionLoading)}
-                    onClick={() => (isEditMode ? handleAddProductToOrder(p) : setCartQty(p, qty + 1))}
+                    onClick={(e) => {
+                      flyToCart(e.currentTarget);
+                      if (isEditMode) handleAddProductToOrder(p);
+                      else setCartQty(p, qty + 1);
+                    }}
                     className="text-left flex-1 flex flex-col cursor-pointer disabled:cursor-not-allowed"
                   >
-                    <div className="h-24 bg-field relative flex items-center justify-center">
+                    <div className="h-36 bg-field relative flex items-center justify-center">
                       {p.image_url ? (
                         <img src={p.image_url} alt="" loading="lazy" className="w-full h-full object-cover" />
                       ) : (
@@ -429,11 +586,6 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                       </span>
                     </div>
                   </button>
-                  {!isEditMode && qty > 0 && (
-                    <div className="px-2 pb-2 flex justify-center">
-                      <QtyStepper size="sm" value={qty} onChange={(v) => setCartQty(p, v)} />
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -443,10 +595,81 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     </div>
   );
 
+  const footer = (
+    <div className="w-full space-y-2">
+      <div className="space-y-0.5">
+        <div className="flex items-center justify-between text-[13px] text-muted font-semibold">
+          <span>Jami{count > 0 ? ` · ${count} ta` : ''}</span>
+          <span className="tabular-nums">{formatMoney(subtotal)}</span>
+        </div>
+        {scPercent > 0 && (
+          <div className="flex items-center justify-between text-[13px] text-muted font-semibold">
+            <span>Xizmat haqi ({scPercent}%)</span>
+            <span className="tabular-nums">{formatMoney(serviceAmount)}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between pt-0.5">
+          <span className="text-[14px] text-ink font-extrabold">Umumiy summa</span>
+          <span className="text-[20px] font-black text-ink tracking-tightest tabular-nums leading-tight">{formatMoney(total)}</span>
+        </div>
+      </div>
+      {isEditMode && orderItems.length > 0 && (
+        <SplitBill total={total} count={splitCount} onChange={setSplitCount} />
+      )}
+      {!isEditMode ? (
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" icon={<ArrowLeft className="w-4 h-4" />} onClick={handleBack}>
+              Orqaga
+            </Button>
+            <Button variant="outline" icon={<Trash2 className="w-4 h-4" />} disabled={!hasContent} onClick={handleClearCart}>
+              Tozalash
+            </Button>
+            <Button variant="outline" icon={<FileText className="w-4 h-4" />} loading={printingPreCheck} disabled={cart.length === 0} onClick={handlePrintPreCheck}>
+              Pre-chek
+            </Button>
+            <Button variant="outline" icon={<Save className="w-4 h-4" />} disabled={cart.length === 0} onClick={handleSaveDraft}>
+              Saqlash
+            </Button>
+          </div>
+          <Button size="lg" className="w-full" icon={<CheckCircle className="w-5 h-5" />} loading={submitting} disabled={cart.length === 0} onClick={handleCreateOrder}>
+            Buyurtma yaratish
+          </Button>
+        </div>
+      ) : (
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="lg"
+          icon={<FileText className="w-4 h-4" />}
+          loading={printingPreCheck}
+          disabled={isEditMode ? orderItems.length === 0 : cart.length === 0}
+          onClick={handlePrintPreCheck}
+          className="shrink-0"
+        >
+          Pre-chek
+        </Button>
+        {isEditMode ? (
+          <Button
+            variant="success"
+            size="lg"
+            className="flex-1"
+            icon={<CreditCard className="w-5 h-5" />}
+            disabled={orderItems.length === 0 || loadingItems}
+            onClick={() => setPaymentOpen(true)}
+          >
+            To'lov qilish
+          </Button>
+        ) : null}
+      </div>
+      )}
+    </div>
+  );
+
   const orderPane = (
-    <div className={`${mobilePane === 'order' ? 'flex' : 'hidden'} md:flex md:col-span-5 flex-col min-h-0`}>
-      <div className="flex-1 overflow-y-auto overscroll-contain px-4 md:px-5 py-3 space-y-3">
-        <div className="text-[13px] font-bold text-muted uppercase tracking-wide">{isEditMode ? 'Buyurtma tarkibi' : 'Savat'}</div>
+    <div className={`${mobilePane === 'order' ? 'flex' : 'hidden'} md:flex md:col-span-4 flex-col min-h-0`}>
+      <div className="shrink-0 px-4 md:px-5 pt-3 text-[13px] font-bold text-muted uppercase tracking-wide">{isEditMode ? 'Buyurtma tarkibi' : 'Savat'}</div>
+      <div ref={cartRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 md:px-5 pt-2 pb-3 space-y-3">
 
         {isEditMode ? (
           loadingItems ? (
@@ -502,8 +725,25 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
           </div>
         )}
 
+        {submitError && <InlineAlert>{submitError}</InlineAlert>}
+      </div>
         {!isEditMode && (
-          <div className="space-y-3 pt-2">
+          <div className="space-y-3 pt-2 px-4 md:px-5 pb-3 shrink-0 max-h-[55%] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => setShowExtra((v) => !v)}
+              aria-expanded={showExtra}
+              className="w-full flex items-center justify-between gap-2 text-left text-[13px] font-bold text-muted hover:text-ink cursor-pointer"
+            >
+              <span className="min-w-0 truncate">
+                Qo'shimcha ma'lumot
+                {!showExtra && (contactName || contactPhone.length > 4 || comment) && (
+                  <span className="font-semibold text-ink"> · {[contactName, contactPhone.length > 4 ? contactPhone : '', comment].filter(Boolean).join(', ')}</span>
+                )}
+              </span>
+              <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${showExtra ? 'rotate-180' : ''}`} />
+            </button>
+            <div className={`${showExtra ? 'space-y-3' : 'hidden'}`}>
             <div className="grid grid-cols-1 xs:grid-cols-2 gap-3">
               <Input label="Mijoz ismi" placeholder="Ixtiyoriy" value={contactName} onChange={(e) => setContactName(e.target.value)} />
               <Input
@@ -518,54 +758,10 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
             </div>
             <Textarea label="Izoh" rows={2} placeholder="Masalan: achchiqsiz" value={comment} onChange={(e) => setComment(e.target.value)} />
             <p className="text-[12px] text-muted">To'lov usuli yaratishda so'ralmaydi — buyurtma topshirilganda (hisob-kitobda) bir marta qabul qilinadi.</p>
+            </div>
           </div>
         )}
-
-        {submitError && <InlineAlert>{submitError}</InlineAlert>}
-      </div>
-    </div>
-  );
-
-  const footer = (
-    <div className="w-full space-y-2.5">
-      <div className="flex items-center justify-between">
-        <span className="text-[14px] text-muted font-semibold">
-          Jami{count > 0 ? ` · ${count} ta` : ''}
-        </span>
-        <span className="text-[20px] font-black text-ink tracking-tightest tabular-nums">{formatMoney(total)}</span>
-      </div>
-      {isEditMode && orderItems.length > 0 && (
-        <SplitBill total={editItemsTotal} count={splitCount} onChange={setSplitCount} />
-      )}
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          size="lg"
-          icon={<FileText className="w-4 h-4" />}
-          loading={printingPreCheck}
-          disabled={isEditMode ? orderItems.length === 0 : cart.length === 0}
-          onClick={handlePrintPreCheck}
-          className="shrink-0"
-        >
-          Pre-chek
-        </Button>
-        {isEditMode ? (
-          <Button
-            variant="success"
-            size="lg"
-            className="flex-1"
-            icon={<CreditCard className="w-5 h-5" />}
-            disabled={orderItems.length === 0 || loadingItems}
-            onClick={() => setPaymentOpen(true)}
-          >
-            To'lov qilish
-          </Button>
-        ) : (
-          <Button size="lg" className="flex-1" icon={<CheckCircle className="w-5 h-5" />} loading={submitting} disabled={cart.length === 0} onClick={handleCreateOrder}>
-            Buyurtma yaratish
-          </Button>
-        )}
-      </div>
+      <div className="hidden md:block shrink-0 border-t border-edge px-5 py-3 bg-surface">{footer}</div>
     </div>
   );
 
@@ -573,10 +769,10 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     <>
       <Sheet
         open
-        size="full"
+        size="screen"
         flush
         persistent={submitting || paymentSaving}
-        onClose={() => onClose(itemsChanged)}
+        onClose={() => (isEditMode ? onClose(itemsChanged) : void handleBack())}
         title={
           <span className="flex items-center gap-2">
             Stol {table.table_number}
@@ -589,8 +785,9 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
             : `Yangi buyurtma · ${table.capacity} kishilik`
         }
         footer={footer}
+        footerClassName="md:hidden"
       >
-        <div className="flex flex-col h-[calc(92vh-220px)] md:h-[64vh]">
+        <div className="flex flex-col h-full">
           <div className="md:hidden px-4 pt-3 shrink-0">
             <Segmented
               className="w-full [&>button]:flex-1 [&>button]:justify-center"
@@ -630,7 +827,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         <div className="space-y-4">
           <div className="rounded-2xl bg-field p-4 text-center">
             <div className="text-[13px] text-muted font-semibold">To'lov summasi</div>
-            <div className="text-[28px] font-black text-ink tracking-tightest tabular-nums">{formatMoney(editItemsTotal)}</div>
+            <div className="text-[28px] font-black text-ink tracking-tightest tabular-nums">{formatMoney(total)}</div>
           </div>
           <PaymentPicker value={editPaymentMethod} onChange={setEditPaymentMethod} />
           {splitCount > 1 && (

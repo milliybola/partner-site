@@ -398,7 +398,7 @@ const Shell: React.FC = () => {
               <div className="hidden md:flex items-center gap-3 min-w-0 flex-1">
                 <Logo partner={partner} size={34} />
                 <nav className="flex items-center gap-1 min-w-0 overflow-x-auto no-scrollbar" aria-label="Kassa bo'limlari">
-                  {groups.flatMap((g) => g.items).map((item) => {
+                  {groups.slice(0, 1).flatMap((g) => g.items).map((item) => {
                     const Icon = item.icon;
                     const badge = item.to === '/orders' && unseenNewOrders > 0;
                     return (
@@ -406,8 +406,9 @@ const Shell: React.FC = () => {
                         key={item.to}
                         to={item.to}
                         end={item.end}
+                        title={item.label}
                         className={({ isActive }) =>
-                          `relative shrink-0 inline-flex items-center gap-2 h-11 px-4 rounded-xl text-[15px] font-bold transition-colors ${
+                          `relative shrink-0 inline-flex items-center gap-2 h-11 px-3.5 rounded-xl text-[15px] font-bold transition-colors ${
                             isActive ? 'bg-brand text-white' : 'text-muted hover:bg-field hover:text-ink'
                           }`
                         }
@@ -437,9 +438,27 @@ const Shell: React.FC = () => {
                   <ModeSwitch mode={mode} onChange={changeMode} />
                 </div>
               )}
+              {pos &&
+                groups.slice(1).flatMap((g) => g.items).map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.end}
+                      title={item.label}
+                      aria-label={item.label}
+                      className={({ isActive }) =>
+                        `shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${isActive ? 'bg-brand text-white' : 'text-muted hover:bg-field hover:text-ink'}`
+                      }
+                    >
+                      <Icon className="w-[19px] h-[19px]" />
+                    </NavLink>
+                  );
+                })}
               <ConnectionDot />
               {pos && staffName && (
-                <span className="hidden md:inline-flex items-center h-9 px-3 rounded-full bg-field text-[13px] font-bold text-ink max-w-[160px] truncate">
+                <span className="hidden min-[1500px]:inline-flex items-center h-9 px-3 rounded-full bg-field text-[13px] font-bold text-ink max-w-[160px] truncate">
                   {staffName}
                 </span>
               )}

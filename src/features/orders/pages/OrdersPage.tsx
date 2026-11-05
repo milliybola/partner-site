@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Bell, ListOrdered, Plus, RefreshCw, SlidersHorizontal, X } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
 import type { Order, PaymentPart } from '../services/ordersApi';
@@ -108,6 +108,9 @@ const OrdersPage: React.FC = () => {
   const [prefsOpen, setPrefsOpen] = useState(false);
 
   const [selectedUuid, setSelectedUuid] = useState<string | null>(null);
+  // `/orders?open=<uuid>` — kassadagi Saboy/Dostavka kartasidan: buyurtma tafsiloti ochiladi
+  const [openParams, setOpenParams] = useSearchParams();
+  const openUuid = openParams.get('open');
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [busyUuid, setBusyUuid] = useState<string | null>(null);
   const [printingUuid, setPrintingUuid] = useState<string | null>(null);
@@ -273,6 +276,13 @@ const OrdersPage: React.FC = () => {
     if (!shop || orders.some((o) => o.delivery_type === 'DINE_IN')) opts.push({ value: 'DINE_IN', label: 'Zalda' });
     return opts;
   }, [orders, shop]);
+
+  useEffect(() => {
+    if (!openUuid || !orders.some((o) => o.uuid === openUuid)) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- URL'dagi bir martalik havola
+    setSelectedUuid(openUuid);
+    setOpenParams({}, { replace: true });
+  }, [openUuid, orders, setOpenParams]);
 
   const selectedOrder = selectedUuid ? orders.find((o) => o.uuid === selectedUuid) || null : null;
 
@@ -703,7 +713,7 @@ const OrdersPage: React.FC = () => {
             title="Tez rejim"
             description={
               shop
-                ? "Yangi buyurtma o'zi qabul qilinadi. Barcha qurilmalarda amal qiladi."
+                ? "Yangi buyurtma o'zi qabul qilinadi (stol QR buyurtmasidan tashqari — uni xodim tasdiqlaydi). Barcha qurilmalarda amal qiladi."
                 : "Kichik kafe uchun: yangi buyurtma o'zi qabul qilinib oshxonaga chiqadi, olib ketish va zal buyurtmasi bitta tugma bilan beriladi. Barcha qurilmalarda amal qiladi."
             }
             control={

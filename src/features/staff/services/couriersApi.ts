@@ -23,6 +23,8 @@ export interface CourierModel {
   filial_pool?: string;
   active_orders?: number;
   max_active_orders?: number;
+  /** Oxirgi GPS nuqtasi (yo'q bo'lsa null) */
+  last_location?: { latitude: number; longitude: number; updated_at: string } | null;
   created_at?: string;
 }
 

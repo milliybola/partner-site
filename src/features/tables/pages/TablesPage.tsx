@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clock, FileSpreadsheet, Layers, MoreVertical, Plus, QrCode, RefreshCw, ScanLine, Table2, Users } from 'lucide-react';
+import { Clock, FileSpreadsheet, Layers, MoreVertical, Plus, QrCode, RefreshCw, ScanLine, ShoppingBag, Store, Table2, Truck, Users } from 'lucide-react';
 import { tablesApi } from '../services/tablesApi';
 import type { Hall, TableModel } from '../services/tablesApi';
 import { HallsSheet, TransferSheet } from '../components/HallSheets';
@@ -7,20 +7,34 @@ import { filialApi } from '../../orders/services/filialApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
 import { TableBillSheet } from '../components/TableBillSheet';
 import { TableOrderModal } from '../components/TableOrderModal';
+import { getDrafts, type TableDraft } from '../lib/tableDrafts';
 import { TableQrSheet } from '../components/TableQrPosters';
-import { BulkImportSheet, QrSheet, TableActionsSheet, TableFormSheet, TABLE_STATUS_LABEL } from '../components/TableSheets';
+import { BulkImportSheet, QrSheet, TableActionsSheet, TableFormSheet } from '../components/TableSheets';
 import { useToast } from '../../../core/components/ToastProvider';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ordersApi } from '../../orders/services/ordersApi';
+import type { Order } from '../../orders/services/ordersApi';
+import { statusGroup } from '../../orders/utils/status';
+import { ServiceBoard } from '../components/ServiceBoard';
+import { DispatchBoard } from '../components/DispatchBoard';
+import { CourierPickerSheet } from '../../orders/components/queue/CourierPickerSheet';
+import { couriersApi } from '../../staff/services/couriersApi';
+import type { CourierModel } from '../../staff/services/couriersApi';
 import { limitText, useTariff } from '../../../core/lib/tariff';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
 import { useRealtime } from '../../../core/realtime/RealtimeProvider';
 import type { RealtimeEvent } from '../../../core/realtime/RealtimeProvider';
+import { useWorkMode } from '../../../core/lib/workMode';
 import { getPartner, isCashier, isManager as isManagerRole } from '../../../core/lib/session';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { formatMoney, minutesSince } from '../../../core/lib/format';
-import { Button, EmptyState, ErrorState, IconButton, PageHeader, SearchInput, Skeleton, Tabs } from '../../../core/ui';
+import { Button, EmptyState, ErrorState, IconButton, PageHeader, Skeleton, Tabs } from '../../../core/ui';
 
-type Filter = 'ALL' | 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'INACTIVE';
+/** Stol nomi "Guruh | raqam" shaklida bo'lsa — guruh bo'lim sarlavhasi, raqam esa kartada ko'rinadi */
+const splitName = (name: string): { group: string; num: string } => {
+  const m = /^(.*?)\s*\|\s*(.+)$/.exec(String(name));
+  return m && m[1].trim() ? { group: m[1].trim(), num: m[2].trim() } : { group: '', num: String(name) };
+};
 
 // display_order first, then natural sort ("ZAL 2" before "ZAL 10")
 const sortTables = (list: TableModel[]): TableModel[] =>
@@ -32,83 +46,107 @@ const sortTables = (list: TableModel[]): TableModel[] =>
   });
 
 /**
- * Stol kartasi (kassa uslubida): bo'sh — oq, «+» bilan; band — yashil, summa · vaqt · ofitsiant; bron — ko'k.
- * 60 daqiqadan oshgan band stolda vaqt qizil bo'ladi.
+ * Stol kartasi (kassa uslubida): bo'sh — oq, «+» bilan; band — yashil (raqam va summa tepada, ofitsiant va vaqt pastda);
+ * tasdiq kutayotgan (QR) — sariq; bron — ko'k. Pastda holat chizig'i. 60 daqiqadan oshgan band stolda vaqt qalin va chizilgan.
  */
-const TILE_THEME: Record<string, { tile: string; num: string }> = {
-  AVAILABLE: { tile: 'bg-surface border-edge hover:border-brand/40', num: 'text-ink' },
-  OCCUPIED: { tile: 'bg-brand-soft border-brand/45', num: 'text-brand-dark' },
-  RESERVED: { tile: 'bg-info-soft border-info/40', num: 'text-info' },
+/** Buyurtmani kim ochgan: mehmon (QR), ofitsiant yoki kassa — kartada belgi bilan ajratiladi. */
+const orderOrigin = (o: NonNullable<TableModel['current_order']>) => {
+  if (o.order_source === 'QR') return { icon: QrCode, text: o.waiter_name ? `QR · ${o.waiter_name}` : 'QR-menyu' };
+  if (o.waiter_role === 'waiter') return { icon: Users, text: o.waiter_name || 'Ofitsiant' };
+  return { icon: Store, text: o.waiter_name ? `Kassa · ${o.waiter_name}` : 'Kassa' };
+};
+
+type Tone = { tile: string; text: string; sub: string; strip: string };
+const TONE: Record<'free' | 'open' | 'wait' | 'reserved' | 'draft', Tone> = {
+  draft: { tile: 'bg-warning-soft border-warning border-dashed', text: 'text-ink', sub: 'text-warning-ink', strip: '' },
+  free: { tile: 'bg-surface border-edge hover:border-brand/50', text: 'text-ink', sub: 'text-muted', strip: '' },
+  open: { tile: 'bg-brand-bright border-brand-bright', text: 'text-white', sub: 'text-white/85', strip: 'bg-black/15 text-white' },
+  wait: { tile: 'bg-warning border-warning', text: 'text-ink', sub: 'text-ink/75', strip: 'bg-black/10 text-ink' },
+  reserved: { tile: 'bg-info border-info', text: 'text-white', sub: 'text-white/85', strip: 'bg-black/15 text-white' },
 };
 
 const TableTile: React.FC<{
   table: TableModel;
   now: number;
   canManage: boolean;
+  draft?: TableDraft;
+  /** Kartada katta yoziladigan nom (bo'lim sarlavhasida guruh bo'lsa — faqat raqam) */
+  label?: string;
   onOpen: () => void;
   onMenu: () => void;
-}> = ({ table, now, canManage, onOpen, onMenu }) => {
+}> = ({ table, now, canManage, draft, label, onOpen, onMenu }) => {
   const inactive = table.is_active === false;
-  const theme = TILE_THEME[table.status] || TILE_THEME.AVAILABLE;
   const order = table.current_order;
   const mins = order?.created_at ? minutesSince(order.created_at, now) : null;
   const busy = !!order || table.status === 'OCCUPIED';
+  const waiting = !!order && (order.status === 'PENDING' || order.status === 'NEW');
+  const hasDraft = !!draft && !order && !inactive;
+  const kind = inactive ? 'free' : hasDraft ? 'draft' : waiting ? 'wait' : busy ? 'open' : table.status === 'RESERVED' ? 'reserved' : 'free';
+  const tone = TONE[kind];
+  const strip = waiting ? 'Tasdiq kutilmoqda' : order ? (order.is_paid ? "To'langan" : 'Ochiq hisob') : table.status === 'RESERVED' ? 'Bron' : '';
   return (
     <div
-      className={`relative rounded-2xl border-2 min-h-[124px] flex flex-col transition hover:shadow-card ${
-        inactive ? 'border-dashed border-edge-strong bg-surface opacity-60' : theme.tile
+      className={`relative rounded-xl border-2 min-h-[140px] flex flex-col overflow-hidden transition hover:shadow-card ${
+        inactive ? 'border-dashed border-edge-strong bg-surface opacity-60' : tone.tile
       }`}
     >
       <button
         type="button"
         onClick={onOpen}
-        className="flex-1 text-left p-3 flex flex-col gap-1.5 cursor-pointer rounded-2xl active:scale-[0.98] transition"
+        className="flex-1 text-left p-2.5 flex flex-col gap-1 cursor-pointer active:scale-[0.98] transition"
         aria-label={`Stol ${table.table_number}${busy ? ', band' : ", bo'sh"}`}
       >
-        <span className="flex items-start justify-between gap-2 pr-7">
-          <span className={`text-[24px] font-black tracking-tightest leading-none break-words ${inactive ? 'text-muted' : theme.num}`}>
-            {table.table_number}
+        <span className="flex items-start justify-between gap-2">
+          <span className={`text-[22px] font-black tracking-tightest leading-none break-words ${inactive ? 'text-muted' : tone.text}`}>
+            {label ?? table.table_number}
           </span>
+          {(order || hasDraft) && (
+            <span className={`text-[15px] font-black tabular-nums leading-none ${tone.text}`}>{formatMoney(order ? order.total_price : draft!.subtotal)}</span>
+          )}
         </span>
 
         {inactive ? (
           <span className="mt-auto text-[12px] font-bold text-muted">Nofaol</span>
         ) : order ? (
-          <span className="mt-auto flex flex-col gap-1">
-            <span className="text-[17px] font-black text-ink tabular-nums leading-tight">{formatMoney(order.total_price)}</span>
-            <span className="flex items-center justify-between gap-2 text-[12px] font-bold">
-              {mins !== null && (
-                <span className={`inline-flex items-center gap-1 tabular-nums ${mins >= 60 ? 'text-danger-ink' : 'text-muted'}`}>
-                  <Clock className="w-3.5 h-3.5" />
-                  {mins >= 60 ? `${Math.floor(mins / 60)} s ${mins % 60} daq` : `${mins} daq`}
+          <span className={`mt-auto flex flex-col gap-0.5 text-[12px] font-semibold ${tone.sub}`}>
+            {(() => {
+              const origin = orderOrigin(order);
+              const Icon = origin.icon;
+              return (
+                <span className="inline-flex items-center gap-1 truncate">
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{origin.text}</span>
                 </span>
-              )}
-              <span className="inline-flex items-center gap-1 text-muted">
-                <Users className="w-3.5 h-3.5" />
-                {table.capacity}
+              );
+            })()}
+            {mins !== null && (
+              <span className={`inline-flex items-center gap-1 tabular-nums ${mins >= 60 ? 'font-black underline decoration-2' : ''}`}>
+                <Clock className="w-3.5 h-3.5" />
+                {mins >= 60 ? `${Math.floor(mins / 60)} s ${mins % 60} daq` : `${mins} daq`}
               </span>
-            </span>
-            {order.waiter_name && <span className="text-[12px] font-semibold text-muted truncate">{order.waiter_name}</span>}
+            )}
           </span>
-        ) : table.status === 'RESERVED' ? (
-          <span className="mt-auto flex flex-col gap-0.5">
-            <span className="text-[13px] font-extrabold text-info">{TABLE_STATUS_LABEL.RESERVED || 'Bron'}</span>
-            {table.notes && <span className="text-[12px] text-muted truncate">{table.notes}</span>}
+        ) : hasDraft ? (
+          <span className={`mt-auto inline-flex items-center gap-1 text-[12px] font-extrabold ${tone.sub}`}>
+            <ShoppingBag className="w-3.5 h-3.5" /> Savat saqlangan · {draft!.count} ta
           </span>
         ) : (
           <span className="mt-auto flex items-end justify-between gap-2">
-            <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-muted">
-              <Users className="w-3.5 h-3.5" /> {table.capacity} kishi
+            <span className={`inline-flex items-center gap-1 text-[12px] font-semibold ${tone.sub}`}>
+              <Users className="w-3.5 h-3.5" /> {table.capacity}
             </span>
-            <span className="w-8 h-8 rounded-xl border-2 border-dashed border-edge-strong text-subtle flex items-center justify-center">
-              <Plus className="w-4 h-4" />
-            </span>
+            {table.status !== 'RESERVED' && (
+              <span className="w-8 h-8 rounded-lg border-2 border-dashed border-edge-strong text-subtle flex items-center justify-center">
+                <Plus className="w-4 h-4" />
+              </span>
+            )}
           </span>
         )}
       </button>
+      {!inactive && strip && <div className={`px-2.5 py-1 text-[11px] font-extrabold tracking-wide ${tone.strip}`}>{strip}</div>}
       {canManage && (
-        <IconButton label="Amallar" onClick={onMenu} className="absolute top-0.5 right-0.5">
-          <MoreVertical className="w-5 h-5" />
+        <IconButton label="Amallar" onClick={onMenu} className={`absolute ${strip && !inactive ? "bottom-0 right-0" : "top-0.5 right-0.5"} !min-h-0 !h-6 !w-6 ${strip && !inactive ? tone.text : ""}`}>
+          <MoreVertical className="w-4 h-4" />
         </IconButton>
       )}
     </div>
@@ -123,15 +161,18 @@ const HallRail: React.FC<{
   onChange: (v: string) => void;
   hasUnassigned: boolean;
   onManage?: () => void;
-}> = ({ halls, tables, value, onChange, hasUnassigned, onManage }) => {
+  /** O'z-o'ziga xizmat zali uuid → faol buyurtmalar soni */
+  selfCounts?: Record<string, number>;
+}> = ({ halls, tables, value, onChange, hasUnassigned, onManage, selfCounts = {} }) => {
   const active = tables.filter((t) => t.is_active !== false);
   const stat = (key: string | null) => {
     const list = key === null ? active : active.filter((t) => (t.hall || '') === key);
-    return { busy: list.filter((t) => t.current_order || t.status === 'OCCUPIED').length, all: list.length };
+    const selfBusy = key === null ? Object.values(selfCounts).reduce((a, b) => a + b, 0) : selfCounts[key] || 0;
+    return { busy: list.filter((t) => t.current_order || t.status === 'OCCUPIED').length + selfBusy, all: list.length };
   };
   const items = [
     { key: 'ALL', label: 'Barcha zallar', s: stat(null) },
-    ...halls.map((h) => ({ key: h.uuid, label: h.name, s: stat(h.uuid) })),
+    ...halls.map((h) => ({ key: h.uuid, label: h.self_service ? `${h.name} · o'zi` : h.name, s: stat(h.uuid) })),
     ...(hasUnassigned ? [{ key: '', label: 'Zalsiz', s: stat('') }] : []),
   ];
   return (
@@ -148,9 +189,11 @@ const HallRail: React.FC<{
             }`}
           >
             <span className="truncate">{it.label}</span>
-            <span className={`shrink-0 text-[12px] font-bold tabular-nums ${on ? 'text-white/85' : 'text-muted'}`}>
-              {it.s.busy}/{it.s.all}
-            </span>
+            {it.s.busy > 0 && (
+              <span className={`shrink-0 min-w-[22px] h-[22px] px-1 rounded-full flex items-center justify-center text-[12px] font-black tabular-nums ${on ? "bg-white text-brand" : "bg-danger text-white"}`}>
+                {it.s.busy}
+              </span>
+            )}
           </button>
         );
       })}
@@ -190,9 +233,63 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<Filter>('ALL');
-  const [search, setSearch] = useState('');
   const [now, setNow] = useState(() => Date.now());
+
+  // Ko'rinish: Zal (stollar) / Saboy (olib ketish) / Dostavka (yetkazish) — ?view=PICKUP|DELIVERY
+  const [sp, setSp] = useSearchParams();
+  const isPos = useWorkMode() === 'pos'; // katta rejim kartalari va Saboy/Dostavka — faqat kassa rejimida
+  type ViewKey = 'TABLES' | 'PICKUP' | 'DELIVERY';
+  const viewParam = sp.get('view');
+  const view: ViewKey = !isPos ? 'TABLES' : viewParam === 'PICKUP' || viewParam === 'DELIVERY' ? viewParam : 'TABLES';
+  const setView = (v: ViewKey) => setSp(v === 'TABLES' ? {} : { view: v }, { replace: true });
+  const [svcOrders, setSvcOrders] = useState<Order[]>([]);
+  const [svcLoading, setSvcLoading] = useState(true);
+  const fetchSvcOrders = useCallback(async () => {
+    try {
+      const all = await ordersApi.getOrders();
+      // Saboy, Dostavka va o'z-o'ziga xizmat zali (stolsiz zal buyurtmasi) — faol buyurtmalar
+      setSvcOrders(
+        all.filter(
+          (o) => (o.delivery_type === 'PICKUP' || o.delivery_type === 'DELIVERY' || (o.delivery_type === 'DINE_IN' && !!o.hall_uuid)) && statusGroup(o.status) !== 'DONE',
+        ),
+      );
+    } catch {
+      /* keyingi urinishda */
+    } finally {
+      setSvcLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    void fetchSvcOrders();
+    const t = setInterval(() => void fetchSvcOrders(), 30000);
+    return () => clearInterval(t);
+  }, [fetchSvcOrders]);
+  const [assignOrder, setAssignOrder] = useState<Order | null>(null);
+  const [assigningUuid, setAssigningUuid] = useState<string | null>(null);
+  const [couriers, setCouriers] = useState<CourierModel[]>([]);
+  const [couriersLoading, setCouriersLoading] = useState(true);
+  useEffect(() => {
+    if (!isPos) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const list = await couriersApi.getCouriers();
+        if (alive) setCouriers(list);
+      } catch {
+        /* keyingi urinishda */
+      } finally {
+        if (alive) setCouriersLoading(false);
+      }
+    };
+    void load();
+    const t = setInterval(() => void load(), 30000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [isPos]);
+  const svcCount = (k: 'PICKUP' | 'DELIVERY') => svcOrders.filter((o) => o.delivery_type === k).length;
+  const [drafts, setDrafts] = useState(getDrafts);
 
   const [filials, setFilials] = useState<PartnerFilial[]>([]);
   const [formOpen, setFormOpen] = useState(false);
@@ -256,8 +353,11 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleRefetch = useCallback(() => {
     if (refetchTimer.current) clearTimeout(refetchTimer.current);
-    refetchTimer.current = setTimeout(() => fetchTables(true), 600);
-  }, [fetchTables]);
+    refetchTimer.current = setTimeout(() => {
+      fetchTables(true);
+      void fetchSvcOrders();
+    }, 600);
+  }, [fetchTables, fetchSvcOrders]);
   useEffect(() => () => {
     if (refetchTimer.current) clearTimeout(refetchTimer.current);
   }, []);
@@ -305,23 +405,53 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   }, [tables]);
 
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
     return tables.filter((t) => {
-      if (filter === 'INACTIVE' && t.is_active !== false) return false;
-      if (filter !== 'ALL' && filter !== 'INACTIVE' && (t.status !== filter || t.is_active === false)) return false;
-      if (hallFilter !== 'ALL' && (t.hall || '') !== hallFilter) return false;
-      if (!q) return true;
-      return String(t.table_number).toLowerCase().includes(q) || String(t.notes || '').toLowerCase().includes(q);
+      return hallFilter === 'ALL' || (t.hall || '') === hallFilter;
     });
-  }, [tables, filter, search, hallFilter]);
+  }, [tables, hallFilter]);
 
-  // «Barchasi» tanlanganda va zallar bo'lsa — stollar zallar bo'yicha bo'limlarga bo'linadi
+  // Bo'limlar: zal bo'yicha; zalga biriktirilmagan stollar nomidagi guruh ("Ko'cha | 1" → «Ko'cha») bo'yicha
   const sections = useMemo(() => {
-    if (hallFilter !== 'ALL' || halls.length === 0) return [{ key: 'all', title: '', items: visible }];
-    const list = [...halls.map((h) => ({ key: h.uuid, title: h.name })), { key: '', title: 'Zalsiz' }];
-    return list.map((h) => ({ ...h, items: visible.filter((t) => (t.hall || '') === h.key) })).filter((h) => h.items.length > 0);
+    type Sec = { key: string; title: string; items: TableModel[]; byName: boolean };
+    const byPrefix = (items: TableModel[], emptyTitle: string): Sec[] => {
+      const map = new Map<string, TableModel[]>();
+      for (const t of items) {
+        const g = splitName(t.table_number).group;
+        map.set(g, [...(map.get(g) || []), t]);
+      }
+      if (map.size === 1 && map.has('') && !emptyTitle) return [{ key: 'all', title: '', items, byName: false }];
+      return [...map.entries()].map(([g, list]) => ({ key: `n:${g}`, title: g || emptyTitle, items: list, byName: !!g }));
+    };
+    if (hallFilter === '') return byPrefix(visible, 'Zalsiz');
+    if (hallFilter !== 'ALL') return [{ key: 'all', title: '', items: visible, byName: false }];
+    if (halls.length === 0) return byPrefix(visible, '');
+    const hallSecs: Sec[] = halls
+      .map((h) => ({ key: h.uuid, title: h.name, items: visible.filter((t) => t.hall === h.uuid), byName: false }))
+      .filter((h) => h.items.length > 0);
+    return [...hallSecs, ...byPrefix(visible.filter((t) => !t.hall), 'Zalsiz')];
   }, [visible, halls, hallFilter]);
   const hasUnassigned = halls.length > 0 && tables.some((t) => !t.hall);
+  // O'z-o'ziga xizmat zallari: stol o'rniga buyurtma kartalari (kassada stolsiz olinadi)
+  const selfHalls = useMemo(() => halls.filter((h) => h.self_service), [halls]);
+  const selfOrders = useCallback(
+    (hallUuid: string) => svcOrders.filter((o) => o.delivery_type === 'DINE_IN' && o.hall_uuid === hallUuid),
+    [svcOrders],
+  );
+  const selfCounts = useMemo(() => Object.fromEntries(selfHalls.map((h) => [h.uuid, selfOrders(h.uuid).length])), [selfHalls, selfOrders]);
+  const selectedSelfHall = selfHalls.find((h) => h.uuid === hallFilter) || null;
+  const newSelfOrder = (h: Hall) => navigate(`/new-order?type=DINE_IN&hall=${h.uuid}&hall_name=${encodeURIComponent(h.name)}`);
+  const selfBoard = (h: Hall, compact: boolean) => (
+    <ServiceBoard
+      kind="DINE_IN"
+      title={h.name}
+      compact={compact}
+      orders={selfOrders(h.uuid)}
+      now={now}
+      loading={svcLoading}
+      onNew={() => newSelfOrder(h)}
+      onOpen={(uuid) => navigate(`/orders?open=${uuid}`)}
+    />
+  );
 
   const openBulk = () => (tariff.can_add_table ? setBulkOpen(true) : limitReached());
 
@@ -374,13 +504,49 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   };
 
   const qrUrl = partner?.uuid ? `https://qr-code.milliyapp.uz/${partner.uuid}` : null;
-  const busy = counts.OCCUPIED;
 
   return (
     <div className="pb-4">
       <PageHeader
-        title="Stollar"
-        subtitle={loading ? 'Yuklanmoqda...' : `${counts.ALL} ta stol · ${busy} ta band · ${counts.AVAILABLE} ta bo'sh`}
+        title={isPos ? undefined : 'Stollar'}
+        subtitle={isPos ? undefined : loading ? 'Yuklanmoqda...' : `${counts.ALL} ta stol · ${counts.OCCUPIED} ta band · ${counts.AVAILABLE} ta bo'sh`}
+        lead={!isPos ? undefined : (
+          <div className="grid grid-cols-3 gap-2.5 max-w-3xl" role="tablist" aria-label="Buyurtma turi">
+            {(
+              [
+                { value: 'TABLES', label: 'Zal', count: counts.OCCUPIED, icon: <Table2 className="w-6 h-6" /> },
+                { value: 'PICKUP', label: 'Olib ketish', count: svcCount('PICKUP'), icon: <ShoppingBag className="w-6 h-6" /> },
+                { value: 'DELIVERY', label: 'Yetkazib berish', count: svcCount('DELIVERY'), icon: <Truck className="w-6 h-6" /> },
+              ] as const
+            ).map((m) => {
+              const on = view === m.value;
+              return (
+                <button
+                  key={m.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => setView(m.value)}
+                  className={`h-[68px] px-4 rounded-2xl border-2 flex items-center justify-between gap-3 text-left transition cursor-pointer active:scale-[0.98] ${
+                    on ? 'bg-brand border-brand text-white shadow-card' : 'bg-surface border-edge text-ink hover:border-brand/50'
+                  }`}
+                >
+                  <span className="flex items-center gap-3 min-w-0">
+                    <span className={on ? 'text-white' : 'text-muted'}>{m.icon}</span>
+                    <span className="text-[17px] md:text-[19px] font-black tracking-tightest truncate">{m.label}</span>
+                  </span>
+                  <span
+                    className={`shrink-0 min-w-[34px] h-[34px] px-2 rounded-full flex items-center justify-center text-[17px] font-black tabular-nums ${
+                      on ? 'bg-white text-brand' : m.count > 0 ? 'bg-brand text-white' : 'bg-field text-muted'
+                    }`}
+                  >
+                    {m.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         actions={
           <>
             <IconButton label="Yangilash" variant="outline" onClick={() => fetchTables(true)} disabled={refreshing}>
@@ -396,7 +562,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
                 <ScanLine className="w-[18px] h-[18px]" />
               </IconButton>
             )}
-            {canManage && qrUrl && (
+            {canManage && !isPos && qrUrl && (
               <IconButton label="QR-kod" variant="outline" onClick={() => setQrOpen(true)}>
                 <QrCode className="w-[18px] h-[18px]" />
               </IconButton>
@@ -419,34 +585,46 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
         }
       >
         <div className="space-y-2.5">
-          <Tabs<Filter>
-            value={filter}
-            onChange={setFilter}
-            options={[
-              { value: 'ALL', label: 'Barchasi', count: counts.ALL },
-              { value: 'AVAILABLE', label: "Bo'sh", count: counts.AVAILABLE },
-              { value: 'OCCUPIED', label: 'Band', count: counts.OCCUPIED },
-              { value: 'RESERVED', label: 'Rezerv', count: counts.RESERVED },
-              ...(counts.INACTIVE > 0 ? [{ value: 'INACTIVE' as Filter, label: 'Nofaol', count: counts.INACTIVE }] : []),
-            ]}
-          />
-          {halls.length > 0 && (
+          {view === 'TABLES' && halls.length > 0 && (
             <div className="lg:hidden">
             <Tabs<string>
               value={hallFilter}
               onChange={setHallFilter}
               options={[
                 { value: 'ALL', label: 'Barcha zallar' },
-                ...halls.map((h) => ({ value: h.uuid, label: h.name, count: tables.filter((t) => t.hall === h.uuid).length })),
+                ...halls.map((h) => ({
+                  value: h.uuid,
+                  label: h.name,
+                  count: h.self_service ? selfCounts[h.uuid] || 0 : tables.filter((t) => t.hall === h.uuid).length,
+                })),
                 ...(hasUnassigned ? [{ value: '', label: 'Zalsiz', count: tables.filter((t) => !t.hall).length }] : []),
               ]}
             />
             </div>
           )}
-          {tables.length > 8 && <SearchInput value={search} onChange={setSearch} placeholder="Stol raqami yoki izoh bo'yicha qidirish" className="md:max-w-sm" />}
         </div>
       </PageHeader>
 
+      {view === 'DELIVERY' ? (
+        <DispatchBoard
+          orders={svcOrders.filter((o) => o.delivery_type === 'DELIVERY')}
+          couriers={couriers}
+          now={now}
+          loading={svcLoading || couriersLoading}
+          onNew={() => navigate('/new-order?type=DELIVERY')}
+          onOpen={(uuid) => navigate(`/orders?open=${uuid}`)}
+          onAssign={setAssignOrder}
+        />
+      ) : view !== 'TABLES' ? (
+        <ServiceBoard
+          kind={view}
+          orders={svcOrders.filter((o) => o.delivery_type === view)}
+          now={now}
+          loading={svcLoading}
+          onNew={() => navigate(`/new-order?type=${view}`)}
+          onOpen={(uuid) => navigate(`/orders?open=${uuid}`)}
+        />
+      ) : (
       <div className="mt-2 flex gap-4">
         {halls.length > 0 && !loading && !error && (
           <HallRail
@@ -456,19 +634,32 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             onChange={setHallFilter}
             hasUnassigned={hasUnassigned}
             onManage={canManage ? () => setHallsOpen(true) : undefined}
+            selfCounts={selfCounts}
           />
         )}
         <div className="flex-1 min-w-0">
-        {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-7 gap-2.5">
+        {/* «Barcha zallar»: o'z-o'ziga xizmat zallarining faol buyurtmalari stollar ustida */}
+        {hallFilter === 'ALL' && !selectedSelfHall &&
+          selfHalls.map((h) => (
+            <section key={h.uuid} className="mb-5">
+              <h2 className="mb-0 text-[13px] font-extrabold uppercase tracking-wider text-subtle">
+                {h.name} <span className="text-muted normal-case">· o'z-o'ziga xizmat · {selfCounts[h.uuid] || 0}</span>
+              </h2>
+              {selfBoard(h, true)}
+            </section>
+          ))}
+        {selectedSelfHall ? (
+          selfBoard(selectedSelfHall, false)
+        ) : loading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
             {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-[124px] rounded-2xl" />
+              <Skeleton key={i} className="h-[140px] rounded-xl" />
             ))}
           </div>
         ) : error ? (
           <ErrorState message={error} onRetry={() => fetchTables()} />
         ) : visible.length === 0 ? (
-          tables.length === 0 ? (
+          tables.length === 0 && selfHalls.length > 0 ? null : tables.length === 0 ? (
             <EmptyState
               icon={<Table2 className="w-7 h-7" />}
               title="Hali stol qo'shilmagan"
@@ -489,18 +680,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           ) : (
             <EmptyState
               title="Mos stol topilmadi"
-              description="Filtr yoki qidiruv shartini o'zgartiring."
-              action={
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setFilter('ALL');
-                    setSearch('');
-                  }}
-                >
-                  Filtrni tozalash
-                </Button>
-              }
+              description="Tanlangan zalda stol yo'q."
             />
           )
         ) : (
@@ -512,12 +692,14 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
                     {sec.title} <span className="text-muted">· {sec.items.length}</span>
                   </h2>
                 )}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-7 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
             {sec.items.map((t) => (
               <TableTile
                 key={t.uuid}
                 table={t}
                 now={now}
+                draft={drafts[t.uuid]}
+                label={sec.byName ? splitName(t.table_number).num : undefined}
                 canManage
                 onOpen={() => {
                   if (t.is_active === false) {
@@ -537,6 +719,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
         )}
         </div>
       </div>
+      )}
 
       <TableActionsSheet
         table={menuTable}
@@ -580,6 +763,30 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
       />
 
       <TableBillSheet table={billTable} canPay={manager} onClose={() => setBillTable(null)} onChanged={() => void fetchTables(true)} />
+
+      <CourierPickerSheet
+        order={assignOrder}
+        couriers={couriers}
+        filials={filials}
+        loading={couriersLoading}
+        assigningUuid={assigningUuid}
+        onClose={() => setAssignOrder(null)}
+        onAssign={async (courierUuid) => {
+          if (!assignOrder) return;
+          setAssigningUuid(courierUuid);
+          try {
+            await ordersApi.assignOwnCourier(assignOrder.uuid, courierUuid);
+            toast.success('Kuryer biriktirildi, buyurtma qabul qilindi.');
+            setAssignOrder(null);
+            void fetchSvcOrders();
+            couriersApi.getCouriers().then(setCouriers).catch(() => undefined);
+          } catch (err) {
+            toast.error(getErrorMessage(err, 'Kuryerni biriktirishda xatolik yuz berdi.'));
+          } finally {
+            setAssigningUuid(null);
+          }
+        }}
+      />
 
       <TableFormSheet
         open={formOpen}
@@ -638,6 +845,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           table={orderingTable}
           onClose={(refresh) => {
             setOrderingTable(null);
+            setDrafts(getDrafts());
             if (refresh) fetchTables(true);
           }}
         />

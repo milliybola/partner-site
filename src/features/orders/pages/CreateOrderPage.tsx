@@ -3,11 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   CheckCircle,
+  ChevronDown,
   ChevronUp,
   FileText,
   FolderOpen,
   Lock,
-  Minus,
   Plus,
   Printer,
   ShoppingBag,
@@ -34,7 +34,6 @@ import {
   InlineAlert,
   Input,
   QtyStepper,
-  SearchInput,
   Select,
   Sheet,
   Skeleton,
@@ -137,6 +136,9 @@ interface CartTab {
   comment: string;
   /** Qo'ng'iroqdan ochilgan buyurtma: yaratilgach shu call yozuvi `resolve` qilinadi */
   callUuid?: string;
+  /** O'z-o'ziga xizmat zali (stol o'rniga): buyurtma stolsiz, xizmat haqisiz */
+  hallUuid?: string;
+  hallName?: string;
   cart: CartItem[];
   step: 'SERVICE_TYPE' | 'TABLE_SELECT' | 'MENU';
 }
@@ -201,7 +203,6 @@ const CreateOrderPage: React.FC = () => {
   // Catalog
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeCategoryUuid, setActiveCategoryUuid] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [errorCatalog, setErrorCatalog] = useState<string | null>(null);
 
@@ -255,6 +256,50 @@ const CreateOrderPage: React.FC = () => {
   const [printingPreCheck, setPrintingPreCheck] = useState(false);
   const [printingReceipt, setPrintingReceipt] = useState(false);
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
+  /** Mijoz, telefon, manzil, izoh — odatda yashirin (stol savatidagidek) */
+  const [showExtra, setShowExtra] = useState(false);
+
+  /** Mahsulot bosilganda rasmi savat tomon uchib boradi (savat ko'rinmasa — animatsiya yo'q) */
+  const flyToCart = (card: HTMLElement) => {
+    const target = document.getElementById('new-order-cart-panel')?.getBoundingClientRect();
+    const src = (card.querySelector('img') ?? card.firstElementChild) as HTMLElement | null;
+    if (!target || target.width === 0 || !src) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const from = src.getBoundingClientRect();
+    const size = 56;
+    const ghost = document.createElement('div');
+    Object.assign(ghost.style, {
+      position: 'fixed',
+      left: from.left + from.width / 2 - size / 2 + 'px',
+      top: from.top + from.height / 2 - size / 2 + 'px',
+      width: size + 'px',
+      height: size + 'px',
+      borderRadius: '16px',
+      overflow: 'hidden',
+      zIndex: '200',
+      pointerEvents: 'none',
+      boxShadow: '0 8px 24px rgba(0,0,0,.25)',
+      background: 'rgb(var(--color-brand))',
+    });
+    if (src instanceof HTMLImageElement && src.src) {
+      const img = document.createElement('img');
+      img.src = src.src;
+      Object.assign(img.style, { width: '100%', height: '100%', objectFit: 'cover' });
+      ghost.appendChild(img);
+    }
+    document.body.appendChild(ghost);
+    const dx = target.left + target.width / 2 - (from.left + from.width / 2);
+    const dy = target.top + Math.min(90, target.height / 3) - (from.top + from.height / 2);
+    const anim = ghost.animate(
+      [
+        { transform: 'translate(0,0) scale(1)', opacity: 1 },
+        { transform: `translate(${dx * 0.55}px, ${dy * 0.55 - 40}px) scale(0.85)`, opacity: 1, offset: 0.55 },
+        { transform: `translate(${dx}px, ${dy}px) scale(0.25)`, opacity: 0.35 },
+      ],
+      { duration: 650, easing: 'cubic-bezier(.4,0,.2,1)' },
+    );
+    anim.onfinish = anim.oncancel = () => ghost.remove();
+  };
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
@@ -290,6 +335,36 @@ const CreateOrderPage: React.FC = () => {
     // URL tozalanadi: sahifa yangilansa qayta to'ldirilmasin
     setSearchParams({}, { replace: true });
   }, [searchParams, setSearchParams, activeCarts, activeCartId, shop]);
+
+  // `/new-order?type=PICKUP|DELIVERY` — kassadagi «Saboy» / «Dostavka» bo'limidan: shu turdagi savat ochiladi
+  const typeParam = searchParams.get('type');
+  const hallParam = searchParams.get('hall') || '';
+  const hallNameParam = searchParams.get('hall_name') || '';
+  const typeApplied = useRef('');
+  useEffect(() => {
+    const selfService = typeParam === 'DINE_IN' && !!hallParam;
+    if ((typeParam !== 'PICKUP' && typeParam !== 'DELIVERY' && !selfService) || shop) return;
+    const applyKey = `${typeParam}|${hallParam}`;
+    if (typeApplied.current === applyKey) return;
+    typeApplied.current = applyKey;
+    const svc = typeParam as ServiceType;
+    const hall = selfService ? { hallUuid: hallParam, hallName: hallNameParam || 'Zal' } : { hallUuid: undefined, hallName: undefined };
+    const current = activeCarts.find((c) => c.id === activeCartId) || activeCarts[0];
+    if (current && current.cart.length === 0 && normalizePhone(current.contactPhone) === '') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- URL'dagi bir martalik tanlovni savatga ko'chirish
+      setActiveCarts((prev) => prev.map((c) => (c.id === current.id ? { ...c, serviceType: svc, selectedTableUuid: '', ...hall, step: 'MENU' as const } : c)));
+      setActiveCartId(current.id);
+    } else {
+      const tab = { ...newCartTab(activeCarts.length + 1, shop), serviceType: svc, ...hall, step: 'MENU' as const };
+      setActiveCarts((prev) => [...prev, tab]);
+      setActiveCartId(tab.id);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('type');
+    next.delete('hall');
+    next.delete('hall_name');
+    setSearchParams(next, { replace: true });
+  }, [typeParam, hallParam, hallNameParam, searchParams, setSearchParams, activeCarts, activeCartId, shop]);
 
   /* ------------------------------------------------------------ tables */
   const fetchTables = useCallback(async () => {
@@ -333,6 +408,8 @@ const CreateOrderPage: React.FC = () => {
 
   const activeCart = useMemo(() => activeCarts.find((c) => c.id === activeCartId) || activeCarts[0], [activeCarts, activeCartId]);
   const { cart, serviceType, selectedTableUuid, contactName, contactPhone, address, comment, step } = activeCart;
+  /** O'z-o'ziga xizmat zali buyurtmasi: stol tanlanmaydi, xizmat haqi yo'q */
+  const selfHall = serviceType === 'DINE_IN' && activeCart.hallUuid ? { uuid: activeCart.hallUuid, name: activeCart.hallName || 'Zal' } : null;
   const currentId = activeCart.id;
 
   const updateActiveCart = useCallback(
@@ -355,12 +432,13 @@ const CreateOrderPage: React.FC = () => {
     const num = idx !== -1 ? idx + 1 : 1;
     let name = `Savat ${num}`;
     if (step !== 'SERVICE_TYPE') {
-      if (serviceType === 'DINE_IN') name = selectedTable ? `Stol ${selectedTable.table_number}` : `Stol tanlash #${num}`;
+      if (serviceType === 'DINE_IN' && activeCart.hallUuid) name = `${activeCart.hallName || 'Zal'} #${num}`;
+      else if (serviceType === 'DINE_IN') name = selectedTable ? `Stol ${selectedTable.table_number}` : `Stol tanlash #${num}`;
       else if (serviceType === 'DELIVERY') name = contactName.trim() ? `Yetkazish: ${contactName.trim()}` : `Yetkazish #${num}`;
       else if (serviceType === 'PICKUP') name = contactName.trim() ? `Olib ketish: ${contactName.trim()}` : `Olib ketish #${num}`;
     }
     if (activeCart.name !== name) updateActiveCart({ name });
-  }, [serviceType, selectedTable, contactName, step, activeCart.name, activeCarts, currentId, updateActiveCart]);
+  }, [serviceType, selectedTable, contactName, step, activeCart.name, activeCart.hallUuid, activeCart.hallName, activeCarts, currentId, updateActiveCart]);
 
   /* ----------------------------------------------------------- catalog */
   const fetchCatalog = useCallback(async () => {
@@ -558,10 +636,8 @@ const CreateOrderPage: React.FC = () => {
     } else {
       list = categories.find((c) => c.uuid === activeCategoryUuid)?.products || [];
     }
-    const q = searchQuery.trim().toLowerCase();
-    if (q) list = list.filter((p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q));
     return list;
-  }, [categories, activeCategoryUuid, searchQuery]);
+  }, [categories, activeCategoryUuid]);
 
   // Kg qatori "1 ta buyurtma pozitsiyasi" hisoblanadi, kasr son emas
   const itemsCount = cart.reduce((s, i) => s + (Number.isInteger(i.quantity) ? i.quantity : 1), 0);
@@ -597,7 +673,8 @@ const CreateOrderPage: React.FC = () => {
   const quote = cart.length > 0 && quoteState?.key === quoteKey ? quoteState.quote : null;
   const quoteError = cart.length > 0 && quoteState?.key === quoteKey ? quoteState.error : null;
   const discountTotal = quote ? Number(quote.discount_amount) || 0 : 0;
-  const serviceCharge = quote ? Number(quote.service_charge_amount) || 0 : 0;
+  // O'z-o'ziga xizmat zalida xizmat haqi yo'q (server ham qo'shmaydi)
+  const serviceCharge = quote && !selfHall ? Number(quote.service_charge_amount) || 0 : 0;
   const serviceChargePercent = quote ? Number(quote.service_charge_percent) || 0 : 0;
   const quoteLine = (idx: number) => quote?.items[idx];
 
@@ -623,7 +700,7 @@ const CreateOrderPage: React.FC = () => {
 
   const unavailableInCart = cart.filter((i) => !i.product.is_available);
   const isFormValid =
-    cart.length > 0 && unavailableInCart.length === 0 && (serviceType !== 'DINE_IN' || selectedTableUuid.trim().length > 0);
+    cart.length > 0 && unavailableInCart.length === 0 && (serviceType !== 'DINE_IN' || !!selfHall || selectedTableUuid.trim().length > 0);
 
   /* ------------------------------------------------------------ steps */
   const handleServiceSelect = (type: ServiceType) => {
@@ -632,7 +709,7 @@ const CreateOrderPage: React.FC = () => {
       navigate(`/plan?need=${type === 'PICKUP' ? 'pickup' : 'dine_in'}`);
       return;
     }
-    updateActiveCart({ serviceType: type, step: type === 'DINE_IN' ? 'TABLE_SELECT' : 'MENU' });
+    updateActiveCart({ serviceType: type, hallUuid: undefined, hallName: undefined, step: type === 'DINE_IN' ? 'TABLE_SELECT' : 'MENU' });
   };
 
   const handleTableSelect = async (table: TableModel) => {
@@ -651,7 +728,7 @@ const CreateOrderPage: React.FC = () => {
     setPrintingPreCheck(true);
     try {
       await printPreCheckUtil({
-        table_number: serviceType === 'DINE_IN' ? selectedTable?.table_number || null : null,
+        table_number: serviceType === 'DINE_IN' ? selfHall?.name || selectedTable?.table_number || null : null,
         total_price: total,
         items: cart.map((i, idx) => {
           const q = quoteLine(idx);
@@ -679,7 +756,7 @@ const CreateOrderPage: React.FC = () => {
           address: serviceType === 'DELIVERY' ? address.trim() : undefined,
           delivery_type: serviceType,
           delivery_type_display: SERVICE_LABEL[serviceType],
-          table_number: serviceType === 'DINE_IN' ? selectedTable?.table_number || null : null,
+          table_number: serviceType === 'DINE_IN' ? selfHall?.name || selectedTable?.table_number || null : null,
           items: cart.map((i, idx) => {
             const q = quoteLine(idx);
             return {
@@ -768,7 +845,7 @@ const CreateOrderPage: React.FC = () => {
               client_uuid: clientUuid,
             }
           : {
-              table: selectedTableUuid,
+              ...(selfHall ? { hall: selfHall.uuid } : { table: selectedTableUuid }),
               payment_method: 'CASH',
               contact_phone: phone || undefined,
               contact_name: contactName.trim() || undefined,
@@ -793,7 +870,7 @@ const CreateOrderPage: React.FC = () => {
       else if (kind === 'PICKUP') created = await ordersApi.createPickupOrder(payload as Parameters<typeof ordersApi.createPickupOrder>[0]);
       else {
         created = await ordersApi.createDineInOrder(payload as Parameters<typeof ordersApi.createDineInOrder>[0]);
-        if (selectedTableUuid) tablesApi.updateTableStatus(selectedTableUuid, 'OCCUPIED').catch(() => undefined);
+        if (selectedTableUuid && !selfHall) tablesApi.updateTableStatus(selectedTableUuid, 'OCCUPIED').catch(() => undefined);
       }
       setQueuedOffline(false);
       finish(created?.data?.uuid);
@@ -805,11 +882,13 @@ const CreateOrderPage: React.FC = () => {
       // Internet yo'q: buyurtma navbatga yoziladi, oshxona cheki shu yerning o'zida chiqadi
       const label =
         kind === 'DINE_IN'
-          ? `${selectedTable?.table_number ?? ''}-stol`
+          ? selfHall
+            ? selfHall.name
+            : `${selectedTable?.table_number ?? ''}-stol`
           : `${kind === 'PICKUP' ? 'Olib ketish' : 'Yetkazish'}${contactName.trim() ? ` · ${contactName.trim()}` : ''}`;
       enqueueOrder({ id: clientUuid, kind, payload, label, total: subtotal + serviceCharge });
       printKitchenTicket({
-        table_number: kind === 'DINE_IN' ? selectedTable?.table_number : null,
+        table_number: kind === 'DINE_IN' ? selfHall?.name || selectedTable?.table_number : null,
         delivery_type: kind,
         description: comment.trim() || undefined,
         items: cart.map((i) => ({
@@ -828,7 +907,7 @@ const CreateOrderPage: React.FC = () => {
   /* =============================================================== UI */
 
   const cartTabsBar = (
-    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0 py-1">
+    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0 py-1 lg:shrink-0">
       {activeCarts.map((c) => {
         const active = c.id === currentId;
         const count = c.cart.reduce((s, i) => s + i.quantity, 0);
@@ -985,18 +1064,18 @@ const CreateOrderPage: React.FC = () => {
   };
 
   /* ---------------------------------------------------- checkout panel */
-  const checkoutBody = (
-    <div className="space-y-5">
-      {cart.length === 0 ? (
-        <EmptyState icon={<ShoppingBag className="w-7 h-7" />} title="Savat bo'sh" description={`Menyudan ${w.product.toLowerCase()} qo'shing`} className="py-8" />
-      ) : (
-        <div className="divide-y divide-edge">
+  // Stol buyurtmasidagi savat bilan bir xil tuzilma: ro'yxat → qo'shimcha ma'lumot → jami → tugmalar
+  const cartLines =
+    cart.length === 0 ? (
+      <EmptyState icon={<ShoppingBag className="w-7 h-7" />} title="Savat bo'sh" description={`Menyudan ${w.product.toLowerCase()} qo'shing`} className="py-8" />
+    ) : (
+        <div className="space-y-2">
           {cart.map((i, idx) => {
             const q = quoteLine(idx);
             const gift = giftOf(i);
             const note = dealNote(i);
             return (
-            <div key={keyOf(i)} className="py-3 flex items-center gap-3">
+            <div key={keyOf(i)} className="rounded-2xl border border-edge bg-surface p-3 flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <div className="text-[14px] font-bold text-ink truncate" title={i.product.name}>
                   {i.product.name}
@@ -1034,8 +1113,10 @@ const CreateOrderPage: React.FC = () => {
             );
           })}
         </div>
-      )}
+    );
 
+  const cartNotices = (
+    <>
       {fromCache && (
         <InlineAlert tone="warning">Internet yo'q — menyu oxirgi saqlangan nusxadan. Buyurtmalar navbatga yoziladi va keyin yuboriladi.</InlineAlert>
       )}
@@ -1047,7 +1128,17 @@ const CreateOrderPage: React.FC = () => {
         </InlineAlert>
       )}
 
-      {serviceType === 'DINE_IN' && (
+      {selfHall && (
+        <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-field">
+          <Utensils className="w-5 h-5 text-brand shrink-0" />
+          <div className="min-w-0">
+            <div className="text-[15px] font-extrabold truncate">{selfHall.name} · o'z-o'ziga xizmat</div>
+            <div className="text-[12px] text-muted">Stolsiz: taom tayyor bo'lganda buyurtma raqami bilan chaqiriladi, to'lov berishda</div>
+          </div>
+        </div>
+      )}
+
+      {serviceType === 'DINE_IN' && !selfHall && (
         <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-field">
           <div className="flex items-center gap-2.5 min-w-0">
             <Utensils className="w-5 h-5 text-brand shrink-0" />
@@ -1071,7 +1162,27 @@ const CreateOrderPage: React.FC = () => {
           ))}
         </Select>
       )}
+    </>
+  );
 
+  const mainInline = serviceType !== 'DINE_IN'; // Olib ketish / Yetkazish: ism, telefon, manzil — asosiy ma'lumot, doim ko'rinadi
+  const extraSummary = (mainInline ? [comment] : [contactName, normalizePhone(contactPhone) ? contactPhone : '', comment]).filter(Boolean).join(', ');
+  const extraToggle = (
+    <button
+      type="button"
+      onClick={() => setShowExtra((v) => !v)}
+      aria-expanded={showExtra}
+      className="w-full flex items-center justify-between gap-2 py-2 text-left text-[13px] font-bold text-muted hover:text-ink cursor-pointer"
+    >
+      <span className="min-w-0 truncate">
+        Qo'shimcha ma'lumot
+        {!showExtra && extraSummary && <span className="font-semibold text-ink"> · {extraSummary}</span>}
+      </span>
+      <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${showExtra ? 'rotate-180' : ''}`} />
+    </button>
+  );
+  const mainFields = (
+    <div className="space-y-3 py-3">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
         <Input
           label="Mijoz ismi"
@@ -1097,18 +1208,21 @@ const CreateOrderPage: React.FC = () => {
           }}
         />
       </div>
-
       {serviceType === 'DELIVERY' && (
-        <div className="space-y-2">
-          <Textarea
-            label="Yetkazish manzili (ixtiyoriy)"
-            rows={2}
-            placeholder="Ko'cha, uy, podyezd, qavat, mo'ljal"
-            value={address}
-            onChange={(e) => updateActiveCart({ address: e.target.value })}
-          />
-        </div>
+        <Textarea
+          label="Yetkazish manzili (ixtiyoriy)"
+          rows={2}
+          placeholder="Ko'cha, uy, podyezd, qavat, mo'ljal"
+          value={address}
+          onChange={(e) => updateActiveCart({ address: e.target.value })}
+        />
       )}
+    </div>
+  );
+
+  const extraFields = (
+    <div className="space-y-4 pb-2">
+      {!mainInline && mainFields}
       {/* To'lov yaratishda so'ralmaydi: buyurtma naqd/to'lanmagan yaratiladi, to'lov usuli topshirishda (PaymentSheet) bir marta qabul qilinadi. */}
       <p className="text-[12px] text-muted">To'lov usuli bu yerda so'ralmaydi — buyurtma topshirilganda bir marta qabul qilinadi.</p>
 
@@ -1119,71 +1233,98 @@ const CreateOrderPage: React.FC = () => {
         value={comment}
         onChange={(e) => updateActiveCart({ comment: e.target.value })}
       />
+    </div>
+  );
 
-      <div className="rounded-2xl bg-field p-4 space-y-2 text-[14px]">
-        <div className="flex justify-between text-muted">
-          <span>Mahsulotlar ({itemsCount} ta)</span>
-          <span>{formatMoney(subtotal)}</span>
-        </div>
-        {discountTotal > 0 && (
-          <div className="flex justify-between text-brand font-semibold">
-            <span>Aksiya / chegirma (hisobga olingan)</span>
-            <span>−{formatMoney(discountTotal)}</span>
-          </div>
-        )}
-        {serviceType === 'DELIVERY' && (
-          <div className="flex justify-between text-muted">
-            <span>Yetkazib berish</span>
-            <span>{deliveryFee === null ? 'Server hisoblaydi' : deliveryFee === 0 ? 'Bepul' : formatMoney(deliveryFee)}</span>
-          </div>
-        )}
-        {serviceCharge > 0 && (
-          <div className="flex justify-between text-muted">
-            <span>Xizmat haqi{serviceChargePercent > 0 ? ` (${serviceChargePercent}%)` : ''}</span>
-            <span>{formatMoney(serviceCharge)}</span>
-          </div>
-        )}
-        <div className="flex justify-between items-baseline pt-1 border-t border-edge-strong">
-          <span className="font-bold">{deliveryFee === null ? 'Jami (yetkazishsiz)' : 'Jami'}</span>
-          <span className="text-[20px] font-black tracking-tightest">{formatMoney(total)}</span>
-        </div>
+  const totalsBlock = (
+    <div className="space-y-0.5">
+      <div className="flex items-center justify-between text-[13px] text-muted font-semibold">
+        <span>Jami · {itemsCount} ta</span>
+        <span className="tabular-nums">{formatMoney(subtotal)}</span>
       </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        <Button size="md" variant="outline" className="px-2 text-[13px]" loading={printingPreCheck} disabled={cart.length === 0} onClick={handlePrintPreCheck} icon={<FileText className="w-4 h-4" />}>
-          Pre-chek
-        </Button>
-        <Button size="md" variant="outline" className="px-2 text-[13px]" loading={printingReceipt} disabled={cart.length === 0} onClick={() => handlePrintReceipt(false)} icon={<Printer className="w-4 h-4" />}>
-          Chek
-        </Button>
+      {discountTotal > 0 && (
+        <div className="flex items-center justify-between text-[13px] text-brand font-semibold">
+          <span>Aksiya / chegirma</span>
+          <span className="tabular-nums">−{formatMoney(discountTotal)}</span>
+        </div>
+      )}
+      {serviceType === 'DELIVERY' && (
+        <div className="flex items-center justify-between text-[13px] text-muted font-semibold">
+          <span>Yetkazib berish</span>
+          <span className="tabular-nums">{deliveryFee === null ? 'Server hisoblaydi' : deliveryFee === 0 ? 'Bepul' : formatMoney(deliveryFee)}</span>
+        </div>
+      )}
+      {serviceCharge > 0 && (
+        <div className="flex items-center justify-between text-[13px] text-muted font-semibold">
+          <span>Xizmat haqi{serviceChargePercent > 0 ? ` (${serviceChargePercent}%)` : ''}</span>
+          <span className="tabular-nums">{formatMoney(serviceCharge)}</span>
+        </div>
+      )}
+      <div className="flex items-center justify-between pt-0.5">
+        <span className="text-[14px] text-ink font-extrabold">{deliveryFee === null ? 'Umumiy summa (yetkazishsiz)' : 'Umumiy summa'}</span>
+        <span className="text-[20px] font-black text-ink tracking-tightest tabular-nums leading-tight">{formatMoney(total)}</span>
       </div>
+    </div>
+  );
 
+  const goBack = () => updateActiveCart({ step: serviceType === 'DINE_IN' && !selfHall ? 'TABLE_SELECT' : 'SERVICE_TYPE' });
+  const actionGrid = (
+    <div className="grid grid-cols-2 gap-2">
+      {!shop && (
+        <Button variant="outline" icon={<ArrowLeft className="w-4 h-4" />} onClick={goBack}>
+          Orqaga
+        </Button>
+      )}
+      <Button variant="outline" icon={<Trash2 className="w-4 h-4" />} disabled={cart.length === 0 && !contactName && !comment} onClick={clearCart}>
+        Tozalash
+      </Button>
+      <Button variant="outline" icon={<FileText className="w-4 h-4" />} loading={printingPreCheck} disabled={cart.length === 0} onClick={handlePrintPreCheck}>
+        Pre-chek
+      </Button>
+      <Button variant="outline" icon={<Printer className="w-4 h-4" />} loading={printingReceipt} disabled={cart.length === 0} onClick={() => handlePrintReceipt(false)}>
+        Chek
+      </Button>
+    </div>
+  );
+
+  // Telefon / planshet (Sheet): hammasi bitta aylanuvchi ro'yxatda
+  const checkoutBody = (
+    <div className="space-y-4">
+      {cartLines}
+      {cartNotices}
+      {mainInline && mainFields}
+      <div>
+        {extraToggle}
+        {showExtra && extraFields}
+      </div>
+      {totalsBlock}
+      {actionGrid}
       {submitError && <InlineAlert tone="danger">{submitError}</InlineAlert>}
     </div>
   );
 
   const submitButton = (
     <Button size="xl" block loading={submitting} disabled={!isFormValid} onClick={handleSubmitOrder} icon={!submitting ? <CheckCircle className="w-5 h-5" /> : undefined}>
-      {submitting ? 'Yuborilmoqda...' : `Buyurtma berish · ${formatMoney(total)}`}
+      {submitting ? 'Yuborilmoqda...' : 'Buyurtma yaratish'}
     </Button>
   );
 
   /* ------------------------------------------------------- step: menu */
   const renderMenuStep = () => {
     const headerTitle =
-      serviceType === 'DINE_IN' ? `Stol ${selectedTable?.table_number || ''}`.trim() : SERVICE_LABEL[serviceType];
+      selfHall ? selfHall.name : serviceType === 'DINE_IN' ? `Stol ${selectedTable?.table_number || ''}`.trim() : SERVICE_LABEL[serviceType];
     return (
-      <div className="pt-2 lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-6 items-start">
-        <div className="min-w-0">
+      <div className="pt-2 lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:grid-rows-[minmax(0,1fr)] lg:gap-6 lg:flex-1 lg:min-h-0 items-start lg:items-stretch">
+        <div className="min-w-0 lg:flex lg:flex-col lg:min-h-0 lg:h-full">
           {/* Sticky search + categories */}
-          <div className="sticky top-[var(--appbar-h,56px)] z-20 -mx-4 md:-mx-8 lg:mx-0 px-4 md:px-8 lg:px-0 pt-2 pb-3 bg-canvas/95 backdrop-blur">
+          <div className="sticky top-[var(--appbar-h,56px)] z-20 -mx-4 md:-mx-8 lg:mx-0 px-4 md:px-8 lg:px-0 pt-2 pb-3 bg-canvas/95 backdrop-blur lg:static lg:shrink-0">
             <div className="flex items-center gap-2 mb-2.5">
               {!shop && (
                 <button
                   type="button"
                   aria-label="Orqaga"
-                  onClick={() => updateActiveCart({ step: serviceType === 'DINE_IN' ? 'TABLE_SELECT' : 'SERVICE_TYPE' })}
-                  className="w-11 h-11 -ml-2 rounded-xl flex items-center justify-center hover:bg-field cursor-pointer shrink-0"
+                  onClick={() => updateActiveCart({ step: serviceType === 'DINE_IN' && !selfHall ? 'TABLE_SELECT' : 'SERVICE_TYPE' })}
+                  className="lg:hidden w-11 h-11 -ml-2 rounded-xl flex items-center justify-center hover:bg-field cursor-pointer shrink-0"
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </button>
@@ -1192,12 +1333,11 @@ const CreateOrderPage: React.FC = () => {
                 <div className="text-[18px] md:text-[20px] font-black tracking-tightest truncate">{headerTitle}</div>
               </div>
               {cart.length > 0 && (
-                <Button size="sm" variant="ghost" className="text-danger-ink" onClick={clearCart}>
+                <Button size="sm" variant="ghost" className="lg:hidden text-danger-ink" onClick={clearCart}>
                   Tozalash
                 </Button>
               )}
             </div>
-            <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder={`${w.product} qidirish...`} />
             <div className="mt-2.5 flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0">
               {[{ uuid: 'all', name: `Barcha ${w.products.toLowerCase()}` }, ...categories].map((c) => {
                 const active = activeCategoryUuid === c.uuid;
@@ -1221,7 +1361,8 @@ const CreateOrderPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Product grid */}
+          {/* Product grid: kompyuterda faqat shu qism aylanadi */}
+          <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
           {loadingCatalog ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -1247,7 +1388,7 @@ const CreateOrderPage: React.FC = () => {
               />
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-4 gap-3 items-start">
               {filteredProducts.map((p) => {
                 const qty = qtyOf(p.uuid);
                 return (
@@ -1260,10 +1401,13 @@ const CreateOrderPage: React.FC = () => {
                     <button
                       type="button"
                       disabled={!p.is_available}
-                      onClick={() => addToCart(p)}
+                      onClick={(e) => {
+                        flyToCart(e.currentTarget);
+                        addToCart(p);
+                      }}
                       className="text-left flex-1 flex flex-col cursor-pointer disabled:cursor-not-allowed"
                     >
-                      <div className="relative aspect-[4/3] bg-field flex items-center justify-center overflow-hidden">
+                      <div className="relative h-36 bg-field flex items-center justify-center overflow-hidden">
                         {p.image_url ? (
                           <img src={p.image_url} alt="" loading="lazy" className="w-full h-full object-cover" />
                         ) : (
@@ -1296,34 +1440,6 @@ const CreateOrderPage: React.FC = () => {
                         </div>
                       </div>
                     </button>
-                    <div className="px-3 pb-3">
-                      {qty > 0 && !isConfigurable(p) ? (
-                        <div className="flex items-center bg-brand-soft rounded-xl">
-                          <button
-                            type="button"
-                            aria-label="Kamaytirish"
-                            onClick={() => setQty(p, qty - 1)}
-                            className="h-11 flex-1 flex items-center justify-center text-brand rounded-xl hover:bg-brand/10 cursor-pointer"
-                          >
-                            <Minus className="w-4 h-4" />
-                          </button>
-                          <span className="text-[15px] font-extrabold text-brand tabular-nums min-w-[2rem] text-center">{qty}</span>
-                          <button
-                            type="button"
-                            aria-label="Ko'paytirish"
-                            disabled={!p.is_available}
-                            onClick={() => addToCart(p)}
-                            className="h-11 flex-1 flex items-center justify-center text-brand rounded-xl hover:bg-brand/10 cursor-pointer disabled:opacity-40"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <Button block variant="secondary" disabled={!p.is_available} onClick={() => addToCart(p)} icon={<Plus className="w-4 h-4" />}>
-                          Qo'shish
-                        </Button>
-                      )}
-                    </div>
                   </div>
                 );
               })}
@@ -1331,16 +1447,27 @@ const CreateOrderPage: React.FC = () => {
           )}
           {/* space for floating cart bar */}
           {cart.length > 0 && <div className="lg:hidden h-20" aria-hidden />}
+          </div>
         </div>
 
-        {/* Desktop cart column */}
-        <aside className="hidden lg:flex flex-col sticky top-[calc(var(--appbar-h,56px)+12px)] max-h-[calc(100vh-var(--appbar-h,56px)-24px)] bg-surface border border-edge rounded-3xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-edge flex items-center justify-between">
-            <h3 className="text-[17px] font-extrabold tracking-tightest">Savat</h3>
-            <span className="text-[13px] text-muted">{itemsCount} ta</span>
+        {/* Desktop cart column: sarlavha qotib turadi, faqat ro'yxat aylanadi; jami va tugmalar pastda */}
+        <aside className="hidden lg:flex flex-col h-full min-h-0 bg-surface border border-edge rounded-3xl overflow-hidden">
+          <div className="shrink-0 px-5 pt-4 pb-2 text-[13px] font-bold text-muted uppercase tracking-wide">Savat{itemsCount > 0 ? ` · ${itemsCount} ta` : ''}</div>
+          <div id="new-order-cart-panel" className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 pb-3 space-y-3">
+            {cartLines}
+            {cartNotices}
           </div>
-          <div className="flex-1 overflow-y-auto px-5 py-4">{checkoutBody}</div>
-          <div className="border-t border-edge p-4">{submitButton}</div>
+          <div className="shrink-0 border-t border-edge px-5 max-h-[50%] overflow-y-auto">
+            {mainInline && mainFields}
+            {extraToggle}
+            {showExtra && extraFields}
+          </div>
+          <div className="shrink-0 border-t border-edge px-5 py-3 space-y-2">
+            {totalsBlock}
+            {submitError && <InlineAlert tone="danger">{submitError}</InlineAlert>}
+            {actionGrid}
+            {submitButton}
+          </div>
         </aside>
 
         <ProductConfigSheet product={configuring} onClose={() => setConfiguring(null)} onConfirm={(cfg) => configuring && addConfigured(configuring, cfg)} />
@@ -1378,9 +1505,9 @@ const CreateOrderPage: React.FC = () => {
   };
 
   return (
-    <div className="pt-3 animate-fade-in">
+    <div className="pt-3 animate-fade-in lg:flex lg:flex-col lg:h-[calc(100dvh-var(--appbar-h,56px)-24px)]">
       {!shop && shiftOpen === false && (
-        <InlineAlert tone="warning" className="mb-3">
+        <InlineAlert tone="warning" className="mb-3 lg:shrink-0">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="font-semibold">Smena ochilmagan — smenani ochmaguncha buyurtma yaratib bo'lmaydi.</span>
             <Button size="sm" onClick={() => navigate('/shift')}>Smenani ochish</Button>

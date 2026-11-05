@@ -22,6 +22,10 @@ export interface TableCurrentOrder {
   is_paid: boolean;
   total_price: string | number;
   waiter_name: string | null;
+  /** Ochgan xodim roli: waiter | cashier | manager; null — egasi yoki tasdiqlanmagan QR */
+  waiter_role?: string | null;
+  /** QR — mehmon o'zi stol QR'idan; WAITER — xodim (kassa yoki ofitsiant) */
+  order_source?: string;
   items: TableCurrentOrderItem[];
   created_at: string;
 }
@@ -52,6 +56,8 @@ export interface Hall {
   uuid: string;
   name: string;
   display_order: number;
+  /** O'z-o'ziga xizmat: buyurtma kassada stolsiz olinadi, raqam bilan beriladi; xizmat haqi va stol QR yo'q */
+  self_service?: boolean;
   filial_uuid?: string | null;
   tables_count?: number;
 }
@@ -199,7 +205,7 @@ export const tablesApi = {
   createHall: async (payload: { name: string; display_order?: number }): Promise<Hall> =>
     (await apiClient.post<Hall>('partner/halls/', payload)).data,
 
-  updateHall: async (uuid: string, payload: { name?: string; display_order?: number }): Promise<Hall> =>
+  updateHall: async (uuid: string, payload: { name?: string; display_order?: number; self_service?: boolean }): Promise<Hall> =>
     (await apiClient.patch<Hall>(`partner/halls/${uuid}/`, payload)).data,
 
   deleteHall: async (uuid: string): Promise<void> => {

@@ -91,6 +91,8 @@ export const getQueueActions = (order: Order, rawCtx: ActionContext): { primary?
         danger: { kind: 'cancel', label: 'Bekor qilish', tone: 'danger' },
       };
     case 'READY_FOR_PICKUP':
+      // Yetkazib berishda «Tayyor»dan keyingi holatni faqat kuryer o'zgartiradi (olib ketdi → yo'lda → yetkazildi)
+      if (delivery) return { secondary };
       return {
         primary: { kind: 'pay_and_complete', label: delivery ? "To'lov va yakunlash" : 'Mijozga berish', tone: 'primary' },
         secondary: [

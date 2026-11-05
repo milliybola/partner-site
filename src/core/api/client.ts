@@ -29,8 +29,8 @@ apiClient.interceptors.request.use(
 
 // Rahbar tanlagan "ishlayotgan filial": ro'yxat so'rovlariga `filial_uuid` qo'shiladi, buyurtma yaratishda body'ga yoziladi.
 // Xodim uchun getWorkingFilial() doim null — hech narsa o'zgarmaydi. Aniq berilgan filial_uuid ustuvor.
-const FILIAL_SCOPED_LISTS = /^(orders|orders\/partner-pos|orders\/partner-management|partner\/statistics|partner\/couriers)\/?(\?.*)?$/;
-const FILIAL_SCOPED_CREATES = /^orders\/partner-pos\/create-(delivery|pickup)\/?$/;
+const FILIAL_SCOPED_LISTS = /^(orders|orders\/partner-pos|orders\/partner-management|partner\/statistics|partner\/couriers|partner\/tables|partner\/tables\/available|partner\/halls)\/?(\?.*)?$/;
+const FILIAL_SCOPED_CREATES = /^(orders\/partner-pos\/create-(delivery|pickup)|partner\/tables|partner\/halls)\/?$/;
 apiClient.interceptors.request.use((config) => {
   const filial = getWorkingFilial();
   if (!filial) return config;

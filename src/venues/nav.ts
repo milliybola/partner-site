@@ -118,6 +118,10 @@ const allowedByTariff = (item: NavItem, t?: PartnerTariff): boolean => {
   }
 };
 
+/** Restoran kassasi: «Sotuv» (stollar) bo'lsa — «Yangi buyurtma» takror, olib tashlanadi. */
+const dropRedundantNewOrder = (items: NavItem[]): NavItem[] =>
+  items.some((i) => i.to === '/tables') ? items.filter((i) => i.to !== '/new-order') : items;
+
 /** Kassa rejimi: faqat kassir ishi — sotuv, stollar, navbat, smena. Boshqaruv bo'limlari yo'q. */
 const POS = (kind: VenueKind): NavGroup[] => [
   {
@@ -130,7 +134,9 @@ const POS = (kind: VenueKind): NavGroup[] => [
             { to: '/picking', label: "Yig'ish", icon: ClipboardCheck },
           ]
         : [
-            { to: '/tables', label: 'Stollar', icon: Table, end: true },
+            // «Sotuv» — zal, olib ketish va yetkazib berish shu yerdan ochiladi; shuning uchun zal bor tarifda
+            // alohida «Yangi buyurtma» kerak emas (zalsiz tarifda u yagona kirish — qoladi, qarang posItems)
+            { to: '/tables', label: 'Sotuv', icon: Table, end: true },
             { to: '/new-order', label: 'Yangi buyurtma', icon: PlusCircle },
             { to: '/orders', label: 'Buyurtmalar', icon: ListOrdered },
             { to: '/kitchen', label: 'Oshxona ekrani', icon: ChefHat },
@@ -161,23 +167,23 @@ export const buildNav = (
   const kind = venueOf(p);
   const groups = mode === 'pos' ? POS(kind) : kind === 'store' ? STORE(owner) : RESTAURANT(owner);
   return groups
-    .map((g) => ({
-      ...g,
-      items: g.items.filter(
+    .map((g) => {
+      const allowed = g.items.filter(
         (i) =>
           allowedByTariff(i, tariff) &&
           !(i.to === '/overview' && filialCount !== undefined && filialCount < 2) &&
           // Ombor kichik kafega og'irlik — Sozlamalarda yoqilgandagina ko'rinadi
           !(i.to === '/warehouse' && !work?.warehouse_enabled),
-      ),
-    }))
+      );
+      return { ...g, items: mode === 'pos' ? dropRedundantNewOrder(allowed) : allowed };
+    })
     .filter((g) => g.items.length > 0);
 };
 
 /** Telefondagi pastki 3 ta asosiy tab (4-chisi "Ko'proq"). Har tur uchun o'z asosiy ishi. */
 export const buildTabs = (kind: VenueKind, tariff?: PartnerTariff, mode: WorkMode = 'manage'): NavItem[] =>
   mode === 'pos'
-    ? POS(kind)[0].items.filter((i) => allowedByTariff(i, tariff)).slice(0, 3)
+    ? dropRedundantNewOrder(POS(kind)[0].items.filter((i) => allowedByTariff(i, tariff))).slice(0, 3)
     : kind === 'store'
     ? [
         { to: '/orders', label: 'Buyurtmalar', icon: ListOrdered },

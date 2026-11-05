@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowRightLeft, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { Button, IconButton, InlineAlert, Input, Sheet } from '../../../core/ui';
+import { Button, IconButton, InlineAlert, Input, Sheet, Switch } from '../../../core/ui';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { formatMoney } from '../../../core/lib/format';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
@@ -144,6 +144,12 @@ export const HallsSheet: React.FC<{ open: boolean; halls: Hall[]; onClose: () =>
     if (await run(() => tablesApi.updateHall(editing.uuid, { name: editing.name.trim() }), 'Zal nomi saqlandi')) setEditing(null);
   };
 
+  const toggleSelfService = (h: Hall, on: boolean) =>
+    run(
+      () => tablesApi.updateHall(h.uuid, { self_service: on }),
+      on ? `«${h.name}» — o'z-o'ziga xizmat: buyurtma kassada stolsiz olinadi` : `«${h.name}» — ofitsiantli zal`,
+    );
+
   const remove = async (h: Hall) => {
     const ok = await confirm(`«${h.name}» zalini o'chirasizmi? Undagi stollar o'chmaydi — zalsiz qoladi.`, {
       title: "Zalni o'chirish",
@@ -174,11 +180,17 @@ export const HallsSheet: React.FC<{ open: boolean; halls: Hall[]; onClose: () =>
               </IconButton>
             </div>
           ) : (
-            <div key={h.uuid} className="flex items-center gap-2 h-14 pl-4 pr-1 rounded-2xl bg-field">
+            <div key={h.uuid} className="flex items-center gap-2 min-h-14 py-2 pl-4 pr-1 rounded-2xl bg-field">
               <span className="flex-1 min-w-0">
                 <span className="block text-[15px] font-bold truncate">{h.name}</span>
-                <span className="block text-[12px] text-muted">{h.tables_count ?? 0} ta stol</span>
+                <span className="block text-[12px] text-muted">
+                  {h.self_service ? "O'z-o'ziga xizmat · stolsiz, xizmat haqisiz, QR yo'q" : `Ofitsiantli · ${h.tables_count ?? 0} ta stol`}
+                </span>
               </span>
+              <label className="flex items-center gap-1.5 text-[12px] font-bold text-muted shrink-0" title="O'z-o'ziga xizmat">
+                <span className="hidden sm:inline">O'z-o'ziga xizmat</span>
+                <Switch size="sm" checked={!!h.self_service} disabled={busy} onChange={(v) => toggleSelfService(h, v)} />
+              </label>
               <IconButton label="Nomini o'zgartirish" onClick={() => setEditing({ uuid: h.uuid, name: h.name })}>
                 <Pencil className="w-[18px] h-[18px]" />
               </IconButton>

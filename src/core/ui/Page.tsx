@@ -7,21 +7,23 @@ import { useNavigate } from 'react-router-dom';
  * primary actions stay reachable while scrolling.
  */
 export const PageHeader: React.FC<{
-  title: React.ReactNode;
+  title?: React.ReactNode;
+  /** Sarlavha o'rniga chap tomonda turadigan blok (masalan, katta rejim kartalari) */
+  lead?: React.ReactNode;
   subtitle?: React.ReactNode;
   actions?: React.ReactNode;
   back?: boolean | string;
   badge?: React.ReactNode;
   children?: React.ReactNode; // toolbar row (tabs / filters)
   sticky?: boolean;
-}> = ({ title, subtitle, actions, back, badge, children, sticky = true }) => {
+}> = ({ title, lead, subtitle, actions, back, badge, children, sticky = true }) => {
   const navigate = useNavigate();
   return (
     <div
       className={`${sticky ? 'sticky top-[var(--appbar-h,0px)] z-20' : ''} -mx-4 md:-mx-8 px-4 md:px-8 pt-3 md:pt-6 pb-3 bg-canvas/95 backdrop-blur supports-[backdrop-filter]:bg-canvas/80`}
     >
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className={`flex items-center gap-2 min-w-0 ${lead ? 'flex-1' : ''}`}>
           {back && (
             <button
               type="button"
@@ -32,13 +34,17 @@ export const PageHeader: React.FC<{
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <h1 className="text-[22px] md:text-[26px] font-black text-ink tracking-tightest leading-tight truncate">{title}</h1>
-              {badge}
+          {lead ? (
+            <div className="min-w-0 flex-1">{lead}</div>
+          ) : (
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <h1 className="text-[22px] md:text-[26px] font-black text-ink tracking-tightest leading-tight truncate">{title}</h1>
+                {badge}
+              </div>
+              {subtitle && <p className="text-[13px] md:text-[14px] text-muted mt-0.5 truncate">{subtitle}</p>}
             </div>
-            {subtitle && <p className="text-[13px] md:text-[14px] text-muted mt-0.5 truncate">{subtitle}</p>}
-          </div>
+          )}
         </div>
         {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
       </div>

@@ -64,6 +64,9 @@ export interface Order {
   /** Aralash to'lov taqsimoti; bo'sh — butun summa `payment_method` bilan */
   payment_breakdown?: PaymentPart[];
   order_source?: string;
+  /** O'z-o'ziga xizmat zali buyurtmasi (stolsiz) */
+  hall_uuid?: string | null;
+  hall_name?: string | null;
   /** MilliyGo ilovasidan kelgan buyurtmaning tayyorlash muddati (ISO); boshqalarda null */
   deadline_at?: string | null;
   order_source_display?: string;
@@ -229,7 +232,9 @@ export const ordersApi = {
   },
 
   createDineInOrder: async (payload: {
-    table: string;
+    /** Stol UUID — yoki o'z-o'ziga xizmat zali (`hall`) */
+    table?: string;
+    hall?: string;
     payment_method: string;
     contact_phone?: string;
     contact_name?: string;

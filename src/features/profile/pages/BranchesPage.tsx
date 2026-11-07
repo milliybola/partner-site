@@ -431,6 +431,7 @@ const BranchesPage: React.FC = () => {
             </Select>
           </div>
           <Input label="Manzil" value={form.address} onChange={(e) => set('address', e.target.value)} placeholder="Shahar, ko'cha, uy" />
+          {tariff.allow_dine_in && (
           <Input
             label="Xizmat haqi (%)"
             type="number"
@@ -443,6 +444,7 @@ const BranchesPage: React.FC = () => {
             placeholder="0"
             hint="Stol (zal) buyurtmalariga qo'shiladi, mijoz to'laydi va buyurtmani olgan ofitsiantga hisoblanadi. 0 — olinmaydi."
           />
+          )}
           <YandexLocationPicker
             lat={form.lat}
             lng={form.lng}

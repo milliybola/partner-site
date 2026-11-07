@@ -18,11 +18,12 @@ import {
 } from 'lucide-react';
 import apiClient from '../../../core/api/client';
 import { ordersApi, quotePosCart } from '../services/ordersApi';
-import type { PosItemInput, PosQuote } from '../services/ordersApi';
+import type { Order, PaymentPart, PosItemInput, PosQuote } from '../services/ordersApi';
+import { PaymentSheet } from '../components/queue/PaymentSheet';
 import { tablesApi } from '../../tables/services/tablesApi';
 import type { TableModel } from '../../tables/services/tablesApi';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
-import { printKitchenTicket, printPreCheck as printPreCheckUtil, printReceiptPreview as printReceiptPreviewUtil } from '../utils/printing';
+import { printKitchenTicket, printPreCheck as printPreCheckUtil, printReceipt as printReceiptUtil, printReceiptPreview as printReceiptPreviewUtil } from '../utils/printing';
 import { enqueueOrder, isNetworkError, newClientUuid, withCache, type QueuedKind } from '../../../core/lib/offline';
 import { useToast } from '../../../core/components/ToastProvider';
 import {
@@ -791,11 +792,20 @@ const CreateOrderPage: React.FC = () => {
   };
 
   /* ------------------------------------------------------------ submit */
-  const handleSubmitOrder = async () => {
+  // O'z-o'ziga xizmat zali: to'lov OLDINDAN — avval to'lov oynasi, so'ng buyurtma to'lov bilan bitta so'rovda
+  const [prepayOpen, setPrepayOpen] = useState(false);
+  // Savat tozalangach ham muvaffaqiyat oynasi o'z-o'ziga xizmat matnini ko'rsatsin
+  const [successSelf, setSuccessSelf] = useState(false);
+
+  const handleSubmitOrder = async (prepaid?: { method: string; payments?: PaymentPart[] }) => {
     if (!isFormValid || submitting) return;
     if (!shop && shiftOpen === false) {
       toast.error('Smena ochilmagan. Buyurtma yaratish uchun avval smenani oching.');
       navigate('/shift');
+      return;
+    }
+    if (selfHall && !prepaid) {
+      setPrepayOpen(true);
       return;
     }
 
@@ -846,7 +856,8 @@ const CreateOrderPage: React.FC = () => {
             }
           : {
               ...(selfHall ? { hall: selfHall.uuid } : { table: selectedTableUuid }),
-              payment_method: 'CASH',
+              payment_method: prepaid?.method || 'CASH',
+              ...(prepaid?.payments?.length ? { payments: prepaid.payments } : {}),
               contact_phone: phone || undefined,
               contact_name: contactName.trim() || undefined,
               description: comment.trim() || undefined,
@@ -859,9 +870,14 @@ const CreateOrderPage: React.FC = () => {
       if (activeCart.callUuid && orderUuid) callsApi.resolve(activeCart.callUuid, orderUuid).catch(() => undefined);
       setCartSheetOpen(false);
       setSubmitSuccess(true);
+      setSuccessSelf(!!selfHall);
       if (activeCarts.length > 1) removeTab(currentId);
       else clearCart();
-      redirectTimer.current = setTimeout(() => navigate('/orders'), 1800);
+      if (selfHall && orderUuid) {
+        // Oldindan to'langan: chek (buyurtma raqami bilan) darhol chiqadi — mijoz shu raqam bilan kutadi
+        printReceiptUtil(orderUuid, true).catch((err) => toast.error(getErrorMessage(err, 'Chekni chop etib bo‘lmadi.')));
+      }
+      redirectTimer.current = setTimeout(() => navigate(selfHall ? '/tables' : '/orders'), 1800);
     };
 
     let created: { data?: { uuid?: string } } | undefined;
@@ -1304,9 +1320,29 @@ const CreateOrderPage: React.FC = () => {
   );
 
   const submitButton = (
-    <Button size="xl" block loading={submitting} disabled={!isFormValid} onClick={handleSubmitOrder} icon={!submitting ? <CheckCircle className="w-5 h-5" /> : undefined}>
-      {submitting ? 'Yuborilmoqda...' : 'Buyurtma yaratish'}
+    <Button size="xl" block loading={submitting} disabled={!isFormValid} onClick={() => handleSubmitOrder()} icon={!submitting ? <CheckCircle className="w-5 h-5" /> : undefined}>
+      {submitting ? 'Yuborilmoqda...' : selfHall ? "To'lov va buyurtma berish" : 'Buyurtma yaratish'}
     </Button>
+  );
+
+  // Oldindan to'lov oynasi uchun buyurtma ko'rinishi (hali yaratilmagan — summa savatdan)
+  const prepayOrder = prepayOpen && selfHall
+    ? ({ uuid: `prepay-${currentId}`, id: 0, order_number: selfHall.name, total_price: total, payment_method: 'CASH',
+        delivery_type: 'PICKUP', is_paid: false, table_number: null } as unknown as Order)
+    : null;
+  const prepaySheet = (
+    <PaymentSheet
+      order={prepayOrder}
+      saving={submitting}
+      title="To'lov va buyurtma berish"
+      subtitle={selfHall ? `${selfHall.name} · o'z-o'ziga xizmat — to'lovdan keyin oshxonaga chiqadi` : undefined}
+      confirmLabel="To'lovni qabul qilish va buyurtma berish"
+      onClose={() => !submitting && setPrepayOpen(false)}
+      onSubmit={(method, _split, payments) => {
+        setPrepayOpen(false);
+        void handleSubmitOrder({ method, payments });
+      }}
+    />
   );
 
   /* ------------------------------------------------------- step: menu */
@@ -1518,6 +1554,7 @@ const CreateOrderPage: React.FC = () => {
       {step === 'SERVICE_TYPE' && !shop && renderServiceTypeStep()}
       {step === 'TABLE_SELECT' && !shop && renderTableSelectStep()}
       {(step === 'MENU' || shop) && renderMenuStep()}
+      {prepaySheet}
 
       {submitSuccess && (
         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/40 p-6 animate-fade-in" role="status">
@@ -1527,10 +1564,14 @@ const CreateOrderPage: React.FC = () => {
             </span>
             <h3 className="mt-4 text-[20px] font-black tracking-tightest">{queuedOffline ? 'Oflayn navbatga yozildi' : 'Buyurtma yaratildi'}</h3>
             <p className="mt-1 text-[14px] text-muted">
-              {queuedOffline ? 'Internet tiklanganda serverga avtomatik yuboriladi.' : "Buyurtmalar navbatiga o'tilmoqda..."}
+              {queuedOffline
+                ? 'Internet tiklanganda serverga avtomatik yuboriladi.'
+                : successSelf
+                  ? "To'lov qabul qilindi, chek chiqdi. Mijoz buyurtma raqami bilan kutadi."
+                  : "Buyurtmalar navbatiga o'tilmoqda..."}
             </p>
-            <Button className="mt-5" block size="lg" onClick={() => navigate('/orders')}>
-              Buyurtmalarga o'tish
+            <Button className="mt-5" block size="lg" onClick={() => navigate(successSelf ? '/tables' : '/orders')}>
+              {successSelf ? "Sotuvga qaytish" : "Buyurtmalarga o'tish"}
             </Button>
           </div>
         </div>

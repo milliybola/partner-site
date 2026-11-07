@@ -43,6 +43,9 @@ export const isFinal = (s: string) => ['COMPLETED', 'DELIVERED', 'REJECTED', 'CA
 
 export const getQueueActions = (order: Order, rawCtx: ActionContext): { primary?: QueueAction; secondary: QueueAction[]; danger?: QueueAction } => {
   const delivery = order.delivery_type === 'DELIVERY';
+  // Oldindan to'langan (o'z-o'ziga xizmat zali, onlayn to'lov) — berishda to'lov qayta so'ralmaydi
+  const handOver = (unpaidLabel: string): QueueAction =>
+    order.is_paid ? { kind: 'complete', label: 'Mijozga berish', tone: 'primary' } : { kind: 'pay_and_complete', label: unpaidLabel, tone: 'primary' };
   const ctx = rawCtx.fastMode ? { ...rawCtx, skipPreparing: true } : rawCtx;
   const secondary: QueueAction[] = [];
   if (isHandedToCourier(order)) return { secondary: [] };
@@ -65,6 +68,16 @@ export const getQueueActions = (order: Order, rawCtx: ActionContext): { primary?
       };
     case 'ACCEPTED':
     case 'PREPARING':
+      // O'z-o'ziga xizmat zali: mijoz raqam bilan chaqiriladi — «Tayyor» kassir/oshxona tomonidan belgilanadi.
+      // Mijoz kassa oldida kutib turgan bo'lsa — darhol «Mijozga berish» (to'lov oldindan olingan).
+      if (order.hall_uuid) {
+        return {
+          primary: { kind: 'mark_ready', label: 'Tayyor', tone: 'primary' },
+          secondary: [handOver("To'lov va berish"), ...(order.status === 'PREPARING' ? [{ kind: 'back_to_accepted' as const, label: '"Qabul qilindi"ga qaytarish', tone: 'secondary' as const }] : [])]
+            .map((a) => ({ ...a, tone: 'secondary' as const })),
+          danger: order.status === 'ACCEPTED' ? { kind: 'cancel', label: 'Bekor qilish', tone: 'danger' } : undefined,
+        };
+      }
       if (ctx.fastMode && !delivery) {
         // Tayyor bo'lishini kutib status almashtirilmaydi: berildi/to'landi — yakunlandi.
         // Ilovadan olib ketish buyurtmasida «Tayyor» mijozga xabar yuboradi — ixtiyoriy.
@@ -72,7 +85,7 @@ export const getQueueActions = (order: Order, rawCtx: ActionContext): { primary?
           secondary.push({ kind: 'mark_ready', label: 'Tayyor (mijozga xabar)', tone: 'secondary' });
         }
         return {
-          primary: { kind: 'pay_and_complete', label: order.delivery_type === 'DINE_IN' ? "To'lov va yakunlash" : 'Mijozga berish', tone: 'primary' },
+          primary: handOver(order.delivery_type === 'DINE_IN' ? "To'lov va yakunlash" : 'Mijozga berish'),
           secondary,
           danger: order.status === 'ACCEPTED' ? { kind: 'cancel', label: 'Bekor qilish', tone: 'danger' } : undefined,
         };
@@ -94,7 +107,7 @@ export const getQueueActions = (order: Order, rawCtx: ActionContext): { primary?
       // Yetkazib berishda «Tayyor»dan keyingi holatni faqat kuryer o'zgartiradi (olib ketdi → yo'lda → yetkazildi)
       if (delivery) return { secondary };
       return {
-        primary: { kind: 'pay_and_complete', label: delivery ? "To'lov va yakunlash" : 'Mijozga berish', tone: 'primary' },
+        primary: handOver(order.delivery_type === 'DINE_IN' ? "To'lov va yakunlash" : 'Mijozga berish'),
         secondary: [
           ctx.skipPreparing
             ? { kind: 'back_to_accepted', label: '"Qabul qilindi"ga qaytarish', tone: 'secondary' }

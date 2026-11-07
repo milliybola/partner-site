@@ -58,6 +58,9 @@ export interface Order {
   /** Aksiya/chegirmalar yig'indisi (server hisoblaydi) */
   discount_amount?: number | string;
   waiter_name?: string | null;
+  waiter_uuid?: string | null;
+  /** Biriktirilgan xodim roli: waiter — haqiqiy ofitsiant; cashier/manager — kassa ochgan */
+  waiter_role?: string | null;
   payment?: string;
   payment_method?: string;
   payment_method_display?: string;
@@ -67,6 +70,8 @@ export interface Order {
   /** O'z-o'ziga xizmat zali buyurtmasi (stolsiz) */
   hall_uuid?: string | null;
   hall_name?: string | null;
+  /** O'z-o'ziga xizmat: mijozni chaqirish raqami (filialda har ish kuni 1 dan) */
+  call_number?: number | null;
   /** MilliyGo ilovasidan kelgan buyurtmaning tayyorlash muddati (ISO); boshqalarda null */
   deadline_at?: string | null;
   order_source_display?: string;
@@ -96,7 +101,46 @@ export const getStatusSlug = (status: string): string => {
   }
 };
 
+/** Stol buyurtmasiga biriktiriladigan ofitsiant */
+export interface QrWaiter {
+  uuid: string;
+  name: string;
+  phone?: string;
+}
+
+/** Tasdiq kutayotgan mehmon QR buyurtmasi — to'lanmaydi, oshxonaga chiqmaydi */
+export const isAwaitingQrConfirm = (o: { order_source?: string; status?: string } | null | undefined) =>
+  !!o && o.order_source === 'QR' && (o.status === 'PENDING' || o.status === 'NEW');
+
+/** Stol buyurtmasiga hali haqiqiy ofitsiant biriktirilmagan (kassa ochgan yoki ofitsiantsiz tasdiqlangan) */
+export const needsWaiter = (o: { delivery_type?: string; hall_uuid?: string | null; table_number?: string | null; waiter_role?: string | null }) =>
+  o.delivery_type === 'DINE_IN' && !o.hall_uuid && !!o.table_number && o.waiter_role !== 'waiter';
+
 export const ordersApi = {
+  /** Buyurtmaga biriktiriladigan ofitsiantlar (buyurtma filialidagi faol ofitsiantlar) */
+  getOrderWaiters: async (orderUuid: string): Promise<QrWaiter[]> => {
+    const response = await apiClient.get(`orders/partner-pos/${orderUuid}/waiters/`);
+    return response.data?.data ?? [];
+  },
+
+  /** «Tayyor» — stol buyurtmasida ovqatni olib boradigan ofitsiant bilan (unga push boradi) */
+  markReady: async (orderUuid: string, waiterUuid: string | null): Promise<any> => {
+    const response = await apiClient.post(`orders/partner-management/${orderUuid}/ready_for_pickup/`, waiterUuid ? { waiter_uuid: waiterUuid } : undefined);
+    return response.data;
+  },
+
+  /** Stol buyurtmasiga ofitsiant biriktirish / almashtirish */
+  assignWaiter: async (orderUuid: string, waiterUuid: string): Promise<any> => {
+    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/assign-waiter/`, { waiter_uuid: waiterUuid });
+    return response.data;
+  },
+
+  /** Mehmon QR buyurtmasini tasdiqlash — tanlangan ofitsiant biriktiriladi */
+  confirmQrOrder: async (orderUuid: string, waiterUuid: string | null): Promise<any> => {
+    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/confirm/`, waiterUuid ? { waiter_uuid: waiterUuid } : {});
+    return response.data;
+  },
+
   getOrders: async (filters?: { filialUuid?: string; fromDate?: string; toDate?: string }): Promise<Order[]> => {
     const config: any = {};
     const params: Record<string, string> = {};

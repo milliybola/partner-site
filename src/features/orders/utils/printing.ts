@@ -28,13 +28,21 @@ const receiptEscpos = (d: ReceiptData, device: PrinterDevice, drawer: boolean): 
   if (contacts) p.para(contacts);
   p.bold().line('milliyapp.uz').bold(false).align('left').divider();
 
+  // O'z-o'ziga xizmat: mijoz shu raqam bilan chaqiriladi — markazda eng katta shrift
+  if (d.call_number) {
+    p.align('center').bold().line('BUYURTMA RAQAMINGIZ').size(2, 2).line(String(d.call_number)).size().bold(false);
+    if (d.hall_name) p.line(d.hall_name);
+    p.line('Tayyor bo\'lganda raqamingiz chaqiriladi').align('left').divider();
+  }
+
   // Ma'lumot qatorlari
   if (d.order_number) p.pair('Buyurtma:', d.order_number);
   p.pair('Sana:', d.created_at || new Date().toLocaleString('uz-UZ'));
   if (!isDelivery && d.contact_name) p.pair('Mijoz:', d.contact_name);
   if (!isDelivery && d.contact_phone) p.pair('Tel:', d.contact_phone);
   if (d.delivery_type_display) p.pair('Turi:', d.delivery_type_display);
-  if (d.table_number) p.pair('Stol:', `${d.table_number}-stol`);
+  if (d.hall_name) p.pair('Zal:', d.hall_name);
+  else if (d.table_number) p.pair('Stol:', `${d.table_number}-stol`);
 
   // Yetkazish: kuryerga manzil va telefon (xarita QR yo'q — kuryer ilovasi bor)
   if (isDelivery) {
@@ -95,6 +103,9 @@ const printReceiptData = async (d: ReceiptData, includeOfdQr: boolean) => {
 export interface KitchenTicketInput {
   order_number?: string;
   table_number?: string | null;
+  /** O'z-o'ziga xizmat: chaqiruv raqami va zal (stol o'rniga) */
+  call_number?: number | null;
+  hall_name?: string | null;
   delivery_type?: string;
   waiter_name?: string | null;
   description?: string;
@@ -110,7 +121,8 @@ export const kitchenTicketEscpos = (t: KitchenTicketInput, device: PrinterDevice
   const p = new EscPos(device.width, device.codepage);
   p.align('center').bold().size(2, 2);
   if (t.addition) p.line("QO'SHIMCHA");
-  p.line(t.table_number ? `${t.table_number}-STOL` : KIND_LABEL[t.delivery_type || ''] || 'BUYURTMA');
+  if (t.call_number) p.line(`N ${t.call_number}`).size().line((t.hall_name || 'ZAL').toUpperCase()).size(2, 2);
+  else p.line(t.table_number ? `${t.table_number}-STOL` : KIND_LABEL[t.delivery_type || ''] || 'BUYURTMA');
   p.size().bold(false);
   if (t.order_number) p.line(`#${t.order_number}`);
   p.line(new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' }));
@@ -163,6 +175,9 @@ const esc = (v: unknown): string =>
 
 export interface ReceiptData {
   order_number?: string;
+  /** O'z-o'ziga xizmat: chaqiruv raqami (chekda markazda katta) va zal nomi */
+  call_number?: number | null;
+  hall_name?: string | null;
   created_at?: string;
   contact_name?: string;
   contact_phone?: string;
@@ -442,6 +457,15 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
 
         <div class="divider"></div>
 
+        ${receiptData.call_number ? `
+        <div style="text-align: center; margin: 6px 0 4px;">
+          <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.5px;">BUYURTMA RAQAMINGIZ</div>
+          <div style="font-size: 64px; font-weight: 900; line-height: 1; margin: 4px 0;">№ ${esc(receiptData.call_number)}</div>
+          ${receiptData.hall_name ? `<div style="font-size: 13px; font-weight: 700;">${esc(receiptData.hall_name)}</div>` : ''}
+          <div style="font-size: 11px; margin-top: 2px;">Tayyor bo'lganda raqamingiz chaqiriladi</div>
+        </div>
+        <div class="divider"></div>` : ''}
+
         ${receiptData.order_number ? `
         <div class="info-row">
           <span class="info-label">Buyurtma:</span>
@@ -467,7 +491,11 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
           <span class="info-label">Turi:</span>
           <span class="info-value">${esc(receiptData.delivery_type_display)}</span>
         </div>` : ''}
-        ${receiptData.table_number ? `
+        ${receiptData.hall_name ? `
+        <div class="info-row">
+          <span class="info-label">Zal:</span>
+          <span class="info-value bold">${esc(receiptData.hall_name)}</span>
+        </div>` : receiptData.table_number ? `
         <div class="info-row">
           <span class="info-label">Stol:</span>
           <span class="info-value bold">${esc(receiptData.table_number)}-stol</span>

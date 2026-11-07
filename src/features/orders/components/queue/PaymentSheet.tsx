@@ -34,13 +34,17 @@ interface Props {
   saving: boolean;
   onClose: () => void;
   onSubmit: (method: PaymentMethod, splitCount: number, payments?: PaymentPart[]) => void;
+  /** Oldindan to'lov (o'z-o'ziga xizmat): «To'lov va buyurtma berish» */
+  title?: string;
+  subtitle?: string;
+  confirmLabel?: string;
 }
 
 /** Har buyurtma uchun tanlov holati yangidan boshlanadi (key) — qayta renderlar (WS yangilanishi va h.k.) uni tiklamaydi */
 export const PaymentSheet: React.FC<Props> = ({ order, ...rest }) =>
   order ? <PaymentForm key={order.uuid} order={order} {...rest} /> : null;
 
-const PaymentForm: React.FC<Props & { order: Order }> = ({ order, saving, onClose, onSubmit }) => {
+const PaymentForm: React.FC<Props & { order: Order }> = ({ order, saving, onClose, onSubmit, title, subtitle, confirmLabel }) => {
   const { methods } = usePaymentMethods();
   const [picked, setMethod] = useState<PaymentMethod>(() => normalizePayCode(order.payment_method));
   const [splitCount, setSplitCount] = useState(1);
@@ -72,15 +76,15 @@ const PaymentForm: React.FC<Props & { order: Order }> = ({ order, saving, onClos
       persistent={saving}
       onClose={onClose}
       size="sm"
-      title="To'lov va yakunlash"
-      subtitle={`${orderNo(order)}${order.table_number ? ` · ${order.table_number}-stol` : ''}`}
+      title={title || "To'lov va yakunlash"}
+      subtitle={subtitle ?? `${orderNo(order)}${order.table_number ? ` · ${order.table_number}-stol` : ''}`}
       footer={
         <>
           <Button variant="secondary" size="lg" disabled={saving} onClick={onClose}>
             Bekor qilish
           </Button>
           <Button size="lg" loading={saving} disabled={mixed && !mixedReady} onClick={submit} className="md:min-w-[180px]">
-            Tasdiqlash va yakunlash
+            {confirmLabel || 'Tasdiqlash va yakunlash'}
           </Button>
         </>
       }

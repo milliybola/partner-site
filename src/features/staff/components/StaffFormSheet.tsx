@@ -6,6 +6,7 @@ import { getErrorMessage } from '../../../core/lib/errors';
 import { staffApi } from '../services/staffApi';
 import type { StaffMember, StaffRole, UpdateStaffPayload } from '../services/staffApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
+import { useTariff } from '../../../core/lib/tariff';
 
 export const ROLE_LABEL: Record<string, string> = { manager: 'Menejer', cashier: 'Kassir', waiter: 'Ofitsant' };
 
@@ -22,6 +23,9 @@ export const StaffFormSheet: React.FC<{
   const [showPassword, setShowPassword] = useState(false);
   const [pin, setPin] = useState('');
   const [removePin, setRemovePin] = useState(false);
+  // Zal/stollarsiz tarifda (yetkazib berish + olib ketish) ofitsiant yo'q
+  const { tariff } = useTariff();
+  const waiterAllowed = tariff.allow_dine_in || staff?.role === 'waiter';
   const [role, setRole] = useState<StaffRole>('waiter');
   const [isActive, setIsActive] = useState(true);
   const [homeFilial, setHomeFilial] = useState('');
@@ -38,13 +42,13 @@ export const StaffFormSheet: React.FC<{
     setShowPassword(false);
     setPin('');
     setRemovePin(false);
-    setRole(staff?.role || 'waiter');
+    setRole(staff?.role || (tariff.allow_dine_in ? 'waiter' : 'cashier'));
     setIsActive(staff?.is_active ?? true);
     setHomeFilial(staff?.home_filial?.uuid || '');
     setCurrentFilial(staff?.current_filial?.uuid || '');
     setErrors({});
     setFormError(null);
-  }, [open, staff]);
+  }, [open, staff, tariff.allow_dine_in]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,7 +134,7 @@ export const StaffFormSheet: React.FC<{
           }
         />
         <Select label="Rol" value={role} onChange={(e) => setRole(e.target.value as StaffRole)}>
-          <option value="waiter">Ofitsant</option>
+          {waiterAllowed && <option value="waiter">Ofitsant</option>}
           <option value="cashier">Kassir</option>
           <option value="manager">Menejer</option>
         </Select>

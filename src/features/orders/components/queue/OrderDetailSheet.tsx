@@ -1,6 +1,7 @@
 import React from 'react';
-import { Ban, Bike, CreditCard, FileText, MapPin, MessageSquare, Pencil, Phone, Printer, Store, User, Utensils } from 'lucide-react';
+import { Ban, Bike, CreditCard, FileText, Hash, MapPin, UserRound, MessageSquare, Pencil, Phone, Printer, Store, User, Utensils } from 'lucide-react';
 import type { Order } from '../../services/ordersApi';
+import { isAwaitingQrConfirm } from '../../services/ordersApi';
 import { Badge, Button, Sheet } from '../../../../core/ui';
 import { formatDateTime, formatMoney, formatPhone } from '../../../../core/lib/format';
 import { deliveryTypeLabel, paymentLabel, statusLabel, statusTone } from '../../utils/status';
@@ -39,9 +40,11 @@ interface Props {
   onPrintReceipt: (order: Order, withQr: boolean) => void;
   onPrintPreCheck: (order: Order) => void;
   onOrderPatched: (uuid: string, patch: Partial<Order>) => void;
+  /** Stol buyurtmasi: ofitsiant biriktirish / almashtirish */
+  onPickWaiter?: (order: Order) => void;
 }
 
-export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, printing, onClose, onAction, onEdit, onPrintReceipt, onPrintPreCheck, onOrderPatched }) => {
+export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, printing, onClose, onAction, onEdit, onPrintReceipt, onPrintPreCheck, onOrderPatched, onPickWaiter }) => {
   if (!order) return null;
   const { primary, secondary, danger } = getQueueActions(order, ctx);
   const items = order.items || [];
@@ -52,6 +55,10 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
   const discount = Number(order.discount_amount) || 0;
   const final = isFinal(order.status);
   const hasComment = order.description && order.description !== "Izoh yo'q";
+  // O'z-o'ziga xizmat: stol yo'q, mijoz raqam bilan chaqiriladi, pul oldindan olingan — tarkib qulf
+  const selfService = !!order.hall_uuid;
+  const locked = selfService && !!order.is_paid;
+  const parts = order.payment_breakdown || [];
 
   return (
     <Sheet
@@ -60,6 +67,11 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
       size="lg"
       title={
         <span className="flex items-center gap-2 flex-wrap">
+          {order.call_number ? (
+            <span className="h-8 px-2.5 rounded-lg bg-ink text-white text-[20px] font-black tabular-nums flex items-center" title="Chaqiruv raqami">
+              № {order.call_number}
+            </span>
+          ) : null}
           Buyurtma {orderNo(order)}
           <Badge tone={statusTone(order.status)}>{statusLabel(order.status)}</Badge>
           <LocationBadge order={order} />
@@ -72,7 +84,7 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
         </span>
       }
       headerAction={
-        !final ? (
+        !final && !locked ? (
           <Button variant="secondary" size="sm" icon={<Pencil className="w-4 h-4" />} onClick={() => onEdit(order)}>
             <span className="hidden xs:inline">Tahrirlash</span>
           </Button>
@@ -120,6 +132,11 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
           <div className="rounded-2xl bg-info-soft text-info px-4 py-3 flex gap-2.5">
             <Bike className="w-4 h-4 mt-0.5 shrink-0" />
             <p className="text-[14px] font-semibold">{HANDED_NOTE}</p>
+          </div>
+        )}
+        {locked && !final && (
+          <div className="rounded-2xl bg-info-soft text-info px-4 py-3 text-[13px] font-semibold">
+            Oldindan to'langan — tarkibni o'zgartirib bo'lmaydi. Xato bo'lsa, bekor qilib (pulni qaytarib) yangi buyurtma oching.
           </div>
         )}
         {/* Items */}
@@ -207,9 +224,27 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
         {/* Customer & delivery */}
         <section className="rounded-2xl border border-edge px-3 py-1 divide-y divide-edge">
           <InfoRow icon={order.delivery_type === 'DINE_IN' ? <Utensils className="w-4 h-4" /> : <Bike className="w-4 h-4" />} label="Turi">
-            {deliveryTypeLabel(order.delivery_type)}
-            {order.table_number ? ` · ${order.table_number}-stol` : ''}
+            {selfService
+              ? `O'z-o'ziga xizmat · ${order.hall_name || order.table_number || 'zal'}`
+              : `${deliveryTypeLabel(order.delivery_type)}${order.table_number ? ` · ${order.table_number}-stol` : ''}`}
           </InfoRow>
+          {order.call_number ? (
+            <InfoRow icon={<Hash className="w-4 h-4" />} label="Chaqiruv raqami">
+              № {order.call_number}
+            </InfoRow>
+          ) : null}
+          {order.delivery_type === 'DINE_IN' && !selfService && order.table_number && (
+            <InfoRow icon={<UserRound className="w-4 h-4" />} label="Ofitsiant">
+              <span className="inline-flex items-center gap-2 flex-wrap">
+                {order.waiter_role === 'waiter' ? order.waiter_name : <span className="text-warning-ink">Biriktirilmagan</span>}
+                {onPickWaiter && !final && !isAwaitingQrConfirm(order) && (
+                  <button type="button" onClick={() => onPickWaiter(order)} className="text-[13px] font-bold text-brand hover:underline cursor-pointer">
+                    {order.waiter_role === 'waiter' ? 'Almashtirish' : 'Biriktirish'}
+                  </button>
+                )}
+              </span>
+            </InfoRow>
+          )}
           {order.contact_name && (
             <InfoRow icon={<User className="w-4 h-4" />} label="Mijoz">
               {order.contact_name}
@@ -237,9 +272,13 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
             </InfoRow>
           )}
           <InfoRow icon={<CreditCard className="w-4 h-4" />} label="To'lov">
-            <span className="inline-flex items-center gap-2">
-              {order.payment_method_display || paymentLabel(order.payment_method || order.payment)}
-              <Badge tone={order.is_paid ? 'success' : 'warning'}>{order.is_paid ? "To'langan" : "To'lanmagan"}</Badge>
+            <span className="inline-flex items-center gap-2 flex-wrap">
+              {parts.length > 1
+                ? parts.map((p) => `${paymentLabel(p.method)} ${formatMoney(p.amount)}`).join(' + ')
+                : order.payment_method_display || paymentLabel(order.payment_method || order.payment)}
+              <Badge tone={order.is_paid ? 'success' : 'warning'}>
+                {order.is_paid ? (selfService ? "Oldindan to'langan" : "To'langan") : "To'lanmagan"}
+              </Badge>
             </span>
           </InfoRow>
           {order.order_source && (
@@ -253,11 +292,13 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
         <section>
           <h3 className="text-[12px] font-bold uppercase tracking-wider text-subtle mb-2">Chop etish</h3>
           <div className="grid grid-cols-2 gap-2">
-            <Button variant="secondary" size="lg" className="flex-col !h-auto py-3 text-[12px]" onClick={() => onPrintPreCheck(order)} icon={<FileText className="w-5 h-5" />}>
-              Pre-chek
-            </Button>
-            <Button variant="secondary" size="lg" className="flex-col !h-auto py-3 text-[12px]" loading={printing} onClick={() => onPrintReceipt(order, false)} icon={<Printer className="w-5 h-5" />}>
-              Chek
+            {!locked && (
+              <Button variant="secondary" size="lg" className="flex-col !h-auto py-3 text-[12px]" onClick={() => onPrintPreCheck(order)} icon={<FileText className="w-5 h-5" />}>
+                Pre-chek
+              </Button>
+            )}
+            <Button variant="secondary" size="lg" className={`flex-col !h-auto py-3 text-[12px] ${locked ? 'col-span-2' : ''}`} loading={printing} onClick={() => onPrintReceipt(order, false)} icon={<Printer className="w-5 h-5" />}>
+              {locked ? 'Chekni qayta chiqarish' : 'Chek'}
             </Button>
           </div>
         </section>

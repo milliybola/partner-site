@@ -1,8 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CheckCircle, ChevronDown, CreditCard, FileText, ImageOff, Plus, Save, ShoppingBag, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle, ChevronDown, CreditCard, FileText, ImageOff, Plus, Printer, Save, ShoppingBag, Trash2 } from 'lucide-react';
 import { filialApi } from '../../orders/services/filialApi';
 import { clearDraft, getDraft, saveDraft } from '../lib/tableDrafts';
-import { ordersApi } from '../../orders/services/ordersApi';
+import { isAwaitingQrConfirm, ordersApi } from '../../orders/services/ordersApi';
+import { WaiterPickSheet } from '../../orders/components/queue/WaiterPickSheet';
+import { useRejectReason } from '../../../core/components/RejectReasonProvider';
+import type { Order, PaymentPart } from '../../orders/services/ordersApi';
+import { PaymentSheet } from '../../orders/components/queue/PaymentSheet';
 import { printReceipt as printReceiptUtil, printPreCheck as printPreCheckUtil } from '../../orders/utils/printing';
 import apiClient from '../../../core/api/client';
 import { useToast } from '../../../core/components/ToastProvider';
@@ -30,7 +34,7 @@ import {
 } from '../../../core/ui';
 import { SplitBill } from '../../orders/components/queue/SplitBill';
 import { tablesApi } from '../services/tablesApi';
-import type { TableModel } from '../services/tablesApi';
+import type { Hall, TableModel } from '../services/tablesApi';
 
 interface Product {
   uuid: string;
@@ -58,6 +62,11 @@ interface CartItem {
 interface TableOrderModalProps {
   table: TableModel;
   onClose: (refresh: boolean) => void;
+  /**
+   * O'z-o'ziga xizmat zali: stolsiz buyurtma (`table` — zal nomi bilan soxta stol, faqat ko'rinish/qoralama uchun).
+   * Xizmat haqi yo'q; to'lov OLDINDAN — «To'lov va buyurtma berish» → to'lov oynasi → buyurtma to'lov bilan bitta so'rovda.
+   */
+  selfHall?: Hall | null;
 }
 
 type PaymentMethod = PayMethod;
@@ -85,7 +94,7 @@ const PaymentPicker: React.FC<{ value: PaymentMethod; onChange: (v: PaymentMetho
   );
 };
 
-export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose }) => {
+export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose, selfHall = null }) => {
   const toast = useToast();
   const toastRef = useRef(toast);
   useEffect(() => {
@@ -95,6 +104,28 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   const w = wording();
   const isEditMode = !!table.current_order;
   const orderUuid = table.current_order?.uuid;
+  // Mehmon stol QR'idan bergan, hali tasdiqlanmagan buyurtma: to'lov yopiq, avval xodim tasdiqlaydi (ofitsiant tanlanadi)
+  const awaitingQr = isAwaitingQrConfirm(table.current_order);
+  const askRejectReason = useRejectReason();
+  const [qrConfirmOpen, setQrConfirmOpen] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const rejectQr = async () => {
+    if (!orderUuid) return;
+    const reason = await askRejectReason({ orderLabel: `#${table.current_order?.order_number || ''}` });
+    if (!reason) return;
+    setRejecting(true);
+    try {
+      await ordersApi.updateOrderStatus(orderUuid, 'REJECTED', reason);
+      toast.success('QR buyurtma rad etildi — mehmon sababni ko‘radi');
+      onClose(true);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Rad etib bo‘lmadi.'));
+    } finally {
+      setRejecting(false);
+    }
+  };
+  const placeLabel = selfHall ? selfHall.name : `Stol ${table.table_number}`;
+  const [prepayOpen, setPrepayOpen] = useState(false);
 
   const [mobilePane, setMobilePane] = useState<'menu' | 'order'>(isEditMode ? 'order' : 'menu');
 
@@ -106,6 +137,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   /** Filialning xizmat haqi foizi (stol buyurtmasiga qo'shiladi; 0 — olinmaydi) */
   const [scPercent, setScPercent] = useState(0);
   useEffect(() => {
+    if (selfHall) return; // o'z-o'ziga xizmat zalida xizmat haqi olinmaydi
     let alive = true;
     // Server (partner_order_serializers) bilan bir xil tanlov: xodimning joriy filiali → stol filiali → asosiy filial
     const staff = isManager(getPartner());
@@ -125,7 +157,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     return () => {
       alive = false;
     };
-  }, [table.filial_uuid]);
+  }, [table.filial_uuid, selfHall]);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [errorCatalog, setErrorCatalog] = useState<string | null>(null);
 
@@ -145,6 +177,19 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   const [itemsError, setItemsError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [printingPreCheck, setPrintingPreCheck] = useState(false);
+  const [printingReceipt, setPrintingReceipt] = useState(false);
+  /** Ochiq buyurtma cheki (to'lovdan oldin ham — mehmon so'rasa) */
+  const handlePrintReceipt = async () => {
+    if (!orderUuid) return;
+    setPrintingReceipt(true);
+    try {
+      await printReceiptUtil(orderUuid, false);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Chekni chop etishda xatolik.'));
+    } finally {
+      setPrintingReceipt(false);
+    }
+  };
   const [paymentOpen, setPaymentOpen] = useState(false);
   const { methods: payMethods } = usePaymentMethods();
   const [splitCount, setSplitCount] = useState(1);
@@ -272,7 +317,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   const cartSubtotal = useMemo(() => cart.reduce((s, i) => s + i.product.price * i.quantity, 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((s, i) => s + i.quantity, 0), [cart]);
 
-  const handleCreateOrder = async () => {
+  const handleCreateOrder = async (prepaid?: { method: string; payments?: PaymentPart[] }) => {
     if (cart.length === 0 || submitting) return;
     const phoneDigits = cleanPhone(contactPhone).replace(/\D/g, '');
     if (phoneDigits.length > 3 && phoneDigits.length !== 12) {
@@ -280,19 +325,33 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
       setMobilePane('order');
       return;
     }
+    // O'z-o'ziga xizmat: avval to'lov oynasi
+    if (selfHall && !prepaid) {
+      setPrepayOpen(true);
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await ordersApi.createDineInOrder({
-        table: table.uuid,
-        payment_method: 'CASH', // to'lov yaratishda so'ralmaydi — topshirishda bir marta olinadi
+      const created = await ordersApi.createDineInOrder({
+        ...(selfHall
+          ? { hall: selfHall.uuid, payment_method: prepaid?.method || 'CASH', ...(prepaid?.payments?.length ? { payments: prepaid.payments } : {}) }
+          : { table: table.uuid, payment_method: 'CASH' }), // stolda to'lov yaratishda so'ralmaydi — topshirishda olinadi
         contact_phone: phoneDigits.length === 12 ? phoneDigits : undefined,
         contact_name: contactName.trim() || undefined,
         description: comment.trim() || undefined,
         items: cart.map((i) => ({ product_uuid: i.product.uuid, quantity: i.quantity })),
       });
       clearDraft(table.uuid);
-      toast.success(`Stol ${table.table_number}: buyurtma yaratildi`);
+      if (selfHall) {
+        const uuid = created?.data?.uuid || created?.uuid;
+        const no = created?.data?.order_number || created?.order_number || '';
+        toast.success(`${placeLabel}: to'lov qabul qilindi${no ? ` — ${no}` : ''}, buyurtma oshxonaga yuborildi`);
+        // Chek (buyurtma raqami bilan) — mijoz shu raqam bilan kutadi
+        if (uuid) printReceiptUtil(uuid, true).catch((err) => toast.error(getErrorMessage(err, 'Chekni chop etib bo‘lmadi.')));
+      } else {
+        toast.success(`${placeLabel}: buyurtma yaratildi`);
+      }
       onClose(true);
     } catch (err) {
       setSubmitError(getErrorMessage(err, 'Buyurtma yaratishda xatolik yuz berdi.'));
@@ -316,7 +375,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
       count: cartCount,
       subtotal: cartSubtotal,
     });
-    toast.success(`Stol ${table.table_number}: savat saqlandi`);
+    toast.success(selfHall ? `${placeLabel}: savat saqlab qo'yildi — Sotuv'dagi sariq kartadan davom ettirasiz` : `${placeLabel}: savat saqlandi`);
     onClose(false);
   };
 
@@ -629,27 +688,39 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
               Pre-chek
             </Button>
             <Button variant="outline" icon={<Save className="w-4 h-4" />} disabled={cart.length === 0} onClick={handleSaveDraft}>
-              Saqlash
+              {selfHall ? 'Saqlab turish' : 'Saqlash'}
             </Button>
           </div>
-          <Button size="lg" className="w-full" icon={<CheckCircle className="w-5 h-5" />} loading={submitting} disabled={cart.length === 0} onClick={handleCreateOrder}>
-            Buyurtma yaratish
+          <Button
+            size="lg"
+            className="w-full"
+            variant={selfHall ? 'success' : undefined}
+            icon={selfHall ? <CreditCard className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
+            loading={submitting}
+            disabled={cart.length === 0}
+            onClick={() => handleCreateOrder()}
+          >
+            {selfHall ? "To'lov va buyurtma berish" : 'Buyurtma yaratish'}
           </Button>
         </div>
       ) : (
       <div className="flex gap-2">
-        <Button
-          variant="outline"
-          size="lg"
-          icon={<FileText className="w-4 h-4" />}
-          loading={printingPreCheck}
-          disabled={isEditMode ? orderItems.length === 0 : cart.length === 0}
-          onClick={handlePrintPreCheck}
-          className="shrink-0"
-        >
-          Pre-chek
-        </Button>
-        {isEditMode ? (
+        {isEditMode && awaitingQr ? (
+          <>
+            <Button variant="danger-soft" size="lg" className="shrink-0" loading={rejecting} onClick={rejectQr}>
+              Rad etish
+            </Button>
+            <Button
+              size="lg"
+              className="flex-1"
+              icon={<CheckCircle className="w-5 h-5" />}
+              disabled={orderItems.length === 0 || loadingItems}
+              onClick={() => setQrConfirmOpen(true)}
+            >
+              Tasdiqlash
+            </Button>
+          </>
+        ) : isEditMode ? (
           <Button
             variant="success"
             size="lg"
@@ -669,6 +740,12 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   const orderPane = (
     <div className={`${mobilePane === 'order' ? 'flex' : 'hidden'} md:flex md:col-span-4 flex-col min-h-0`}>
       <div className="shrink-0 px-4 md:px-5 pt-3 text-[13px] font-bold text-muted uppercase tracking-wide">{isEditMode ? 'Buyurtma tarkibi' : 'Savat'}</div>
+      {awaitingQr && (
+        <div className="md:hidden shrink-0 mx-4 mt-2 rounded-2xl bg-warning-soft text-warning-ink px-3.5 py-2.5 text-[13px] font-semibold">
+          Mehmon stol QR'idan buyurtma berdi — hali tasdiqlanmagan. Tarkibni mehmon bilan kelishib tuzatish mumkin;
+          «Tasdiqlash»da buyurtmani olib boradigan ofitsiant tanlanadi, shundan keyin oshxonaga chiqadi va to'lov ochiladi.
+        </div>
+      )}
       <div ref={cartRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 md:px-5 pt-2 pb-3 space-y-3">
 
         {isEditMode ? (
@@ -775,14 +852,47 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         onClose={() => (isEditMode ? onClose(itemsChanged) : void handleBack())}
         title={
           <span className="flex items-center gap-2">
-            Stol {table.table_number}
-            {isEditMode ? <Badge tone="gold">Band</Badge> : <Badge tone="success">Bo'sh</Badge>}
+            {placeLabel}
+            {selfHall ? <Badge tone="info">O'z-o'ziga xizmat</Badge> : isEditMode ? <Badge tone="gold">Band</Badge> : <Badge tone="success">Bo'sh</Badge>}
           </span>
         }
         subtitle={
           isEditMode
             ? `Buyurtma #${table.current_order?.order_number || ''}${orderMins !== null ? ` · ${orderMins} daq oldin` : ''}${table.current_order?.waiter_name ? ` · ${table.current_order.waiter_name}` : ''}`
-            : `Yangi buyurtma · ${table.capacity} kishilik`
+            : selfHall
+              ? "Yangi buyurtma · to'lov oldindan, tayyor bo'lganda raqam bilan chaqiriladi"
+              : `Yangi buyurtma · ${table.capacity} kishilik`
+        }
+        headerAction={
+          isEditMode ? (
+            <div className="flex items-center gap-2 mr-1">
+              {awaitingQr && (
+                // Keng ekranda — sarlavha qatorida (savat ustini band qilmaydi); telefonda savat ustida
+                <div className="hidden md:flex items-center w-[min(48vw,820px)] mr-1 rounded-xl bg-warning-soft text-warning-ink px-3.5 py-2 text-[13px] font-semibold leading-snug">
+                  Mehmon stol QR'idan buyurtma berdi — hali tasdiqlanmagan. Tarkibni mehmon bilan kelishib tuzatish mumkin;
+                  «Tasdiqlash»da buyurtmani olib boradigan ofitsiant tanlanadi, shundan keyin oshxonaga chiqadi va to'lov ochiladi.
+                </div>
+              )}
+              <Button
+                variant="outline"
+                icon={<FileText className="w-4 h-4" />}
+                loading={printingPreCheck}
+                disabled={orderItems.length === 0}
+                onClick={handlePrintPreCheck}
+              >
+                <span className="hidden sm:inline">Pre-chek</span>
+              </Button>
+              <Button
+                variant="outline"
+                icon={<Printer className="w-4 h-4" />}
+                loading={printingReceipt}
+                disabled={orderItems.length === 0 || awaitingQr}
+                onClick={handlePrintReceipt}
+              >
+                <span className="hidden sm:inline">Chek</span>
+              </Button>
+            </div>
+          ) : undefined
         }
         footer={footer}
         footerClassName="md:hidden"
@@ -805,6 +915,37 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
           </div>
         </div>
       </Sheet>
+
+      {qrConfirmOpen && orderUuid && (
+        <WaiterPickSheet
+          target={{ uuid: orderUuid, mode: 'qr', label: `${table.table_number}-stol · #${table.current_order?.order_number || ''}` }}
+          onClose={() => setQrConfirmOpen(false)}
+          onDone={() => {
+            setQrConfirmOpen(false);
+            onClose(true);
+          }}
+        />
+      )}
+
+      {selfHall && (
+        <PaymentSheet
+          order={
+            prepayOpen
+              ? ({ uuid: `prepay-${selfHall.uuid}`, id: 0, order_number: selfHall.name, total_price: total, payment_method: 'CASH',
+                  delivery_type: 'PICKUP', is_paid: false, table_number: null } as unknown as Order)
+              : null
+          }
+          saving={submitting}
+          title="To'lov va buyurtma berish"
+          subtitle={`${selfHall.name} · to'lovdan keyin oshxonaga chiqadi`}
+          confirmLabel="To'lovni qabul qilish va buyurtma berish"
+          onClose={() => !submitting && setPrepayOpen(false)}
+          onSubmit={(method, _split, payments) => {
+            setPrepayOpen(false);
+            void handleCreateOrder({ method, payments });
+          }}
+        />
+      )}
 
       <Sheet
         open={paymentOpen}

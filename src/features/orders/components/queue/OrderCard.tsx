@@ -91,6 +91,11 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
       <button type="button" onClick={onOpen} className="w-full text-left p-3.5 pb-3 cursor-pointer" aria-label={`Buyurtma ${orderNo(order)} tafsilotlari`}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
+            {order.call_number ? (
+              <span className="shrink-0 h-7 px-2 rounded-lg bg-ink text-white text-[16px] font-black tabular-nums flex items-center" title="Chaqiruv raqami">
+                № {order.call_number}
+              </span>
+            ) : null}
             <span className="text-[15px] font-black text-ink tracking-tightest truncate">{orderNo(order)}</span>
             {highlighted && <Badge tone="brand">Yangi</Badge>}
             {order.delivery_type === 'DELIVERY' && !final && !(order.courier || order.courier_phone) && <Badge tone="danger">Kuryer yo'q</Badge>}

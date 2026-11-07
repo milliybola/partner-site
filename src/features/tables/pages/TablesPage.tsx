@@ -7,7 +7,7 @@ import { filialApi } from '../../orders/services/filialApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
 import { TableBillSheet } from '../components/TableBillSheet';
 import { TableOrderModal } from '../components/TableOrderModal';
-import { getDrafts, type TableDraft } from '../lib/tableDrafts';
+import { getDrafts, heldCartKey, heldCarts, type TableDraft } from '../lib/tableDrafts';
 import { TableQrSheet } from '../components/TableQrPosters';
 import { BulkImportSheet, QrSheet, TableActionsSheet, TableFormSheet } from '../components/TableSheets';
 import { useToast } from '../../../core/components/ToastProvider';
@@ -15,7 +15,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ordersApi } from '../../orders/services/ordersApi';
 import type { Order } from '../../orders/services/ordersApi';
 import { statusGroup } from '../../orders/utils/status';
-import { ServiceBoard } from '../components/ServiceBoard';
+import { ServiceBoard, type QuickAction } from '../components/ServiceBoard';
+import { useOrderActions } from '../../orders/components/queue/useOrderActions';
+import { WaiterPickSheet } from '../../orders/components/queue/WaiterPickSheet';
+import type { WaiterPickMode } from '../../orders/components/queue/WaiterPickSheet';
+import { readPrefs } from '../../orders/components/queue/prefs';
+import { useWorkSettings } from '../../../core/lib/workSettings';
 import { DispatchBoard } from '../components/DispatchBoard';
 import { CourierPickerSheet } from '../../orders/components/queue/CourierPickerSheet';
 import { couriersApi } from '../../staff/services/couriersApi';
@@ -57,7 +62,8 @@ const orderOrigin = (o: NonNullable<TableModel['current_order']>) => {
 };
 
 type Tone = { tile: string; text: string; sub: string; strip: string };
-const TONE: Record<'free' | 'open' | 'wait' | 'reserved' | 'draft', Tone> = {
+const TONE: Record<'free' | 'open' | 'wait' | 'reserved' | 'draft' | 'ready', Tone> = {
+  ready: { tile: 'bg-info border-info', text: 'text-white', sub: 'text-white/85', strip: 'bg-black/15 text-white' },
   draft: { tile: 'bg-warning-soft border-warning border-dashed', text: 'text-ink', sub: 'text-warning-ink', strip: '' },
   free: { tile: 'bg-surface border-edge hover:border-brand/50', text: 'text-ink', sub: 'text-muted', strip: '' },
   open: { tile: 'bg-brand-bright border-brand-bright', text: 'text-white', sub: 'text-white/85', strip: 'bg-black/15 text-white' },
@@ -74,16 +80,38 @@ const TableTile: React.FC<{
   label?: string;
   onOpen: () => void;
   onMenu: () => void;
-}> = ({ table, now, canManage, draft, label, onOpen, onMenu }) => {
+  /** Oshxona tayyorladi — kassadan belgilash (to'lov keyin, mehmon ketayotganda) */
+  onReady?: () => void;
+  /** Tayyor, lekin ofitsiant biriktirilmagan — kim olib boradi */
+  onAssignWaiter?: () => void;
+  readyBusy?: boolean;
+}> = ({ table, now, canManage, draft, label, onOpen, onMenu, onReady, onAssignWaiter, readyBusy }) => {
   const inactive = table.is_active === false;
   const order = table.current_order;
   const mins = order?.created_at ? minutesSince(order.created_at, now) : null;
   const busy = !!order || table.status === 'OCCUPIED';
   const waiting = !!order && (order.status === 'PENDING' || order.status === 'NEW');
   const hasDraft = !!draft && !order && !inactive;
-  const kind = inactive ? 'free' : hasDraft ? 'draft' : waiting ? 'wait' : busy ? 'open' : table.status === 'RESERVED' ? 'reserved' : 'free';
+  const isReady = order?.status === 'READY_FOR_PICKUP';
+  const kind = inactive ? 'free' : hasDraft ? 'draft' : waiting ? 'wait' : isReady ? 'ready' : busy ? 'open' : table.status === 'RESERVED' ? 'reserved' : 'free';
   const tone = TONE[kind];
-  const strip = waiting ? 'Tasdiq kutilmoqda' : order ? (order.is_paid ? "To'langan" : 'Ochiq hisob') : table.status === 'RESERVED' ? 'Bron' : '';
+  const ready = isReady;
+  const canReady = !!onReady && !inactive && (order?.status === 'ACCEPTED' || order?.status === 'PREPARING');
+  const canAssign = !!onAssignWaiter && !inactive && ready && order?.waiter_role !== 'waiter';
+  const action = canReady ? 'ready' : canAssign ? 'assign' : null;
+  const strip = waiting
+    ? 'Tasdiq kutilmoqda'
+    : order
+      ? ready
+        ? order.waiter_role === 'waiter'
+          ? `Tayyor · ${order.waiter_name || 'ofitsiant'} olib boradi`
+          : 'Tayyor · ofitsiant yo‘q'
+        : order.is_paid
+          ? "To'langan"
+          : 'Ochiq hisob'
+      : table.status === 'RESERVED'
+        ? 'Bron'
+        : '';
   return (
     <div
       className={`relative rounded-xl border-2 min-h-[140px] flex flex-col overflow-hidden transition hover:shadow-card ${
@@ -143,7 +171,21 @@ const TableTile: React.FC<{
           </span>
         )}
       </button>
-      {!inactive && strip && <div className={`px-2.5 py-1 text-[11px] font-extrabold tracking-wide ${tone.strip}`}>{strip}</div>}
+      {!inactive && strip && (
+        <div className={`flex items-center gap-2 pl-2.5 ${action ? 'pr-8' : 'pr-2.5'} py-1 text-[11px] font-extrabold tracking-wide ${tone.strip}`}>
+          <span className="flex-1 min-w-0 truncate">{strip}</span>
+          {action && (
+            <button
+              type="button"
+              disabled={readyBusy}
+              onClick={action === 'ready' ? onReady : onAssignWaiter}
+              className="shrink-0 h-8 px-3 rounded-lg bg-white text-ink text-[13px] font-black tracking-normal shadow-sm hover:bg-white/90 active:scale-95 transition disabled:opacity-60 cursor-pointer"
+            >
+              {readyBusy ? '…' : action === 'ready' ? 'Tayyor' : 'Ofitsiant'}
+            </button>
+          )}
+        </div>
+      )}
       {canManage && (
         <IconButton label="Amallar" onClick={onMenu} className={`absolute ${strip && !inactive ? "bottom-0 right-0" : "top-0.5 right-0.5"} !min-h-0 !h-6 !w-6 ${strip && !inactive ? tone.text : ""}`}>
           <MoreVertical className="w-4 h-4" />
@@ -213,6 +255,7 @@ const HallRail: React.FC<{
 /** `openQr` — sidebar'dagi «Stol QR-kodlari» (/tables/qr): sahifa QR oynasi ochiq holda boshlanadi */
 const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   const toast = useToast();
+  const { settings: workSettings } = useWorkSettings();
   const navigate = useNavigate();
   const { tariff, refresh: refreshTariffUsage } = useTariff();
   const limitReached = () => {
@@ -259,6 +302,15 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
       setSvcLoading(false);
     }
   }, []);
+  // Buyurtma kartasi bosilsa — tafsilot shu sahifada ochiladi (Buyurtmalar navbatidagi bilan bir xil oyna va amallar)
+  const { busyUuid: orderBusy, runAction: runOrderAction, openOrder: openSvcOrder, sheets: orderSheets } = useOrderActions({
+    orders: svcOrders,
+    setOrders: setSvcOrders,
+    refresh: () => void fetchSvcOrders(),
+    now,
+    skipPreparing: readPrefs().skipPreparing,
+    fastMode: workSettings.fast_mode,
+  });
   useEffect(() => {
     void fetchSvcOrders();
     const t = setInterval(() => void fetchSvcOrders(), 30000);
@@ -439,7 +491,44 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   );
   const selfCounts = useMemo(() => Object.fromEntries(selfHalls.map((h) => [h.uuid, selfOrders(h.uuid).length])), [selfHalls, selfOrders]);
   const selectedSelfHall = selfHalls.find((h) => h.uuid === hallFilter) || null;
-  const newSelfOrder = (h: Hall) => navigate(`/new-order?type=DINE_IN&hall=${h.uuid}&hall_name=${encodeURIComponent(h.name)}`);
+  // «Yangi buyurtma» — Sotuv sahifasining o'zida, stol kabi to'liq ekranli menyu (TableOrderModal, zal rejimi)
+  const [selfOrder, setSelfOrder] = useState<{ hall: Hall; key: string } | null>(null);
+  const newSelfOrder = (h: Hall) => setSelfOrder({ hall: h, key: heldCartKey(h.uuid) });
+  const heldOf = (h: Hall) =>
+    heldCarts(drafts, h.uuid).map(({ key, draft }, i) => ({
+      key,
+      title: draft.contact_name?.trim() || `Saqlangan ${i + 1}`,
+      count: draft.count,
+      subtotal: draft.subtotal,
+      savedAt: draft.saved_at,
+    }));
+  // O'z-o'ziga xizmat kartasidagi tezkor tugma — navbatdagi «Tayyor» / «Mijozga berish» bilan bir xil
+  // Stol buyurtmasi: oshxona tayyorladi — ofitsiant olib boradi; to'lov oxirida (mehmon ketayotganda «To'lov qilish»)
+  const [quickReadyUuid, setQuickReadyUuid] = useState<string | null>(null);
+  // Ofitsiant o'zi ochgan stol — darhol (unga push boradi); kassa ochgan — kim olib borishini tanlaydi
+  const [tableWaiterPick, setTableWaiterPick] = useState<{ table: TableModel; mode: WaiterPickMode } | null>(null);
+  const markTableReady = async (t: TableModel) => {
+    const o = t.current_order;
+    if (!o) return;
+    if (o.waiter_role !== 'waiter') {
+      setTableWaiterPick({ table: t, mode: 'ready' });
+      return;
+    }
+    setQuickReadyUuid(o.uuid);
+    try {
+      await ordersApi.markReady(o.uuid, null);
+      toast.success(`${t.table_number}-stol: buyurtma tayyor`);
+      await fetchTables(true);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Holatni o'zgartirib bo'lmadi."));
+    } finally {
+      setQuickReadyUuid(null);
+    }
+  };
+  const runQuick = (o: Order, a: QuickAction) =>
+    void runOrderAction(o, a === 'ready' ? { kind: 'mark_ready', label: 'Tayyor', tone: 'primary' } : o.is_paid
+        ? { kind: 'complete', label: 'Mijozga berish', tone: 'primary' }
+        : { kind: 'pay_and_complete', label: "To'lov va berish", tone: 'primary' });
   const selfBoard = (h: Hall, compact: boolean) => (
     <ServiceBoard
       kind="DINE_IN"
@@ -449,7 +538,11 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
       now={now}
       loading={svcLoading}
       onNew={() => newSelfOrder(h)}
-      onOpen={(uuid) => navigate(`/orders?open=${uuid}`)}
+      onOpen={openSvcOrder}
+      held={heldOf(h)}
+      onResume={(key) => setSelfOrder({ hall: h, key })}
+      onQuick={runQuick}
+      busyUuid={orderBusy}
     />
   );
 
@@ -612,7 +705,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           now={now}
           loading={svcLoading || couriersLoading}
           onNew={() => navigate('/new-order?type=DELIVERY')}
-          onOpen={(uuid) => navigate(`/orders?open=${uuid}`)}
+          onOpen={openSvcOrder}
           onAssign={setAssignOrder}
         />
       ) : view !== 'TABLES' ? (
@@ -622,7 +715,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           now={now}
           loading={svcLoading}
           onNew={() => navigate(`/new-order?type=${view}`)}
-          onOpen={(uuid) => navigate(`/orders?open=${uuid}`)}
+          onOpen={openSvcOrder}
         />
       ) : (
       <div className="mt-2 flex gap-4">
@@ -701,6 +794,9 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
                 draft={drafts[t.uuid]}
                 label={sec.byName ? splitName(t.table_number).num : undefined}
                 canManage
+                onReady={t.current_order ? () => void markTableReady(t) : undefined}
+                onAssignWaiter={t.current_order ? () => setTableWaiterPick({ table: t, mode: 'assign' }) : undefined}
+                readyBusy={!!t.current_order && quickReadyUuid === t.current_order.uuid}
                 onOpen={() => {
                   if (t.is_active === false) {
                     if (canManage) setMenuTable(t);
@@ -850,6 +946,43 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           }}
         />
       )}
+      {selfOrder && (
+        <TableOrderModal
+          key={selfOrder.key}
+          selfHall={selfOrder.hall}
+          // Soxta «stol»: zal nomi (sarlavha, pre-chek); uuid — saqlab turiladigan savat kaliti. Server stol emas, zal oladi
+          table={{
+            uuid: selfOrder.key,
+            table_number: selfOrder.hall.name,
+            capacity: 0,
+            status: 'AVAILABLE',
+            filial_uuid: selfOrder.hall.filial_uuid || undefined,
+            current_order: null,
+          }}
+          onClose={(refresh) => {
+            setSelfOrder(null);
+            setDrafts(getDrafts());
+            if (refresh) void fetchSvcOrders();
+          }}
+        />
+      )}
+      {orderSheets}
+      <WaiterPickSheet
+        target={
+          tableWaiterPick?.table.current_order
+            ? {
+                uuid: tableWaiterPick.table.current_order.uuid,
+                mode: tableWaiterPick.mode,
+                label: `${tableWaiterPick.table.table_number}-stol`,
+              }
+            : null
+        }
+        onClose={() => setTableWaiterPick(null)}
+        onDone={() => {
+          setTableWaiterPick(null);
+          void fetchTables(true);
+        }}
+      />
     </div>
   );
 };

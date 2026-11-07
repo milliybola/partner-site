@@ -41,6 +41,8 @@ const syncOnce = async (onError: (message: string) => void) => {
       await printKitchenTicket({
         order_number: o.order_number,
         table_number: o.table_number,
+        call_number: o.call_number,
+        hall_name: o.hall_name,
         delivery_type: o.delivery_type,
         waiter_name: o.waiter_name,
         description: before ? undefined : o.description,

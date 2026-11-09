@@ -82,11 +82,13 @@ const PlanCard: React.FC<{ plan: TariffPlan; current: boolean }> = ({ plan, curr
       <ul className="mt-4 space-y-2">
         <PlanLine on>Yetkazib berish</PlanLine>
         <PlanLine on={plan.allow_pickup}>Olib ketish</PlanLine>
-        <PlanLine on={plan.allow_dine_in}>
-          Zal va stollar
-          {plan.allow_dine_in && ` · ${limit(plan.max_tables, 'stol')}${plan.tables_per_filial && plan.max_tables !== null ? ' har filialga' : ''}`}
-        </PlanLine>
-        <PlanLine on={plan.allow_qr_menu}>Stol QR menyusi</PlanLine>
+        {plan.allow_dine_in && (
+          <PlanLine on>
+            Zal va stollar
+            {` · ${limit(plan.max_tables, 'stol')}${plan.tables_per_filial && plan.max_tables !== null ? ' har filialga' : ''}`}
+          </PlanLine>
+        )}
+        {plan.allow_dine_in && plan.allow_qr_menu && <PlanLine on>Stol QR menyusi</PlanLine>}
         <PlanLine on>{limit(plan.max_filials, 'filial')}</PlanLine>
         <PlanLine on>{limit(plan.max_products, 'mahsulot')}</PlanLine>
         <PlanLine on>{limit(plan.max_couriers, 'kuryer')}</PlanLine>
@@ -179,8 +181,8 @@ const PlanPage: React.FC = () => {
               <ul className="divide-y divide-edge">
                 <Feature on title="Yetkazib berish" hint="Kuryer orqali mijoz manziliga" />
                 <Feature on={tariff.allow_pickup} title="Olib ketish" hint={tariff.allow_pickup ? "Mijoz o'zi kelib oladi" : "Tarifni oshirsangiz ochiladi"} />
-                <Feature on={tariff.allow_dine_in} title="Zal va stollar" hint={tariff.allow_dine_in ? 'Stol buyurtmalari, ofitsiantlar' : 'Tarifni oshirsangiz ochiladi'} />
-                <Feature on={tariff.allow_dine_in && tariff.allow_qr_menu} title="Stol QR menyusi" hint={tariff.allow_qr_menu ? "Har stolga alohida QR: buyurtma, ofitsiantni chaqirish, hisob" : 'Plus tarifida ochiladi'} />
+                {tariff.allow_dine_in && <Feature on title="Zal va stollar" hint="Stol buyurtmalari, ofitsiantlar" />}
+                {tariff.allow_dine_in && tariff.allow_qr_menu && <Feature on title="Stol QR menyusi" hint="Har stolga alohida QR: buyurtma, ofitsiantni chaqirish, hisob" />}
                 <Feature on={tariff.listing_priority > 0} title="Ro'yxatda birinchi" hint={tariff.listing_priority > 0 ? "Mijoz ilovasida yuqorida ko'rsatiladi" : "Tarifni oshirsangiz ochiladi"} />
                 <Feature on={tariff.priority_support} title="Ustuvor qo'llab-quvvatlash" hint={tariff.priority_support ? '24/7 ustuvor javob' : '24/7 oddiy navbat'} />
               </ul>

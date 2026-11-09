@@ -1,4 +1,5 @@
 import React, { Suspense, lazy } from 'react';
+import { AnalyticsTracker } from './core/components/AnalyticsTracker';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './core/components/Layout';
 import ProtectedRoute from './core/components/ProtectedRoute';
@@ -62,6 +63,7 @@ const App: React.FC = () => {
       <ConfirmProvider>
       <RejectReasonProvider>
         <HashRouter>
+          <AnalyticsTracker />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
 

@@ -172,6 +172,8 @@ export const buildNav = (
         (i) =>
           allowedByTariff(i, tariff) &&
           !(i.to === '/overview' && filialCount !== undefined && filialCount < 2) &&
+          // Tarifda faqat 1 ta filial bo'lsa, solishtirma ma'nosiz
+          !(i.to === '/overview' && tariff?.restricted && tariff.max_filials === 1) &&
           // Ombor kichik kafega og'irlik — Sozlamalarda yoqilgandagina ko'rinadi
           !(i.to === '/warehouse' && !work?.warehouse_enabled),
       );

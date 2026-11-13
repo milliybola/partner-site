@@ -5,7 +5,8 @@ import { getPartner } from '../../../core/lib/session';
  * Faqat shu brauzerda (localStorage) saqlanadi — serverga hech narsa yuborilmaydi.
  */
 export interface TableDraft {
-  items: { product_uuid: string; quantity: number }[];
+  /** options — tanlangan variant uuid'lari (masalan, pitsa o'lchami), packaging — qadoq uuid'i */
+  items: { product_uuid: string; quantity: number; options?: string[]; packaging?: string | null }[];
   contact_name: string;
   contact_phone: string;
   comment: string;

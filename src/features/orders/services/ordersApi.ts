@@ -354,7 +354,7 @@ export const ordersApi = {
 
   addOrderItems: async (
     orderUuid: string,
-    payload: { items: { product_uuid: string; quantity: number }[] },
+    payload: { items: { product_uuid: string; quantity: number; options?: string[]; packaging?: string }[] },
     managerToken?: string
   ): Promise<AddItemsResult> => {
     const config: any = {};

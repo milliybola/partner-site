@@ -55,6 +55,9 @@ import {
   orderTotal,
 } from '../../orders/utils/posCart';
 import type { CartLine, CatalogCategory, CatalogProduct, ServerBill } from '../../orders/utils/posCart';
+import { keyOf } from '../../orders/utils/posCart';
+import { ProductConfigSheet, isConfigurable, lineKey, unitPrice } from '../../orders/components/ProductConfigSheet';
+import type { LineConfig, SelectedOption } from '../../orders/components/ProductConfigSheet';
 import { quotePosCart } from '../../orders/services/ordersApi';
 import type { PosQuote } from '../../orders/services/ordersApi';
 import type { Hall, TableModel } from '../services/tablesApi';
@@ -230,15 +233,28 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         let dropped = 0;
         for (const it of draft.items) {
           const product = byUuid.get(it.product_uuid);
-          if (product && product.is_available) restored.push({ product, quantity: it.quantity });
-          else dropped++;
+          if (!product || !product.is_available) {
+            dropped++;
+            continue;
+          }
+          // Variantlar (o'lcham va h.k.) va qadoq menyudagi joriy holatidan tiklanadi; yo'qolgani tashlanadi
+          const allOptions: SelectedOption[] = (product.option_groups ?? []).flatMap((g) =>
+            g.options.map((o) => ({ uuid: o.uuid, name: o.name, group: g.name, price_delta: o.price_delta })),
+          );
+          const options = (it.options ?? []).map((u) => allOptions.find((o) => o.uuid === u)).filter((o): o is SelectedOption => !!o);
+          const packaging = it.packaging ? (product.packagings ?? []).find((k) => k.uuid === it.packaging) ?? null : null;
+          restored.push(
+            options.length || packaging
+              ? { product, quantity: it.quantity, key: lineKey(product.uuid, options, packaging), options, packaging }
+              : { product, quantity: it.quantity },
+          );
         }
         setCart(restored);
         setContactName(draft.contact_name);
         setContactPhone(draft.contact_phone);
         setComment(draft.comment);
         if (draft.contact_name || draft.contact_phone.length > 4 || draft.comment) setShowExtra(true);
-        savedSnap.current = JSON.stringify([restored.map((i) => [i.product.uuid, i.quantity]), draft.contact_name, draft.contact_phone, draft.comment]);
+        savedSnap.current = JSON.stringify([restored.map((i) => [keyOf(i), i.quantity]), draft.contact_name, draft.contact_phone, draft.comment]);
         if (dropped > 0) toastRef.current.info(t('tom.draftDropped', { n: dropped }));
       }
     } catch (err) {
@@ -280,14 +296,38 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   const filteredProducts = useMemo(() => filterProducts(categories, activeCategoryUuid), [categories, activeCategoryUuid]);
 
   /* ----------------------------------------------------- create mode cart */
+  /** Variantsiz mahsulot: qator kaliti — mahsulot uuid'i */
   const setCartQty = (product: Product, qty: number) => {
     setCart((prev) => {
-      if (qty <= 0) return prev.filter((i) => i.product.uuid !== product.uuid);
-      const exists = prev.some((i) => i.product.uuid === product.uuid);
-      return exists ? prev.map((i) => (i.product.uuid === product.uuid ? { ...i, quantity: qty } : i)) : [...prev, { product, quantity: qty }];
+      if (qty <= 0) return prev.filter((i) => keyOf(i) !== product.uuid);
+      const exists = prev.some((i) => keyOf(i) === product.uuid);
+      return exists ? prev.map((i) => (keyOf(i) === product.uuid ? { ...i, quantity: qty } : i)) : [...prev, { product, quantity: qty }];
     });
   };
-  const cartQty = (uuid: string) => cart.find((i) => i.product.uuid === uuid)?.quantity || 0;
+  /** Savat qatorini kaliti bo'yicha (bir mahsulot turli o'lchamda — alohida qatorlar) */
+  const setLineQty = (key: string, qty: number) =>
+    setCart((prev) => (qty <= 0 ? prev.filter((i) => keyOf(i) !== key) : prev.map((i) => (keyOf(i) === key ? { ...i, quantity: qty } : i))));
+  /** Kartadagi belgi: shu mahsulot savatda jami nechta (barcha variantlari) */
+  const cartQty = (uuid: string) => cart.filter((i) => i.product.uuid === uuid).reduce((s, i) => s + i.quantity, 0);
+
+  // Variant/qadoq tanlanadigan mahsulot (pitsa o'lchami, donar go'shti...) — avval tanlash oynasi
+  const [configuring, setConfiguring] = useState<Product | null>(null);
+  const addConfigured = async (product: Product, cfg: LineConfig) => {
+    setConfiguring(null);
+    if (isEditMode) {
+      await handleAddProductToOrder(product, cfg);
+      return;
+    }
+    const key = lineKey(product.uuid, cfg.options, cfg.packaging);
+    setCart((prev) =>
+      prev.some((i) => keyOf(i) === key)
+        ? prev.map((i) => (keyOf(i) === key ? { ...i, quantity: Number((i.quantity + cfg.quantity).toFixed(3)) } : i))
+        : [...prev, { product, quantity: cfg.quantity, key, options: cfg.options, packaging: cfg.packaging }],
+    );
+  };
+  /** Savat qatorida majburiy variant tanlanmagan (masalan, menyuga o'lcham keyin qo'shilgan eski qator) */
+  const missingRequired = (i: CartItem) =>
+    !i.options?.length && (i.product.option_groups ?? []).some((g) => g.min_select > 0);
   const cartCount = useMemo(() => countItems(cart), [cart]);
 
   // Narxni SERVER hisoblaydi (kassa bilan bir xil quote): 1+1/2+1 sovg'a, aksiya, chegirma.
@@ -362,14 +402,19 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     }
   };
 
-  const snapshot = () => JSON.stringify([cart.map((i) => [i.product.uuid, i.quantity]), contactName, contactPhone, comment]);
+  const snapshot = () => JSON.stringify([cart.map((i) => [keyOf(i), i.quantity]), contactName, contactPhone, comment]);
   const hasContent = cart.length > 0 || !!contactName.trim() || contactPhone.length > 4 || !!comment.trim();
 
   /** Savatni qoralama sifatida saqlab, stollar ro'yxatiga qaytadi (boshqa stol bilan ishlash uchun) */
   const handleSaveDraft = () => {
     if (cart.length === 0) return;
     saveDraft(table.uuid, {
-      items: cart.map((i) => ({ product_uuid: i.product.uuid, quantity: i.quantity })),
+      items: cart.map((i) => ({
+        product_uuid: i.product.uuid,
+        quantity: i.quantity,
+        ...(i.options?.length ? { options: i.options.map((o) => o.uuid) } : {}),
+        ...(i.packaging ? { packaging: i.packaging.uuid } : {}),
+      })),
       contact_name: contactName,
       contact_phone: contactPhone,
       comment,
@@ -425,11 +470,20 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     return m;
   }, [orderItems]);
 
-  const handleAddProductToOrder = async (product: Product) => {
+  const handleAddProductToOrder = async (product: Product, cfg?: LineConfig) => {
     if (!orderUuid || actionLoading) return;
     setActionLoading(product.uuid);
     try {
-      const res = await ordersApi.addOrderItems(orderUuid, { items: [{ product_uuid: product.uuid, quantity: 1 }] });
+      const res = await ordersApi.addOrderItems(orderUuid, {
+        items: [
+          {
+            product_uuid: product.uuid,
+            quantity: cfg?.quantity ?? 1,
+            ...(cfg?.options.length ? { options: cfg.options.map((o) => o.uuid) } : {}),
+            ...(cfg?.packaging ? { packaging: cfg.packaging.uuid } : {}),
+          },
+        ],
+      });
       if (res?.new_bill) {
         // Stol buyurtmasi to'langan edi: taom yangi hisobga yozildi — stollar yangilanadi, yangi hisob stolda ochiladi
         toast.info(t('bill.newBill', { n: `#${table.current_order?.order_number || ''}`, m: res.data?.order_number || '' }));
@@ -486,7 +540,11 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         await printPreCheckUtil({
           table_number: table.table_number,
           total_price: total,
-          items: cart.map((i) => ({ product_name: i.product.name, price_at_time_of_order: i.product.price, quantity: i.quantity })),
+          items: cart.map((i) => ({
+            product_name: i.options?.length ? `${i.product.name} (${i.options.map((o) => o.name).join(', ')})` : i.product.name,
+            price_at_time_of_order: unitPrice(i.product, i.options, i.packaging),
+            quantity: i.quantity,
+          })),
         });
       }
     } catch (err) {
@@ -603,6 +661,11 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                     type="button"
                     disabled={!p.is_available || (isEditMode && !!actionLoading)}
                     onClick={(e) => {
+                      // O'lcham/variant tanlanadigan mahsulot — avval tanlash oynasi (pitsa 25/30/35 sm va h.k.)
+                      if (isConfigurable(p)) {
+                        setConfiguring(p);
+                        return;
+                      }
                       flyToCart(e.currentTarget);
                       if (isEditMode) handleAddProductToOrder(p);
                       else setCartQty(p, qty + 1);
@@ -803,10 +866,29 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
               const q = quote?.items[idx];
               const gift = giftOf(i);
               const note = dealNote(i);
+              const lk = keyOf(i);
+              const needsPick = missingRequired(i);
               return (
-              <div key={i.product.uuid} className="rounded-2xl border border-edge bg-surface p-3 flex items-center gap-3">
+              <div key={lk} className={`rounded-2xl border bg-surface p-3 flex items-center gap-3 ${needsPick ? 'border-danger/40' : 'border-edge'}`}>
                 <div className="min-w-0 flex-1">
                   <div className="text-[14px] font-bold text-ink truncate">{i.product.name}</div>
+                  {(i.options?.length || i.packaging) && (
+                    <div className="text-[12px] font-semibold text-ink-soft truncate">
+                      {[i.packaging?.name, ...(i.options ?? []).map((o) => o.name)].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                  {needsPick && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLineQty(lk, 0);
+                        setConfiguring(i.product);
+                      }}
+                      className="mt-1 text-[12px] font-extrabold text-danger-ink underline cursor-pointer bg-transparent border-0 p-0"
+                    >
+                      {(i.product.option_groups ?? []).find((g) => g.min_select > 0)?.name || 'Variant'}ni tanlang
+                    </button>
+                  )}
                   <div className="text-[12px] text-muted tabular-nums">{formatMoney(q ? q.line_total : linePrice(i))}</div>
                   {gift > 0 ? (
                     <div className="text-[12px] font-bold text-brand">
@@ -816,8 +898,8 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                     note && <div className="text-[12px] font-bold text-warning-ink">{note}</div>
                   )}
                 </div>
-                <QtyStepper size="sm" value={i.quantity} onChange={(v) => setCartQty(i.product, v)} />
-                <IconButton label={t('tom.removeLine')} variant="danger-soft" size="sm" onClick={() => setCartQty(i.product, 0)}>
+                <QtyStepper size="sm" value={i.quantity} onChange={(v) => setLineQty(lk, v)} />
+                <IconButton label={t('tom.removeLine')} variant="danger-soft" size="sm" onClick={() => setLineQty(lk, 0)}>
                   <Trash2 className="w-4 h-4" />
                 </IconButton>
               </div>
@@ -957,6 +1039,9 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
           }}
         />
       )}
+
+      {/* Variant tanlash (pitsa o'lchami, donar go'shti...) — kassa bilan bir xil oyna */}
+      <ProductConfigSheet product={configuring} onClose={() => setConfiguring(null)} onConfirm={(cfg) => configuring && addConfigured(configuring, cfg)} />
 
       {qrConfirmOpen && orderUuid && (
         <WaiterPickSheet

@@ -188,7 +188,7 @@ export const loadCatalogProducts = async (partnerUuid: string): Promise<CatalogP
             required: Number(g.min_select ?? 0) > 0,
             options: (g.options ?? []).map((o) => ({
               name: o.name || '',
-              price_delta: parseFloat(o.price_delta || '0') || 0,
+              price_delta: Number(o.price_delta ?? 0) || 0,
               is_available: o.is_available !== false,
             })),
           })),

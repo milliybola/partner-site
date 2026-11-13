@@ -151,6 +151,16 @@ export interface CatalogProduct {
   is_available: boolean;
   /** SINGLE — oddiy mahsulot; SET — kombo (setga setni qo'shib bo'lmaydi) */
   kind: 'SINGLE' | 'SET';
+  /** Variantlar (pitsa o'lchami va h.k.) — aksiya oynasida daraxt ko'rinishida ko'rsatish uchun */
+  option_groups?: { name: string; required: boolean; options: { name: string; price_delta: number; is_available: boolean }[] }[];
+}
+
+/** Server javobidagi variant guruhi (faqat aksiya oynasida ko'rsatish uchun kerakli maydonlar) */
+interface RawOptionGroup {
+  name?: string;
+  min_select?: number | string;
+  is_active?: boolean;
+  options?: { name?: string; price_delta?: string | number; is_available?: boolean }[];
 }
 
 /** Same call CatalogPage uses: categories come with their products embedded. */
@@ -171,6 +181,17 @@ export const loadCatalogProducts = async (partnerUuid: string): Promise<CatalogP
         categoryName,
         is_available: p.is_available !== false,
         kind: p.kind === 'SET' ? 'SET' : 'SINGLE',
+        option_groups: ((Array.isArray(p.option_groups) ? p.option_groups : []) as RawOptionGroup[])
+          .filter((g) => g?.is_active !== false && Array.isArray(g.options) && g.options.length > 0)
+          .map((g) => ({
+            name: g.name || '',
+            required: Number(g.min_select ?? 0) > 0,
+            options: (g.options ?? []).map((o) => ({
+              name: o.name || '',
+              price_delta: parseFloat(o.price_delta || '0') || 0,
+              is_available: o.is_available !== false,
+            })),
+          })),
       });
     });
   });

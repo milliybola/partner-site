@@ -67,7 +67,13 @@ export const ProductPicker: React.FC<{
                     <div className="min-w-0 flex-1 text-left">
                       <div className="text-[14px] font-semibold text-ink truncate">{p.name}</div>
                       <div className="text-[13px] text-muted">
-                        {formatMoney(p.price)}
+                        {(() => {
+                          // Variantli: narx oralig'i (majburiy guruhlar bo'yicha) — «65 000» chalg'itmasin
+                          const req = (p.option_groups ?? []).filter((g) => g.required);
+                          const min = p.price + req.reduce((s, g) => s + Math.min(...g.options.map((o) => o.price_delta)), 0);
+                          const max = p.price + req.reduce((s, g) => s + Math.max(...g.options.map((o) => o.price_delta)), 0);
+                          return max > min ? `${formatMoney(min, false)} – ${formatMoney(max)}` : formatMoney(p.price);
+                        })()}
                         {!p.is_available && <span className="ml-1.5 text-warning-ink">· mavjud emas</span>}
                       </div>
                     </div>
@@ -81,23 +87,52 @@ export const ProductPicker: React.FC<{
                     </div>
                   );
                 }
+                const groups = p.option_groups ?? [];
                 return (
-                  <button
-                    key={p.uuid}
-                    type="button"
-                    onClick={() => onToggle?.(p.uuid)}
-                    aria-pressed={isSel}
-                    className={`w-full flex items-center gap-3 px-3 py-2 min-h-[56px] cursor-pointer ${active ? 'bg-brand-soft/50' : 'bg-surface hover:bg-surface2'}`}
-                  >
-                    {body}
-                    <span
-                      className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center shrink-0 ${
-                        isSel ? 'bg-brand border-brand text-white' : 'border-edge-strong'
-                      }`}
+                  <div key={p.uuid} className={active ? 'bg-brand-soft/50' : 'bg-surface'}>
+                    <button
+                      type="button"
+                      onClick={() => onToggle?.(p.uuid)}
+                      aria-pressed={isSel}
+                      className={`w-full flex items-center gap-3 px-3 py-2 min-h-[56px] cursor-pointer bg-transparent ${active ? '' : 'hover:bg-surface2'}`}
                     >
-                      {isSel && <Check className="w-4 h-4" />}
-                    </span>
-                  </button>
+                      {body}
+                      <span
+                        className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center shrink-0 ${
+                          isSel ? 'bg-brand border-brand text-white' : 'border-edge-strong'
+                        }`}
+                      >
+                        {isSel && <Check className="w-4 h-4" />}
+                      </span>
+                    </button>
+                    {/* Variantlar daraxti: aksiya mahsulotga — uning BARCHA variantlariga amal qiladi */}
+                    {groups.length > 0 && (
+                      <div className="pl-[68px] pr-3 pb-2.5 -mt-1">
+                        {groups.map((g) => (
+                          <div key={g.name} className="mt-1">
+                            <div className="text-[11px] font-bold uppercase tracking-wider text-subtle">{g.name}</div>
+                            <ul className="mt-0.5 border-l-2 border-edge ml-1">
+                              {g.options.map((o) => (
+                                <li key={o.name} className="relative flex items-center gap-2 pl-3 py-[3px] text-[13px]">
+                                  <span className="absolute left-0 top-1/2 w-2 border-t-2 border-edge" aria-hidden />
+                                  <span className={`flex-1 truncate ${o.is_available ? 'text-ink' : 'text-subtle line-through'}`}>{o.name}</span>
+                                  <span className="text-muted tabular-nums">
+                                    {g.required ? formatMoney(p.price + o.price_delta) : `+${formatMoney(o.price_delta)}`}
+                                  </span>
+                                  {isSel && <Check className="w-3.5 h-3.5 text-brand shrink-0" aria-label="aksiya amal qiladi" />}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                        {isSel && (
+                          <p className="mt-1.5 text-[12px] font-semibold text-brand">
+                            Aksiya barcha variantlarga amal qiladi — bir xil variantdan olinganda (masalan, 2 ta 30 sm)
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>

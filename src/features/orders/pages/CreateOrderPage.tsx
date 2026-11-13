@@ -1198,6 +1198,23 @@ const CreateOrderPage: React.FC = () => {
   );
 
   const goBack = () => updateActiveCart({ step: serviceType === 'DINE_IN' && !selfHall ? 'TABLE_SELECT' : 'SERVICE_TYPE' });
+  // Kompyuter paneli: bitta qatorda (Orqaga — faqat belgi), joy savat ro'yxatiga qoladi
+  const actionRow = (
+    <div className={`grid gap-2 ${shop ? 'grid-cols-3' : 'grid-cols-[44px_1fr_1fr_1fr]'}`}>
+      {!shop && (
+        <Button variant="outline" className="!px-0" aria-label="Orqaga" title="Orqaga" icon={<ArrowLeft className="w-4 h-4" />} onClick={goBack} />
+      )}
+      <Button variant="outline" className="!px-2" icon={<Trash2 className="w-4 h-4" />} disabled={cart.length === 0 && !contactName && !comment} onClick={clearCart}>
+        Tozalash
+      </Button>
+      <Button variant="outline" className="!px-2" icon={<FileText className="w-4 h-4" />} loading={printingPreCheck} disabled={cart.length === 0} onClick={handlePrintPreCheck}>
+        Pre-chek
+      </Button>
+      <Button variant="outline" className="!px-2" icon={<Printer className="w-4 h-4" />} loading={printingReceipt} disabled={cart.length === 0} onClick={() => handlePrintReceipt(false)}>
+        Chek
+      </Button>
+    </div>
+  );
   const actionGrid = (
     <div className="grid grid-cols-2 gap-2">
       {!shop && (
@@ -1459,14 +1476,17 @@ const CreateOrderPage: React.FC = () => {
               </Button>
             )}
           </div>
-          <div id="new-order-cart-panel" className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 pb-3 space-y-3">
-            {cartLines}
-            {cartNotices}
-          </div>
-          <div className="shrink-0 border-t border-edge px-5 max-h-[50%] overflow-y-auto">
-            {mainInline && mainFields}
-            {extraToggle}
-            {showExtra && extraFields}
+          {/* Savat + mijoz maydonlari bitta aylanuvchi qismda — pastki tugmalar hech qachon qisib qo'ymaydi */}
+          <div id="new-order-cart-panel" className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 pb-3">
+            <div className="space-y-3">
+              {cartLines}
+              {cartNotices}
+            </div>
+            <div className="mt-3 border-t border-edge">
+              {mainInline && mainFields}
+              {extraToggle}
+              {showExtra && extraFields}
+            </div>
           </div>
           <div className="shrink-0 border-t border-edge px-5 py-3 space-y-2">
             {totalsBlock}
@@ -1475,7 +1495,7 @@ const CreateOrderPage: React.FC = () => {
                 {submitError}
               </InlineAlert>
             )}
-            {actionGrid}
+            {actionRow}
             {submitButton}
           </div>
         </aside>

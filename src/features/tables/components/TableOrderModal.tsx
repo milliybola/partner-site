@@ -55,7 +55,7 @@ import {
   orderTotal,
 } from '../../orders/utils/posCart';
 import type { CartLine, CatalogCategory, CatalogProduct, ServerBill } from '../../orders/utils/posCart';
-import { keyOf } from '../../orders/utils/posCart';
+import { keyOf, priceRange } from '../../orders/utils/posCart';
 import { ProductConfigSheet, isConfigurable, lineKey, unitPrice } from '../../orders/components/ProductConfigSheet';
 import type { LineConfig, SelectedOption } from '../../orders/components/ProductConfigSheet';
 import { quotePosCart } from '../../orders/services/ordersApi';
@@ -695,8 +695,18 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                     <div className="p-2.5 flex-1 flex flex-col gap-0.5">
                       <span className="text-[13px] font-bold text-ink leading-snug line-clamp-2">{p.name}</span>
                       <span className="mt-auto flex items-baseline gap-1.5 flex-wrap">
-                        <span className="text-[14px] font-extrabold text-ink tabular-nums">{formatMoney(p.price)}</span>
-                        {p.discount > 0 && <span className="text-[11px] text-subtle line-through tabular-nums">{formatMoney(p.original_price, false)}</span>}
+                        {(() => {
+                          // O'lchamli mahsulot: eng arzon – eng qimmat (masalan, 65 000 – 95 000 so'm)
+                          const r = priceRange(p);
+                          return (
+                            <span className="text-[14px] font-extrabold text-ink tabular-nums">
+                              {r ? `${formatMoney(r.min, false)} – ${formatMoney(r.max)}` : formatMoney(p.price)}
+                            </span>
+                          );
+                        })()}
+                        {p.discount > 0 && !priceRange(p) && (
+                          <span className="text-[11px] text-subtle line-through tabular-nums">{formatMoney(p.original_price, false)}</span>
+                        )}
                       </span>
                     </div>
                   </button>

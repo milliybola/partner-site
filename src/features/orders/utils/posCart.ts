@@ -180,6 +180,23 @@ export interface PosSendItem {
 }
 
 /** Savat → server qatorlari: promo qatorida to'langan + avto-sovg'a yuboriladi; server bepulni tasdiqlaydi */
+/**
+ * Menyu kartasidagi narx oralig'i: majburiy guruhlar (o'lcham, go'sht turi) bo'yicha eng arzon va eng qimmat tanlov.
+ * Ixtiyoriy qo'shimchalar (ikki barobar pishloq) hisobga olinmaydi. Oraliq bo'lmasa (bitta narx) — null.
+ */
+export const priceRange = (p: { price: number; option_groups?: PosOptionGroup[] }): { min: number; max: number } | null => {
+  let min = p.price;
+  let max = p.price;
+  for (const g of p.option_groups ?? []) {
+    if (g.min_select <= 0) continue;
+    const deltas = g.options.filter((o) => o.is_available).map((o) => o.price_delta).sort((a, b) => a - b);
+    if (!deltas.length) continue;
+    min += deltas.slice(0, g.min_select).reduce((s, d) => s + d, 0);
+    max += deltas.slice(-Math.max(g.min_select, g.max_select)).reduce((s, d) => s + d, 0);
+  }
+  return max > min ? { min, max } : null;
+};
+
 export const buildPosItems = (lines: CartLine[]): PosSendItem[] =>
   lines.map((i) => ({
     product_uuid: i.product.uuid,

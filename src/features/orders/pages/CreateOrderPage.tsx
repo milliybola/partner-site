@@ -50,6 +50,7 @@ import { callsApi } from '../../calls/callsApi';
 import { PhoneCustomerInput } from '../../customers/PhoneCustomerInput';
 import { t } from '../../../core/i18n';
 import { ProductConfigSheet, isConfigurable, lineKey, unitPrice } from '../components/ProductConfigSheet';
+import { priceRange } from '../utils/posCart';
 import type { LineConfig } from '../components/ProductConfigSheet';
 import { CartTotals } from '../components/CartTotals';
 import { flyToCart as flyToCartUtil } from '../utils/flyToCart';
@@ -1423,8 +1424,11 @@ const CreateOrderPage: React.FC = () => {
                           <div className="mt-0.5 text-[11px] text-muted line-clamp-2">{p.set_items.map((s) => `${s.quantity}× ${s.name}`).join(", ")}</div>
                         )}
                         <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
-                          <span className="text-[15px] font-extrabold text-ink">{formatMoney(p.price)}</span>
-                          {p.discount > 0 && <span className="text-[12px] text-subtle line-through">{formatMoney(p.original_price, false)}</span>}
+                          {/* O'lchamli mahsulot: eng arzon – eng qimmat (masalan, 65 000 – 95 000 so'm) */}
+                          <span className="text-[15px] font-extrabold text-ink">
+                            {priceRange(p) ? `${formatMoney(priceRange(p)!.min, false)} – ${formatMoney(priceRange(p)!.max)}` : formatMoney(p.price)}
+                          </span>
+                          {p.discount > 0 && !priceRange(p) && <span className="text-[12px] text-subtle line-through">{formatMoney(p.original_price, false)}</span>}
                         </div>
                       </div>
                     </button>

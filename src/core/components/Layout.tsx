@@ -21,7 +21,7 @@ import type { PartnerSession } from '../lib/session';
 import { getErrorMessage } from '../lib/errors';
 import { clearOwnerFilialsCache, useOwnerFilials, useWorkingFilial } from '../lib/useWorkingFilial';
 import { ensureNotificationPermission } from '../platform';
-import { ApiGap, Sheet } from '../ui';
+import { Sheet } from '../ui';
 import { FilialSwitch } from './FilialSwitch';
 import { venueOf } from '../../venues';
 import { clearTariffCache, useTariff } from '../lib/tariff';
@@ -31,11 +31,20 @@ import { CallAlerts } from '../../features/calls/CallAlerts';
 import { TableCallAlerts } from '../../features/tables/TableCallAlerts';
 import { KitchenPrintAgent } from '../../features/orders/KitchenPrintAgent';
 import { OfflineSync } from './OfflineSync';
+import { PosStatusBar, PosStatusList } from './PosStatusBar';
+import { usePosStatus } from '../lib/usePosStatus';
+import { useConfirm } from './ConfirmProvider';
+import { clearOfflineCache, pendingCount } from '../lib/offline';
 import { PosLockScreen } from './PosLockScreen';
 import { lockPos, unlockPos, useAutoLock, usePosHasPins, usePosLocked } from '../lib/posLock';
 import { buildNav, buildTabs } from '../../venues/nav';
 import { posHome, setWorkMode, useWorkMode } from '../lib/workMode';
+import { usePlatformConfig } from '../lib/platformStage';
+import { shiftApi } from '../../features/shifts/services/shiftApi';
+import { StageLockedAccountScreen } from './StageGate';
 import type { WorkMode } from '../lib/workMode';
+import { t } from '../i18n';
+import { LangSwitch } from '../i18n/LangSwitch';
 
 const Logo: React.FC<{ partner: PartnerSession | null; size?: number }> = ({ partner, size = 36 }) =>
   partner?.logo ? (
@@ -72,9 +81,9 @@ const OpenStatus: React.FC<{ partner: PartnerSession | null; compact?: boolean }
     try {
       await apiClient.patch('partner/me/', { is_open: next });
       savePartner({ ...partner, is_open: next });
-      toast.success(next ? 'Muassasa ochildi — buyurtmalar qabul qilinadi' : 'Muassasa yopildi — yangi buyurtmalar kelmaydi');
+      toast.success(next ? t('lay.venueOpened') : t('lay.venueClosed'));
     } catch (err) {
-      toast.error(getErrorMessage(err, "Holatni o'zgartirib bo'lmadi"));
+      toast.error(getErrorMessage(err, t('tp.statusFail')));
     } finally {
       setSaving(false);
     }
@@ -86,14 +95,13 @@ const OpenStatus: React.FC<{ partner: PartnerSession | null; compact?: boolean }
         type="button"
         onClick={toggle}
         disabled={manager || saving}
-        title={manager ? 'Faqat egasi o‘zgartira oladi' : isOpen ? 'Yopish uchun bosing' : 'Ochish uchun bosing'}
+        title={manager ? t('lay.ownerOnly') : isOpen ? t('lay.tapToClose') : t('lay.tapToOpen')}
         className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-full text-[13px] font-bold transition cursor-pointer disabled:cursor-default
           ${isOpen ? 'bg-brand-soft text-brand' : 'bg-danger-soft text-danger-ink'} ${saving ? 'opacity-60' : ''}`}
       >
         <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-brand-bright animate-pulse' : 'bg-danger'}`} />
-        {compact ? (isOpen ? 'Ochiq' : 'Yopiq') : isOpen ? 'Ochiq' : 'Yopiq'}
+        {compact ? (isOpen ? t('lay.open') : t('lay.closed')) : isOpen ? t('lay.open') : t('lay.closed')}
       </button>
-      {!manager && !compact && <ApiGap title="PATCH partner/me/ {is_open} — backend tomonidan tasdiqlanmagan (API_GAPS.md #1)" />}
     </span>
   );
 };
@@ -101,10 +109,10 @@ const OpenStatus: React.FC<{ partner: PartnerSession | null; compact?: boolean }
 /* ------------------------------------------------------- Work mode switch */
 /** Kassa ↔ Boshqaruv. Kassirga ko'rsatilmaydi (u doim kassada). */
 const ModeSwitch: React.FC<{ mode: WorkMode; onChange: (m: WorkMode) => void; wide?: boolean }> = ({ mode, onChange, wide }) => (
-  <div className={`inline-flex p-1 rounded-xl bg-field ${wide ? 'w-full' : ''}`} role="tablist" aria-label="Ish rejimi">
+  <div className={`inline-flex p-1 rounded-xl bg-field ${wide ? 'w-full' : ''}`} role="tablist" aria-label={t('lay.workMode')}>
     {([
-      ['pos', 'Kassa', Store],
-      ['manage', 'Boshqaruv', Settings2],
+      ['pos', t('nav.pos'), Store],
+      ['manage', t('lay.manage'), Settings2],
     ] as const).map(([m, label, Icon]) => (
       <button
         key={m}
@@ -126,7 +134,7 @@ const ConnectionDot: React.FC = () => {
   const { isConnected } = useRealtime();
   return (
     <span
-      title={isConnected ? 'Real-vaqt aloqa: ulangan' : 'Real-vaqt aloqa: uzilgan — qayta ulanmoqda'}
+      title={isConnected ? t('lay.rtOn') : t('lay.rtOff')}
       className={`inline-flex items-center justify-center w-9 h-9 rounded-full ${isConnected ? 'text-brand' : 'text-warning-ink bg-warning-soft'}`}
     >
       {isConnected ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
@@ -148,7 +156,7 @@ const useFilialSwitcher = (partner: PartnerSession | null) => {
 
   const switchTo = async (filialUuid: string) => {
     const staffUuid = partner?.staff_uuid || partner?.uuid;
-    if (!staffUuid) return toast.error('Xodim identifikatori topilmadi.');
+    if (!staffUuid) return toast.error(t('lay.noStaffId'));
     try {
       await filialApi.switchFilial(staffUuid, filialUuid);
       const res = await apiClient.get('partner/staff/me/');
@@ -162,10 +170,30 @@ const useFilialSwitcher = (partner: PartnerSession | null) => {
       });
       window.location.reload();
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Filialni almashtirishda xatolik yuz berdi.'));
+      toast.error(getErrorMessage(err, t('lay.filialSwitchFail')));
     }
   };
   return { filials, switchTo };
+};
+
+/**
+ * Bosqich pasaytirilgan (2 → 1), lekin ochiq smena qolgan (Q56): «Smena» bo'limi menyuda qoladi — uni yopish shart.
+ * Faqat 1-bosqichda va restoranda bir marta so'raladi.
+ */
+const useLeftoverShift = (enabled: boolean) => {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!enabled) return setOpen(false);
+    let alive = true;
+    shiftApi
+      .getCurrentShift()
+      .then((s) => alive && setOpen(s?.status === 'OPEN'))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [enabled]);
+  return open;
 };
 
 /* ---------------------------------------------------------------- Shell */
@@ -226,7 +254,19 @@ const Shell: React.FC = () => {
     });
   };
 
-  const logout = useCallback(() => {
+  const confirm = useConfirm();
+  const logout = useCallback(async (fromLockScreen = false) => {
+    // Oflayn navbat shu xodimga bog'langan: chiqsa, buyurtmalar u qayta kirguncha yuborilmaydi — ogohlantiramiz.
+    // Qulf ekranida tasdiq oynasi ekran ostida qoladi — u yerdan so'ramaymiz (navbat baribir saqlanadi).
+    const pending = fromLockScreen ? 0 : pendingCount();
+    if (pending > 0) {
+      const ok = await confirm(
+        t('lay.pendingAsk', { n: pending }),
+        { title: t('lay.pendingTitle'), danger: true, confirmText: t('lay.logoutAnyway') },
+      );
+      if (!ok) return;
+    }
+    clearOfflineCache();
     unlockPos(); // keyingi kirishda qulf ekrani chiqib qolmasin
     clearSession();
     clearOwnerFilialsCache();
@@ -235,17 +275,25 @@ const Shell: React.FC = () => {
     clearPaymentMethodsCache();
     navigate('/login', { replace: true });
     window.location.reload();
-  }, [navigate]);
+  }, [navigate, confirm]);
 
   const { tariff } = useTariff();
-  const mode = useWorkMode();
+  // Platforma bosqichi: 1-bosqichda kassa rejimi, smena, zal, telefon buyurtma yo'q (docs/bosqichlar/matritsa.md)
+  const { stage, pos: posStage, loaded: stageLoaded } = usePlatformConfig();
+  const savedMode = useWorkMode();
+  const mode: WorkMode = posStage ? savedMode : 'manage';
   const cashier = isCashier(partner);
   const filialCount = ownerFilials.length || undefined; // 0 — hali yuklanmagan
   const { settings: work } = useWorkSettings();
-  const groups = useMemo(() => buildNav(partner, tariff, mode, filialCount, work), [partner, tariff, mode, filialCount, work]);
+  const openShift = useLeftoverShift(stageLoaded && !posStage && venueOf(partner) === 'restaurant' && !cashier);
+  const groups = useMemo(
+    () => buildNav(partner, tariff, mode, filialCount, work, { stage, openShift }),
+    [partner, tariff, mode, filialCount, work, stage, openShift],
+  );
   const manager = isManager(partner);
   const pos = mode === 'pos';
   const locked = usePosLocked();
+  const statusItems = usePosStatus(pos);
   const hasPins = usePosHasPins(pos, locked);
   // Avtomatik qulf faqat PIN o'rnatilgan xodim bo'lsa (aks holda kassa hech kim ocholmaydigan bo'lib qoladi)
   useAutoLock(pos && hasPins === true);
@@ -257,17 +305,23 @@ const Shell: React.FC = () => {
   const w = wording(partner);
   const ownerMulti = owner && ownerFilials.length > 1;
   const filialName = ownerMulti
-    ? ownerFilials.find((f) => f.uuid === workingFilial)?.filial_name || 'Barcha filiallar'
+    ? ownerFilials.find((f) => f.uuid === workingFilial)?.filial_name || t('lay.allFilials')
     : partner?.current_filial?.filial_name || partner?.filial_name;
 
   const kind = venueOf(partner);
-  const tabs = useMemo(() => buildTabs(kind, tariff, mode), [kind, tariff, mode]);
-  const newOrderLabel = kind === 'store' ? 'Kassa' : 'Yangi buyurtma';
+  const tabs = useMemo(() => buildTabs(kind, tariff, mode, stage), [kind, tariff, mode, stage]);
+  const newOrderLabel = kind === 'store' ? t('nav.pos') : t('nav.newOrder');
 
   // Do'kon va restoran ranglari: index.css dagi `[data-venue]` o'zgaruvchilari
   useEffect(() => {
     document.documentElement.dataset.venue = kind;
   }, [kind]);
+
+  // Kassir — 2-bosqich xodimi: 1-bosqichda hisob ishlamaydi (backend ham 403 STAGE_LOCKED), o'chirilmaydi.
+  // Oflayn navbatdagi to'lovlar baribir yuboriladi (Q56) — ekran ichida OfflineSync.
+  if (cashier && stageLoaded && !posStage) {
+    return <StageLockedAccountScreen onLogout={() => void logout()} />;
+  }
 
   const tabPaths = tabs.map((t) => t.to);
   const moreActive = !tabPaths.includes(location.pathname);
@@ -279,8 +333,8 @@ const Shell: React.FC = () => {
       subtitle={getDisplayName(partner)}
       onChange={(v) => setWorkingFilial(v || null)}
       options={[
-        { value: '', label: 'Barcha filiallar', hint: 'Hamma filiallar jami' },
-        ...ownerFilials.map((f) => ({ value: f.uuid, label: f.filial_name, hint: f.is_main ? 'Asosiy filial' : undefined })),
+        { value: '', label: t('lay.allFilials'), hint: t('lay.allFilialsHint') },
+        ...ownerFilials.map((f) => ({ value: f.uuid, label: f.filial_name, hint: f.is_main ? t('lay.mainFilial') : undefined })),
       ]}
     />
   ) : manager && filials.length > 1 ? (
@@ -288,16 +342,18 @@ const Shell: React.FC = () => {
       value={partner?.current_filial?.uuid || ''}
       subtitle={getDisplayName(partner)}
       onChange={(v) => v && switchTo(v)}
-      options={filials.map((f) => ({ value: f.uuid, label: f.filial_name, hint: f.is_main ? 'Asosiy filial' : undefined }))}
+      options={filials.map((f) => ({ value: f.uuid, label: f.filial_name, hint: f.is_main ? t('lay.mainFilial') : undefined }))}
     />
   ) : null;
 
   return (
-    <div className="min-h-screen bg-canvas text-ink md:flex" style={{ ['--appbar-h' as any]: '56px' }}>
-      <CallAlerts />
-      <TableCallAlerts />
+    <div className={`min-h-screen bg-canvas text-ink md:flex ${pos ? 'md:[--statusbar-h:28px]' : ''}`} style={{ ['--appbar-h' as any]: '56px' }}>
+      {/* Kiruvchi qo'ng'iroq (telefon buyurtma) va stol chaqiruvi — 2-bosqich */}
+      {posStage && <CallAlerts />}
+      {posStage && <TableCallAlerts />}
       <KitchenPrintAgent />
-      {pos && locked && <PosLockScreen onLogout={logout} hasPins={hasPins} />}
+      {pos && <PosStatusBar items={statusItems} />}
+      {pos && locked && <PosLockScreen onLogout={() => void logout(true)} hasPins={hasPins} />}
       {/* ---------------- Desktop sidebar (kassa rejimida yo'q — butun ekran) ---------------- */}
       <aside
         className={`hidden ${pos ? '' : 'md:flex'} flex-col sticky top-0 h-screen shrink-0 bg-surface border-r border-edge transition-[width] duration-200 ${
@@ -309,7 +365,7 @@ const Shell: React.FC = () => {
           {!collapsed && (
             <div className="min-w-0 flex-1">
               <div className="text-[14px] font-extrabold text-ink truncate tracking-tightest">{getDisplayName(partner)}</div>
-              <div className="text-[11px] text-muted truncate">{filialName || (cashier ? 'Kassir' : manager ? 'Menejer' : 'Hamkor paneli')}</div>
+              <div className="text-[11px] text-muted truncate">{filialName || (cashier ? t('lay.cashier') : manager ? t('lay.manager') : t('lay.partnerPanel'))}</div>
             </div>
           )}
         </div>
@@ -354,25 +410,25 @@ const Shell: React.FC = () => {
         <div className="border-t border-edge p-3 space-y-2">
           <button
             type="button"
-            onClick={logout}
-            title="Chiqish"
+            onClick={() => void logout()}
+            title={t('lay.logout')}
             className={`flex items-center gap-3 h-10 rounded-xl text-[14px] font-semibold text-danger-ink hover:bg-danger-soft w-full cursor-pointer ${
               collapsed ? 'justify-center' : 'px-3'
             }`}
           >
             <LogOut className="w-[18px] h-[18px]" />
-            {!collapsed && 'Chiqish'}
+            {!collapsed && t('lay.logout')}
           </button>
           <button
             type="button"
             onClick={toggleCollapsed}
-            title={collapsed ? 'Yoyish' : "Yig'ish"}
+            title={collapsed ? t('lay.expand') : t('lay.collapse')}
             className={`flex items-center gap-3 h-9 rounded-xl text-[13px] font-semibold text-muted hover:bg-field w-full cursor-pointer ${
               collapsed ? 'justify-center' : 'px-3'
             }`}
           >
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-            {!collapsed && "Menyuni yig'ish"}
+            {!collapsed && t('lay.collapseMenu')}
           </button>
         </div>
       </aside>
@@ -397,7 +453,7 @@ const Shell: React.FC = () => {
               /* Kassa: logotip + bo'limlar tablari (monoblok uchun katta tugmalar) */
               <div className="hidden md:flex items-center gap-3 min-w-0 flex-1">
                 <Logo partner={partner} size={34} />
-                <nav className="flex items-center gap-1 min-w-0 overflow-x-auto no-scrollbar" aria-label="Kassa bo'limlari">
+                <nav className="flex items-center gap-1 min-w-0 overflow-x-auto no-scrollbar" aria-label={t('lay.posSections')}>
                   {groups.slice(0, 1).flatMap((g) => g.items).map((item) => {
                     const Icon = item.icon;
                     const badge = item.to === '/orders' && unseenNewOrders > 0;
@@ -427,7 +483,7 @@ const Shell: React.FC = () => {
               </div>
             ) : (
               <div className="hidden md:flex items-center gap-3 text-[13px] text-muted min-w-0">
-                {!cashier && <ModeSwitch mode={mode} onChange={changeMode} />}
+                {!cashier && posStage && <ModeSwitch mode={mode} onChange={changeMode} />}
                 <span className="truncate">{`${w.venue} boshqaruv paneli`}</span>
               </div>
             )}
@@ -462,18 +518,19 @@ const Shell: React.FC = () => {
                   {staffName}
                 </span>
               )}
+              {pos && <LangSwitch className="hidden md:inline-flex" />}
               {pos && (
                 <button
                   type="button"
                   onClick={lockPos}
-                  title="Kassani qulflash"
+                  title={t('lay.lockPos')}
                   className="inline-flex items-center gap-2 h-10 px-3 rounded-xl bg-ink text-white text-[14px] font-bold cursor-pointer hover:opacity-90"
                 >
                   <Lock className="w-4 h-4" />
-                  <span className="hidden md:inline">Qulflash</span>
+                  <span className="hidden md:inline">{t('lay.lock')}</span>
                 </button>
               )}
-              {!pos && location.pathname !== '/new-order' && (
+              {!pos && posStage && location.pathname !== '/new-order' && (
                 <NavLink
                   to="/new-order"
                   className="hidden md:inline-flex items-center gap-2 h-10 px-4 ml-1 rounded-xl bg-brand text-white text-[14px] font-bold hover:bg-brand-dark"
@@ -484,7 +541,7 @@ const Shell: React.FC = () => {
             </div>
           </div>
         </header>
-        <OfflineSync />
+        <OfflineSync receipts={posStage} />
 
         <main className="flex-1 px-4 md:px-8 pb-[calc(var(--tabbar-h)+var(--safe-bottom)+16px)] md:pb-10">
           {/* Rahbar ishlayotgan filialni almashtirsa sahifa qayta yuklanadi (ma'lumotlar shu filial bo'yicha) */}
@@ -495,7 +552,7 @@ const Shell: React.FC = () => {
       {/* ---------------- Mobile bottom tab bar ---------------- */}
       <nav
         className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-surface border-t border-edge pb-[var(--safe-bottom)]"
-        aria-label="Asosiy navigatsiya"
+        aria-label={t('lay.mainNav')}
       >
         <div className="h-16 grid grid-cols-4">
           {tabs.map((t) => {
@@ -534,21 +591,23 @@ const Shell: React.FC = () => {
             <span className={`flex items-center justify-center w-12 h-7 rounded-full ${moreActive ? 'bg-brand-soft' : ''}`}>
               <LayoutGrid className="w-[22px] h-[22px]" />
             </span>
-            Ko'proq
+            {t('lay.more')}
           </button>
         </div>
       </nav>
 
       {/* ---------------- "Ko'proq" sheet ---------------- */}
-      <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="Ko'proq" subtitle={getDisplayName(partner)}>
+      <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title={t('lay.more')} subtitle={getDisplayName(partner)}>
         <div className="space-y-5">
-          <NavLink
-            to="/new-order"
-            className="flex items-center justify-center gap-2 h-14 rounded-2xl bg-brand text-white text-[16px] font-extrabold"
-          >
-            <PlusCircle className="w-5 h-5" /> {newOrderLabel}
-          </NavLink>
-          {!cashier && <ModeSwitch mode={mode} onChange={changeMode} wide />}
+          {posStage && (
+            <NavLink
+              to="/new-order"
+              className="flex items-center justify-center gap-2 h-14 rounded-2xl bg-brand text-white text-[16px] font-extrabold"
+            >
+              <PlusCircle className="w-5 h-5" /> {newOrderLabel}
+            </NavLink>
+          )}
+          {!cashier && posStage && <ModeSwitch mode={mode} onChange={changeMode} wide />}
           {pos && (
             <button
               type="button"
@@ -558,13 +617,20 @@ const Shell: React.FC = () => {
               }}
               className="w-full flex items-center justify-center gap-2 h-12 rounded-2xl bg-ink text-white font-bold cursor-pointer"
             >
-              <Lock className="w-5 h-5" /> Kassani qulflash
+              <Lock className="w-5 h-5" /> {t('lay.lockPos')}
             </button>
           )}
+          {pos && (
+            <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-field">
+              <div className="text-[14px] font-semibold">{t('lang.switch')}</div>
+              <LangSwitch className="!bg-surface" />
+            </div>
+          )}
           <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-field">
-            <div className="text-[14px] font-semibold">Muassasa holati</div>
+            <div className="text-[14px] font-semibold">{t('lay.venueStatus')}</div>
             <OpenStatus partner={partner} />
           </div>
+          {pos && <PosStatusList items={statusItems} onAction={() => setMoreOpen(false)} />}
           {groups.map((g) => {
             const items = g.items.filter((i) => !tabPaths.includes(i.to) && i.to !== '/new-order');
             if (!items.length) return null;
@@ -596,10 +662,10 @@ const Shell: React.FC = () => {
           })}
           <button
             type="button"
-            onClick={logout}
+            onClick={() => void logout()}
             className="w-full flex items-center justify-center gap-2 h-12 rounded-2xl bg-danger-soft text-danger-ink font-bold cursor-pointer"
           >
-            <LogOut className="w-5 h-5" /> Chiqish
+            <LogOut className="w-5 h-5" /> {t('lay.logout')}
           </button>
           <div className="flex items-center justify-center gap-1.5 text-[12px] text-subtle">
             <Receipt className="w-3.5 h-3.5" /> MilliyGo Hamkor

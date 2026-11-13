@@ -33,6 +33,7 @@ import { ROLE_LABEL, StaffFormSheet } from '../components/StaffFormSheet';
 import { CourierFormSheet, TRANSPORT_LABEL } from '../components/CourierFormSheet';
 import { CourierTransferSheet } from '../components/CourierTransferSheet';
 import { StaffStatsSheet } from '../components/StaffStatsSheet';
+import { usePlatformConfig } from '../../../core/lib/platformStage';
 
 type Tab = 'staff' | 'couriers' | 'ratings';
 type Period = 'today' | 'week' | 'month' | 'all';
@@ -64,6 +65,8 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
   const canEdit = !manager;
   const owner = isOwnerFn();
 
+  // Ofitsiant/kassir statistikasi va reyting — 2-bosqich (Q50); 1-bosqichda faqat menejer va kuryerlar
+  const { pos: posStage } = usePlatformConfig();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [filials, setFilials] = useState<PartnerFilial[]>([]);
 
@@ -410,7 +413,7 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
     <div className="pb-6">
       <PageHeader
         title="Xodimlar"
-        subtitle="Menejerlar, kassirlar, ofitsantlar va o'z kuryerlaringiz"
+        subtitle="Menejerlar, kassirlar, ofitsiantlar va o'z kuryerlaringiz"
         actions={
           <>
             <IconButton label="Yangilash" variant="outline" onClick={refresh}>
@@ -426,7 +429,7 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
           options={[
             { value: 'staff', label: 'Xodimlar', icon: <Users className="w-4 h-4" />, count: staffLoading ? undefined : staff.length },
             { value: 'couriers', label: 'Kuryerlar', icon: <Bike className="w-4 h-4" /> },
-            { value: 'ratings', label: 'Reyting', icon: <Trophy className="w-4 h-4" /> },
+            ...(posStage ? [{ value: 'ratings' as const, label: 'Reyting', icon: <Trophy className="w-4 h-4" /> }] : []),
           ]}
         />
       </PageHeader>
@@ -450,12 +453,14 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
                 rows={filteredStaff}
                 columns={staffColumns}
                 rowKey={(m) => m.uuid}
-                onRowClick={setStatsStaff}
+                onRowClick={posStage ? setStatsStaff : undefined}
                 rowActions={(m) => (
                   <>
+                    {posStage && (
                     <Button size="sm" variant="secondary" icon={<BarChart2 className="w-4 h-4" />} onClick={() => setStatsStaff(m)}>
                       Statistika
                     </Button>
+                    )}
                     {canEdit && (
                       <>
                         <IconButton label="Tahrirlash" size="sm" variant="secondary" onClick={() => { setEditingStaff(m); setStaffFormOpen(true); }}>
@@ -473,7 +478,7 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
                     <EmptyState
                       icon={<Users className="w-7 h-7" />}
                       title={staffQuery ? 'Hech narsa topilmadi' : "Xodimlar yo'q"}
-                      description={staffQuery ? "Qidiruv so'zini o'zgartirib ko'ring." : "Menejer, kassir yoki ofitsant qo'shing: kassir kassa rejimida, ofitsiant o'z ilovasida ishlaydi."}
+                      description={staffQuery ? "Qidiruv so'zini o'zgartirib ko'ring." : "Menejer, kassir yoki ofitsiant qo'shing: kassir kassa rejimida, ofitsiant o'z ilovasida ishlaydi."}
                       action={canEdit && !staffQuery ? <Button icon={<Plus className="w-4 h-4" />} onClick={() => { setEditingStaff(null); setStaffFormOpen(true); }}>Xodim qo'shish</Button> : undefined}
                     />
                   </Card>
@@ -552,7 +557,7 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
           </>
         )}
 
-        {tab === 'ratings' && (
+        {tab === 'ratings' && posStage && (
           <>
             <Segmented
               value={period}

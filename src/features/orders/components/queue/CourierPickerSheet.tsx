@@ -8,12 +8,13 @@ import { courierServesFilial } from '../../../staff/lib/courierFilial';
 import { Badge, Button, EmptyState, LoadingState, Sheet } from '../../../../core/ui';
 import { formatPhone } from '../../../../core/lib/format';
 import { orderNo } from './actions';
+import { t } from '../../../../core/i18n';
 
 const courierStatus = (s?: string) => {
-  if (s === 'online') return { label: 'Onlayn', tone: 'success' as const };
-  if (s === 'busy') return { label: 'Band', tone: 'warning' as const };
-  if (s === 'offline') return { label: 'Oflayn', tone: 'neutral' as const };
-  return { label: s || "Noma'lum", tone: 'neutral' as const };
+  if (s === 'online') return { label: t('bar.online'), tone: 'success' as const };
+  if (s === 'busy') return { label: t('courier.busy'), tone: 'warning' as const };
+  if (s === 'offline') return { label: t('courier.offline'), tone: 'neutral' as const };
+  return { label: s || t('courier.unknown'), tone: 'neutral' as const };
 };
 
 export const CourierPickerSheet: React.FC<{
@@ -33,17 +34,17 @@ export const CourierPickerSheet: React.FC<{
   const online = (c: CourierModel) => (c.status === 'online' ? 0 : 1);
   const sorted = [...couriers].sort((a, b) => Number(!serves(a)) - Number(!serves(b)) || online(a) - online(b));
   return (
-    <Sheet open persistent={!!assigningUuid} onClose={onClose} title="Kuryer tanlash" subtitle={`${orderNo(order)} buyurtmasi uchun`} size="sm">
+    <Sheet open persistent={!!assigningUuid} onClose={onClose} title={t('courier.pickTitle')} subtitle={t('courier.forOrder', { n: orderNo(order) })} size="sm">
       {loading ? (
-        <LoadingState label="Kuryerlar yuklanmoqda..." />
+        <LoadingState label={t('courier.loading')} />
       ) : sorted.length === 0 ? (
         <EmptyState
           icon={<Bike className="w-7 h-7" />}
-          title="Kuryerlar topilmadi"
-          description="O'z kuryerlaringizni Kuryerlar bo'limida qo'shishingiz mumkin."
+          title={t('courier.none')}
+          description={t('courier.noneHint')}
           action={
             <Button variant="outline" onClick={() => navigate('/couriers')}>
-              Kuryerlarga o'tish
+              {t('courier.goTo')}
             </Button>
           }
         />
@@ -55,9 +56,9 @@ export const CourierPickerSheet: React.FC<{
             const limit = c.max_active_orders ?? 1;
             const full = load >= limit;
             const ok = serves(c);
-            const reason = ok ? undefined : `Kuryer  filialiga biriktirilgan`;
+            const reason = ok ? undefined : t('courier.otherFilialReason', { name: c.filial_name || '' });
             return (
-              <div key={c.uuid} title={reason} className={`flex items-center justify-between gap-3 p-3 rounded-2xl border border-edge `}>
+              <div key={c.uuid} title={reason} className={`flex items-center justify-between gap-3 p-3 rounded-2xl border border-edge ${ok ? '' : 'opacity-50 bg-field'}`}>
                 <div className="min-w-0">
                   <p className="text-[15px] font-bold text-ink truncate">
                     {c.first_name} {c.last_name}
@@ -67,17 +68,17 @@ export const CourierPickerSheet: React.FC<{
                       {st.label}
                     </Badge>
                     <span className="text-[12px] text-muted">{formatPhone(c.phone)}</span>
-                    {!ok && <Badge tone="warning">Boshqa filial{c.filial_name ? `: ` : ''}</Badge>}
+                    {!ok && <Badge tone="warning">{t('courier.otherFilial')}{c.filial_name ? `: ${c.filial_name}` : ''}</Badge>}
                     {ok && order.filial_uuid && c.filial_name && <Badge tone="neutral">{c.filial_name}</Badge>}
                     {load > 0 && (
                       <Badge tone={full ? 'danger' : 'brand'}>
-                        Reys {load}/{limit}
+                        {t('courier.trips', { n: load, m: limit })}
                       </Badge>
                     )}
                   </div>
                 </div>
                 <Button size="md" loading={assigningUuid === c.uuid} disabled={!!assigningUuid || full || !ok} title={reason} onClick={() => onAssign(c.uuid)}>
-                  Biriktirish
+                  {t('detail.assign')}
                 </Button>
               </div>
             );

@@ -5,6 +5,7 @@ import type { QrWaiter } from '../../services/ordersApi';
 import { useToast } from '../../../../core/components/ToastProvider';
 import { getErrorMessage } from '../../../../core/lib/errors';
 import { Button, EmptyState, ErrorState, Sheet, Skeleton } from '../../../../core/ui';
+import { t } from '../../../../core/i18n';
 
 /**
  * Stol buyurtmasiga ofitsiant tanlash (kassada). Xizmat haqi va ofitsiant hisoboti tanlangan ofitsiantga yoziladi —
@@ -17,24 +18,24 @@ export type WaiterPickMode = 'qr' | 'ready' | 'assign';
 
 const TEXT: Record<WaiterPickMode, { title: string; ask: string; action: string; none: string; noneAction: string }> = {
   qr: {
-    title: 'QR buyurtmani tasdiqlash',
-    ask: 'buyurtmani qaysi ofitsiant olib boradi?',
-    action: 'Tasdiqlash',
-    none: 'Buyurtma ofitsiant biriktirilmasdan tasdiqlanadi.',
-    noneAction: 'Tasdiqlash',
+    title: t('waiter.qrTitle'),
+    ask: t('waiter.qrAsk'),
+    action: t('act.confirm'),
+    none: t('waiter.qrNone'),
+    noneAction: t('act.confirm'),
   },
   ready: {
-    title: 'Buyurtma tayyor',
-    ask: 'ovqatni qaysi ofitsiant olib boradi?',
-    action: 'Olib borsin',
-    none: 'Buyurtma ofitsiantsiz «Tayyor» qilinadi — o‘zingiz olib borasiz.',
-    noneAction: 'Tayyor',
+    title: t('waiter.readyTitle'),
+    ask: t('waiter.readyAsk'),
+    action: t('waiter.readyAction'),
+    none: t('waiter.readyNone'),
+    noneAction: t('act.ready'),
   },
   assign: {
-    title: 'Ofitsiant biriktirish',
-    ask: 'stolga qaysi ofitsiant xizmat qiladi?',
-    action: 'Biriktirish',
-    none: 'Ofitsiant qo‘shish uchun «Xodimlar» bo‘limiga o‘ting.',
+    title: t('waiter.assignTitle'),
+    ask: t('waiter.assignAsk'),
+    action: t('detail.assign'),
+    none: t('waiter.assignNone'),
     noneAction: '',
   },
 };
@@ -58,7 +59,7 @@ export const WaiterPickSheet: React.FC<{
     ordersApi
       .getOrderWaiters(orderUuid)
       .then((w) => alive && (setWaiters(w), setError(null)))
-      .catch((err) => alive && setError(getErrorMessage(err, "Ofitsiantlar ro'yxatini yuklab bo'lmadi.")));
+      .catch((err) => alive && setError(getErrorMessage(err, t('waiter.loadFail'))));
     return () => {
       alive = false;
       setWaiters(null);
@@ -66,7 +67,7 @@ export const WaiterPickSheet: React.FC<{
   }, [orderUuid, reload]);
 
   if (!target) return null;
-  const t = TEXT[target.mode];
+  const tx = TEXT[target.mode];
 
   const pick = async (waiterUuid: string | null) => {
     setSaving(waiterUuid || 'none');
@@ -76,12 +77,12 @@ export const WaiterPickSheet: React.FC<{
       else if (target.mode === 'ready') {
         await ordersApi.markReady(target.uuid, waiterUuid);
         const w = waiters?.find((x) => x.uuid === waiterUuid);
-        msg = w ? `${target.label}: tayyor — ${w.name} olib boradi` : `${target.label}: tayyor`;
+        msg = w ? t('waiter.readyBy', { n: target.label, name: w.name }) : t('waiter.readyDone', { n: target.label });
       } else if (waiterUuid) msg = (await ordersApi.assignWaiter(target.uuid, waiterUuid))?.message;
-      toast.success(msg || 'Saqlandi');
+      toast.success(msg || t('common.saved'));
       onDone();
     } catch (err) {
-      toast.error(getErrorMessage(err, "Saqlab bo'lmadi."));
+      toast.error(getErrorMessage(err, t('common.saveFail')));
       setReload((n) => n + 1);
     } finally {
       setSaving(null);
@@ -89,7 +90,7 @@ export const WaiterPickSheet: React.FC<{
   };
 
   return (
-    <Sheet open onClose={() => !saving && onClose()} size="sm" title={t.title} subtitle={`${target.label} · ${t.ask}`}>
+    <Sheet open onClose={() => !saving && onClose()} size="sm" title={tx.title} subtitle={`${target.label} · ${tx.ask}`}>
       {error ? (
         <ErrorState message={error} onRetry={() => setReload((n) => n + 1)} className="py-6" />
       ) : waiters === null ? (
@@ -100,10 +101,10 @@ export const WaiterPickSheet: React.FC<{
         </div>
       ) : waiters.length === 0 ? (
         <div className="space-y-3">
-          <EmptyState className="py-6" icon={<UserRound className="w-7 h-7" />} title="Bu filialda faol ofitsiant yo'q" description={t.none} />
-          {t.noneAction && (
+          <EmptyState className="py-6" icon={<UserRound className="w-7 h-7" />} title={t('waiter.none')} description={tx.none} />
+          {tx.noneAction && (
             <Button block size="lg" icon={<CheckCircle className="w-5 h-5" />} loading={saving === 'none'} onClick={() => pick(null)}>
-              {t.noneAction}
+              {tx.noneAction}
             </Button>
           )}
         </div>
@@ -126,9 +127,9 @@ export const WaiterPickSheet: React.FC<{
                 </span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-[15px] font-extrabold text-ink truncate">{w.name}</span>
-                  <span className="block text-[12px] text-muted">{current ? 'Hozir biriktirilgan' : w.phone}</span>
+                  <span className="block text-[12px] text-muted">{current ? t('waiter.current') : w.phone}</span>
                 </span>
-                <span className="text-[13px] font-bold text-brand shrink-0">{saving === w.uuid ? '…' : t.action}</span>
+                <span className="text-[13px] font-bold text-brand shrink-0">{saving === w.uuid ? '…' : tx.action}</span>
               </button>
             );
           })}
@@ -139,10 +140,10 @@ export const WaiterPickSheet: React.FC<{
               onClick={() => pick(null)}
               className="w-full pt-1 text-[13px] font-semibold text-muted hover:text-ink underline-offset-2 hover:underline cursor-pointer disabled:opacity-60"
             >
-              {saving === 'none' ? '…' : 'Ofitsiantsiz tayyor qilish (keyin biriktiraman)'}
+              {saving === 'none' ? '…' : t('waiter.readyWithout')}
             </button>
           )}
-          <p className="pt-1 text-[12px] text-muted">Tanlangan ofitsiant buyurtmaga biriktiriladi: xizmat haqi va hisoboti unga yoziladi.</p>
+          <p className="pt-1 text-[12px] text-muted">{t('waiter.footnote')}</p>
         </div>
       )}
     </Sheet>

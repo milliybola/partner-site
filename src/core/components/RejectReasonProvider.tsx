@@ -15,6 +15,14 @@ const MIN_OTHER = 3;
 interface RejectOptions {
   /** Masalan: «MG-10059» */
   orderLabel?: string;
+  /** Boshqa maqsad uchun (masalan, to'langan buyurtmani bekor qilish) — sarlavha, izoh, sabablar va tugma matni */
+  title?: string;
+  hint?: string;
+  presets?: readonly string[];
+  otherLabel?: string;
+  placeholder?: string;
+  confirmText?: string;
+  backText?: string;
 }
 
 /** Sabab matnini qaytaradi; foydalanuvchi bekor qilsa — null. */
@@ -72,14 +80,14 @@ export const RejectReasonProvider: React.FC<{ children: React.ReactNode }> = ({ 
               </span>
               <div className="pt-1 text-left">
                 <h3 className="font-extrabold text-ink text-[17px] tracking-tightest mb-1">
-                  {open.orderLabel ? `${open.orderLabel} — rad etish` : 'Buyurtmani rad etish'}
+                  {open.title || (open.orderLabel ? `${open.orderLabel} — rad etish` : 'Buyurtmani rad etish')}
                 </h3>
-                <p className="text-sm text-muted leading-relaxed">Rad etish sababini tanlang. Mijozga xabar boradi.</p>
+                <p className="text-sm text-muted leading-relaxed">{open.hint || 'Rad etish sababini tanlang. Mijozga xabar boradi.'}</p>
               </div>
             </div>
 
             <div className="space-y-2" role="radiogroup" aria-label="Rad etish sababi">
-              {[...PRESETS, OTHER].map((p) => {
+              {[...(open.presets || PRESETS), OTHER].map((p) => {
                 const on = choice === p;
                 return (
                   <button
@@ -92,7 +100,7 @@ export const RejectReasonProvider: React.FC<{ children: React.ReactNode }> = ({ 
                       on ? 'border-danger bg-danger-soft text-danger-ink' : 'border-edge bg-surface text-ink hover:bg-field'
                     }`}
                   >
-                    <span>{p === OTHER ? 'Boshqa sabab' : p}</span>
+                    <span>{p === OTHER ? open.otherLabel || 'Boshqa sabab' : p}</span>
                     {on && <Check className="w-4 h-4 shrink-0" />}
                   </button>
                 );
@@ -106,7 +114,7 @@ export const RejectReasonProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 onChange={(e) => setOther(e.target.value)}
                 maxLength={300}
                 rows={3}
-                placeholder="Sababini yozing…"
+                placeholder={open.placeholder || 'Sababini yozing…'}
                 className="w-full rounded-2xl bg-field border border-transparent px-3.5 py-2.5 text-[15px] text-ink placeholder:text-subtle focus:outline-none focus:bg-surface focus:border-danger/40 focus:ring-4 focus:ring-danger/10 resize-none"
               />
             )}
@@ -117,7 +125,7 @@ export const RejectReasonProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 onClick={() => finish(null)}
                 className="flex-1 h-12 rounded-2xl bg-field hover:bg-edge-strong text-ink font-bold text-[15px] transition cursor-pointer"
               >
-                Orqaga
+                {open.backText || 'Orqaga'}
               </button>
               <button
                 type="button"
@@ -125,7 +133,7 @@ export const RejectReasonProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 onClick={() => finish(reason)}
                 className="flex-1 h-12 rounded-2xl font-bold text-[15px] transition cursor-pointer text-white bg-danger hover:bg-danger-ink disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Rad etish
+                {open.confirmText || 'Rad etish'}
               </button>
             </div>
           </div>

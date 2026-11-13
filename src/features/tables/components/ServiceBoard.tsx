@@ -7,6 +7,7 @@ import type { Order } from '../../orders/services/ordersApi';
 import { statusGroup, statusLabel } from '../../orders/utils/status';
 import type { QueueGroup } from '../../orders/utils/status';
 import { courierColor, orderCourierKey } from '../lib/courierColors';
+import { t } from '../../../core/i18n';
 
 /** DINE_IN — o'z-o'ziga xizmat zali (stolsiz zal buyurtmalari) */
 export type ServiceKind = 'PICKUP' | 'DELIVERY' | 'DINE_IN';
@@ -88,21 +89,21 @@ const OrderTile: React.FC<{
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-danger text-white font-extrabold">
-                  <Phone className="w-3.5 h-3.5 shrink-0" /> Kuryer yo'q
+                  <Phone className="w-3.5 h-3.5 shrink-0" /> {t('card.noCourier')}
                 </span>
               )}
             </span>
           )}
           <span className={`inline-flex items-center gap-1 tabular-nums ${mins >= 60 ? 'font-black underline decoration-2' : ''}`}>
             <Clock className="w-3.5 h-3.5" />
-            {mins >= 60 ? `${Math.floor(mins / 60)} s ${mins % 60} daq` : `${mins} daq`}
+            {mins >= 60 ? t('time.hm', { h: Math.floor(mins / 60), m: mins % 60 }) : t('card.min', { n: mins })}
           </span>
         </span>
       </span>
       {!quick && (
         <span className={`w-full px-2.5 py-1 text-[11px] font-extrabold tracking-wide ${tone.strip}`}>
           {statusLabel(order.status)}
-          {!order.is_paid ? '' : ' · to\'langan'}
+          {!order.is_paid ? '' : ` · ${t('board.paidLower')}`}
         </span>
       )}
     </button>
@@ -115,7 +116,7 @@ const OrderTile: React.FC<{
           onClick={() => onQuick?.(quick)}
           className="shrink-0 h-8 px-3 rounded-lg bg-white text-ink text-[13px] font-black shadow-sm hover:bg-white/90 active:scale-95 transition disabled:opacity-60 cursor-pointer"
         >
-          {busy ? '…' : quick === 'ready' ? 'Tayyor' : 'Mijozga berish'}
+          {busy ? '…' : quick === 'ready' ? t('act.ready') : t('act.handOver')}
         </button>
       </span>
     )}
@@ -147,14 +148,14 @@ const HeldTile: React.FC<{ cart: HeldCart; now: number; onOpen: () => void }> = 
         </span>
         <span className="mt-auto flex flex-col gap-0.5 text-[12px] font-semibold text-warning-ink">
           <span className="inline-flex items-center gap-1">
-            <ShoppingBag className="w-3.5 h-3.5" /> {cart.count} ta mahsulot
+            <ShoppingBag className="w-3.5 h-3.5" /> {t('board.itemsCount', { n: cart.count })}
           </span>
           <span className="inline-flex items-center gap-1 tabular-nums">
-            <Clock className="w-3.5 h-3.5" /> {mins < 1 ? 'hozir' : `${mins} daq oldin`}
+            <Clock className="w-3.5 h-3.5" /> {mins < 1 ? t('card.now') : t('time.ago', { n: mins })}
           </span>
         </span>
       </span>
-      <span className="w-full px-2.5 py-1 text-[11px] font-extrabold tracking-wide bg-black/10 text-ink">Saqlangan · to'lanmagan</span>
+      <span className="w-full px-2.5 py-1 text-[11px] font-extrabold tracking-wide bg-black/10 text-ink">{t('board.heldUnpaid')}</span>
     </button>
   );
 };
@@ -182,8 +183,8 @@ export const ServiceBoard: React.FC<{
   onQuick?: (order: Order, a: QuickAction) => void;
   busyUuid?: string | null;
 }> = ({ kind, orders, now, loading, onNew, onOpen, extra, focusKey = '', onFocus = () => {}, title: titleProp, compact, held = [], onResume, onQuick, busyUuid }) => {
-  const title = titleProp || (kind === 'PICKUP' ? 'Saboy' : kind === 'DELIVERY' ? 'Dostavka' : 'Zal');
-  const newLabel = kind === 'DINE_IN' ? 'Yangi buyurtma' : `Yangi ${title.toLowerCase()}`;
+  const title = titleProp || (kind === 'PICKUP' ? t('type.pickup') : kind === 'DELIVERY' ? t('type.delivery') : t('board.hall'));
+  const newLabel = t('board.newOrder');
   return (
     <div className="mt-2">
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
@@ -208,11 +209,11 @@ export const ServiceBoard: React.FC<{
       {!loading && !compact && orders.length === 0 && held.length === 0 && (
         <EmptyState
           className="py-10"
-          title={kind === 'DINE_IN' ? `«${title}» zalida faol buyurtma yo'q` : `Faol ${title.toLowerCase()} buyurtmasi yo'q`}
+          title={kind === 'DINE_IN' ? t('board.emptyHall', { n: title }) : kind === 'PICKUP' ? t('board.emptyPickup') : t('board.emptyDelivery')}
           description={
             kind === 'DINE_IN'
-              ? "O'z-o'ziga xizmat: buyurtma kassada stolsiz olinadi, tayyor bo'lganda raqami bilan chaqiriladi, to'lov berishda."
-              : "Yangi buyurtma kelganda shu yerda paydo bo'ladi, yoki «Yangi» kartasi orqali o'zingiz yarating."
+              ? t('board.emptyHallHint')
+              : t('board.emptyHint')
           }
         />
       )}

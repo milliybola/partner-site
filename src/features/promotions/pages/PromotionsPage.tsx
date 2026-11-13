@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Gift, ImageOff, Layers, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
-  ApiGap,
   Badge,
   Button,
   EmptyState,
@@ -29,7 +28,6 @@ type LoadState<T> =
   | { status: 'error'; message: string }
   | { status: 'ready'; items: T[] };
 
-const GAP_TITLE = 'Backend hali tayyor emas: partner/my/sets/, partner/my/promotions/ (API_CONTRACT_SETS_PROMOS.md)';
 
 const dateRange = (start?: string | null, end?: string | null) => {
   if (!start && !end) return 'Muddatsiz';
@@ -63,10 +61,7 @@ const MissingState: React.FC<{ what: string }> = ({ what }) => (
     icon={<Gift className="w-7 h-7" />}
     title="Bu funksiya tez orada ishga tushadi"
     description={
-      <span>
-        {what} serverda hali yoqilmagan. Backend tayyor bo'lishi bilan shu yerda boshqarishingiz mumkin bo'ladi.{' '}
-        <ApiGap title={GAP_TITLE} />
-      </span>
+      <span>{what} hali yoqilmagan. Yordam uchun MilliyGo bilan bog'laning.</span>
     }
   />
 );
@@ -369,10 +364,6 @@ const PromotionsPage: React.FC = () => {
           ]}
         />
       </PageHeader>
-
-      <ApiGap block title={GAP_TITLE} className="mb-4">
-        Bu bo'lim yangi backend funksiyasiga tayanadi. Server tayyor bo'lmaguncha ro'yxat bo'sh ko'rinadi va saqlash ishlamaydi.
-      </ApiGap>
 
       {tab === 'sets' ? renderSets() : renderPromos()}
 

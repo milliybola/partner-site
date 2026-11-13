@@ -13,6 +13,7 @@ import LoginPage from './features/auth/pages/LoginPage';
 import { useVenue } from './venues';
 import { VenueOnly } from './venues/VenueOnly';
 import { FeatureGate } from './core/components/FeatureGate';
+import { StageGate } from './core/components/StageGate';
 
 // Route-level code splitting keeps the first load small on phones.
 const OrdersPage = lazy(() => import('./features/orders/pages/OrdersPage'));
@@ -80,12 +81,13 @@ const App: React.FC = () => {
               <Route path="reports" element={<OwnerOnly>{page(<ReportsPage />)}</OwnerOnly>} />
               {/* eski havolalar: Statistika va Moliya endi «Hisobotlar» ichida */}
               <Route path="statistics" element={<Navigate to="/reports" replace />} />
-              <Route path="warehouse" element={<ManageOnly><VenueOnly kind="restaurant">{page(<WarehousePage />)}</VenueOnly></ManageOnly>} />
+              {/* Bosqich darvozasi (StageGate) tarifdan oldin: 2-bosqich — kassa, smena, zal/stol/QR, ombor (docs/bosqichlar/matritsa.md) */}
+              <Route path="warehouse" element={<ManageOnly><VenueOnly kind="restaurant"><StageGate>{page(<WarehousePage />)}</StageGate></VenueOnly></ManageOnly>} />
               <Route path="kitchen" element={<VenueOnly kind="restaurant">{page(<KitchenPage />)}</VenueOnly>} />
-              <Route path="inventory" element={<ManageOnly><VenueOnly kind="store">{page(<InventoryPage />)}</VenueOnly></ManageOnly>} />
+              <Route path="inventory" element={<ManageOnly><VenueOnly kind="store"><StageGate>{page(<InventoryPage />)}</StageGate></VenueOnly></ManageOnly>} />
               <Route path="picking" element={<VenueOnly kind="store">{page(<PickingPage />)}</VenueOnly>} />
               <Route path="orders" element={page(<OrdersPage />)} />
-              <Route path="new-order" element={page(<CreateOrderPage />)} />
+              <Route path="new-order" element={<StageGate>{page(<CreateOrderPage />)}</StageGate>} />
               <Route path="catalog" element={<ManageOnly>{page(<CatalogPage />)}</ManageOnly>} />
               <Route path="promotions" element={<ManageOnly>{page(<PromotionsPage />)}</ManageOnly>} />
               <Route path="finance" element={<Navigate to="/reports?tab=finance" replace />} />
@@ -97,9 +99,9 @@ const App: React.FC = () => {
               <Route path="all-orders" element={page(<AllOrdersPage />)} />
               <Route path="staff" element={<ManageOnly>{page(<StaffPage />)}</ManageOnly>} />
               <Route path="couriers" element={<ManageOnly>{page(<StaffPage initialTab="couriers" />)}</ManageOnly>} />
-              <Route path="shift" element={page(<ShiftPage />)} />
-              <Route path="tables" element={<VenueOnly kind="restaurant"><FeatureGate feature="dine_in">{page(<TablesPage key="tables" />)}</FeatureGate></VenueOnly>} />
-              <Route path="tables/qr" element={<ManageOnly><VenueOnly kind="restaurant"><FeatureGate feature="qr_menu">{page(<TablesPage key="qr" openQr />)}</FeatureGate></VenueOnly></ManageOnly>} />
+              <Route path="shift" element={<StageGate openShift>{page(<ShiftPage />)}</StageGate>} />
+              <Route path="tables" element={<VenueOnly kind="restaurant"><StageGate><FeatureGate feature="dine_in">{page(<TablesPage key="tables" />)}</FeatureGate></StageGate></VenueOnly>} />
+              <Route path="tables/qr" element={<ManageOnly><VenueOnly kind="restaurant"><StageGate><FeatureGate feature="qr_menu">{page(<TablesPage key="qr" openQr />)}</FeatureGate></StageGate></VenueOnly></ManageOnly>} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import apiClient from '../api/client';
 import { getToken } from './session';
+import { t } from '../i18n';
 
 /**
  * To'lov usullari — BACKEND bilan bir xil kodlar (`PAYMENT_METHOD`: CASH, CARD, TRANSFER, PAYME, CLICK).
@@ -10,9 +11,9 @@ import { getToken } from './session';
 export type PayMethod = 'CASH' | 'CARD' | 'TRANSFER' | 'CLICK' | 'PAYME';
 
 export const ALL_PAY_METHODS: { value: PayMethod; label: string }[] = [
-  { value: 'CASH', label: 'Naqd' },
-  { value: 'CARD', label: 'Karta' },
-  { value: 'TRANSFER', label: "O'tkazma" },
+  { value: 'CASH', label: t('pay.cash') },
+  { value: 'CARD', label: t('pay.card') },
+  { value: 'TRANSFER', label: t('pay.transfer') },
   { value: 'CLICK', label: 'Click' },
   { value: 'PAYME', label: 'Payme' },
 ];

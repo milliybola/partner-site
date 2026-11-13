@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getPartner, isCashier, isShop, PARTNER_UPDATED_EVENT } from './session';
 import type { PartnerSession } from './session';
+import { posEnabled } from './platformStage';
 
 /**
  * Ish rejimi: `pos` — kassa (stollar, buyurtma, to'lov, smena), `manage` — boshqaruv paneli.
@@ -13,6 +14,8 @@ const KEY = 'milliygo:work_mode';
 const EVENT = 'milliygo:work-mode';
 
 export const getWorkMode = (p: PartnerSession | null = getPartner()): WorkMode => {
+  // 1-bosqich (POS yopiq): kassa rejimi umuman yo'q — saqlangan tanlov o'chirilmaydi, 2-bosqichda qaytadi
+  if (!posEnabled()) return 'manage';
   if (isCashier(p)) return 'pos';
   try {
     return localStorage.getItem(KEY) === 'pos' ? 'pos' : 'manage';

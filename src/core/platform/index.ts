@@ -7,6 +7,8 @@
  * breaks if they're absent at runtime.
  */
 
+import { printerKey, recordPrintResult } from '../lib/printerStatus';
+
 export const isTauri = (): boolean =>
   typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
 
@@ -136,13 +138,24 @@ export const sendToPrinter = async (device: import('../lib/printerConfig').Print
     device.kind === 'network'
       ? { kind: 'network', host: device.host?.trim() ?? '', port: device.port || 9100 }
       : { kind: 'system', name: device.name ?? '' };
-  if (!isTauri()) return sendViaAgent(target, data);
-  const { invoke } = await import('@tauri-apps/api/core');
+  // Natija kassa pastidagi holat qatori uchun yoziladi (ESC/POS printer o'z holatini qaytarmaydi)
+  const { key, label } = printerKey(device);
   try {
-    await invoke('printer_send', { target, data: Array.from(data) });
+    if (!isTauri()) {
+      await sendViaAgent(target, data);
+    } else {
+      const { invoke } = await import('@tauri-apps/api/core');
+      try {
+        await invoke('printer_send', { target, data: Array.from(data) });
+      } catch (e) {
+        throw new Error(typeof e === 'string' ? e : "Printerga yuborib bo'lmadi", { cause: e });
+      }
+    }
   } catch (e) {
-    throw new Error(typeof e === 'string' ? e : "Printerga yuborib bo'lmadi", { cause: e });
+    recordPrintResult(key, { ok: false, at: Date.now(), label, error: e instanceof Error ? e.message : String(e) });
+    throw e;
   }
+  recordPrintResult(key, { ok: true, at: Date.now(), label });
 };
 
 /** Absolute URL to a file shipped in /public (works on http(s), tauri:// and file://). */

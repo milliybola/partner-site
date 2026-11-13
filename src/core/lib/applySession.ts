@@ -24,7 +24,7 @@ export interface SessionResponse {
  */
 export function applySession(data: SessionResponse): PartnerSession {
   const { user_type, dashboard, tokens, profile } = data;
-  if (!tokens?.access) throw new Error("Server javobida token yo'q. Qaytadan urinib ko'ring.");
+  if (!tokens?.access) throw new Error("Kirib bo'lmadi. Qaytadan urinib ko'ring.");
 
   clearSession();
   clearTariffCache(); // boshqa hamkor kirgan bo'lishi mumkin — tarif qayta yuklanadi

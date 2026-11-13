@@ -25,7 +25,6 @@ import { getErrorMessage } from '../../../core/lib/errors';
 import { formatDate, formatDateTime, formatMoney, formatPhone, parseDate } from '../../../core/lib/format';
 import { saveBlob } from '../../../core/platform';
 import {
-  ApiGap,
   Badge,
   Button,
   Card,
@@ -309,15 +308,15 @@ const FinancePage: React.FC = () => {
       {/* KPI grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Umumiy tushum" value={dash(kpi.revenue)} icon={<DollarSign className="w-4 h-4" />} hint="Yetkazish va komissiya bilan" />
-        <StatCard label="Sof tushum" value={dash(kpi.net)} icon={<TrendingUp className="w-4 h-4" />} hint="Server hisoblagan net_revenue" />
+        <StatCard label="Sof tushum" value={dash(kpi.net)} icon={<TrendingUp className="w-4 h-4" />} hint="Komissiya va qaytarishlardan keyin" />
         <StatCard
           label={`Komissiya${stats.commission?.rate !== undefined ? ` (${stats.commission.rate}%)` : ''}`}
           tone="danger"
           icon={<Percent className="w-4 h-4" />}
           value={
             kpi.commission === null ? (
-              <span className="inline-flex items-center gap-2">
-                — <ApiGap title="partner/statistics/ faqat oy (month_commission) va umumiy (total_commission) komissiyani qaytaradi; kunlik/haftalik komissiya maydoni yo'q" />
+              <span className="inline-flex items-baseline gap-2">
+                — <span className="text-[12px] font-semibold text-muted tracking-normal">Faqat oy va umumiy davr uchun</span>
               </span>
             ) : (
               formatMoney(kpi.commission)
@@ -337,7 +336,6 @@ const FinancePage: React.FC = () => {
               <span className="text-danger-ink font-semibold">
                 {kpi.cancelled ?? '—'} bekor
               </span>
-              {kpi.cancelled === null && <ApiGap title="partner/statistics/ this_week / this_month uchun 'cancelled' maydonini qaytarmaydi" />}
             </span>
           }
         />
@@ -356,12 +354,7 @@ const FinancePage: React.FC = () => {
               <Wallet className="w-4 h-4" />
             </span>
           </div>
-          <ApiGap
-            block
-            title="Hamkorga o'tkazilgan / kutilayotgan to'lovlar (payout, settlement) uchun endpoint yo'q. Taklif: GET partner/finance/payouts/?period="
-          >
-            Kutilayotgan va o'tkazilgan to'lovlar
-          </ApiGap>
+          <p className="text-[13px] text-muted">Kutilayotgan va o'tkazilgan to'lovlar — tez orada</p>
         </Card>
       </div>
 
@@ -411,7 +404,7 @@ const FinancePage: React.FC = () => {
         <Card className="lg:col-span-2 min-w-0">
           <CardHeader title="Kunlik tushum" subtitle="Ustunni bosing — kun bo'yicha batafsil" />
           {chart.length === 0 ? (
-            <EmptyState title="Grafik uchun ma'lumot yo'q" description="Server daily_chart ma'lumotini qaytarmadi." className="py-8" />
+            <EmptyState title="Grafik uchun ma'lumot yo'q" description="Bu davrda sotuv bo'lmagan." className="py-8" />
           ) : (
             <>
               <div className="flex items-end gap-1 sm:gap-2 h-44 border-b border-edge" role="list">
@@ -481,9 +474,7 @@ const FinancePage: React.FC = () => {
             <div className="space-y-3">
               <EmptyState title="Ma'lumot yo'q" description="Bu davr uchun top mahsulotlar qaytarilmadi." className="py-6" />
               {(period === 'this_week' || period === 'overall') && (
-                <ApiGap block title="partner/statistics/ top_products faqat 'today' va 'this_month' uchun qaytaradi">
-                  Hafta / umumiy davr uchun top mahsulotlar yo'q
-                </ApiGap>
+                <p className="text-[13px] text-muted">Top taomlar faqat «Bugun» va «Shu oy» uchun ko'rinadi.</p>
               )}
             </div>
           )}

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ApiGap, Button, Field, Input, QtyStepper, Sheet, SettingRow, Switch } from '../../../core/ui';
+import { Button, Field, Input, QtyStepper, Sheet, SettingRow, Switch } from '../../../core/ui';
 import { fromBackendDate, toBackendDate } from '../../../core/lib/format';
 import { getErrorMessage, isMissingEndpoint } from '../../../core/lib/errors';
 import { useToast } from '../../../core/components/ToastProvider';
@@ -183,12 +183,7 @@ export const PromoEditorSheet: React.FC<{
           control={<Switch checked={sameProduct} onChange={setSameProduct} label="Xuddi shu mahsulot" />}
         />
         {!sameProduct && (
-          <ApiGap
-            block
-            title="Kontraktda (API_CONTRACT_SETS_PROMOS.md) bepul beriladigan boshqa mahsulotni tanlash maydoni yo'q (masalan free_products). Hozircha server qaysi mahsulot bepul ekanini o'zi belgilaydi."
-          >
-            Bepul beriladigan boshqa mahsulotni tanlash hali API'da yo'q
-          </ApiGap>
+          <p className="text-[13px] text-muted">Hozircha faqat shu taomning o'zi sovg'a qilinadi.</p>
         )}
 
         <div className="grid grid-cols-2 gap-3">

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Bell, BellOff, ChevronDown, Lock, Monitor, Printer, Volume2 } from 'lucide-react';
 import { useToast } from '../../../core/components/ToastProvider';
 import { Badge, Button, Card, CardHeader, Divider, InlineAlert, PageHeader, QtyStepper, Select, SettingRow, Switch } from '../../../core/ui';
@@ -9,8 +10,10 @@ import { PaymentMethodsCard } from '../components/PaymentMethodsCard';
 import { PrintersCard } from '../components/PrintersCard';
 import { WorkModeCard } from '../components/WorkModeCard';
 import { TelegramReportCard } from '../components/TelegramReportCard';
+import { TelegramOrdersGroupCard } from '../components/TelegramOrdersGroupCard';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { printReceiptPreview } from '../../orders/utils/printing';
+import { usePlatformConfig } from '../../../core/lib/platformStage';
 
 const AUTO_PRINT_KEY = 'milliygo_auto_print';
 const COPIES_KEY = 'milliygo_print_copies';
@@ -96,6 +99,8 @@ const PosLockCard: React.FC = () => {
 };
 
 const SettingsPage: React.FC = () => {
+  // 1-bosqich: mijoz cheki va kassa qulfi yo'q (Q48, Q51) — oshxona printeri qoladi
+  const { pos: posStage } = usePlatformConfig();
   const toast = useToast();
   const desktop = isTauri();
   const [autoPrint, setAutoPrint] = useState(() => readLS(AUTO_PRINT_KEY) === 'true');
@@ -103,6 +108,12 @@ const SettingsPage: React.FC = () => {
   const [perm, setPerm] = useState<Perm>(browserPermission);
   const [printing, setPrinting] = useState(false);
   const [showKiosk, setShowKiosk] = useState(false);
+
+  // Kassa pastidagi holat qatoridan «Printer» bosilsa — to'g'ridan-to'g'ri Printerlar bo'limiga
+  const focus = (useLocation().state as { focus?: string } | null)?.focus;
+  useEffect(() => {
+    if (focus === 'printers') document.getElementById('printers')?.scrollIntoView({ block: 'start' });
+  }, [focus]);
 
   useEffect(() => writeLS(AUTO_PRINT_KEY, autoPrint ? 'true' : 'false'), [autoPrint]);
   useEffect(() => writeLS(COPIES_KEY, String(copies)), [copies]);
@@ -166,8 +177,9 @@ const SettingsPage: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-3xl">
-      <PageHeader title="Sozlamalar" subtitle="Chop etish va bildirishnomalar (shu qurilma uchun)" />
+      <PageHeader title="Sozlamalar" subtitle={posStage ? 'Chop etish va bildirishnomalar (shu qurilma uchun)' : 'Ish tartibi, bildirishnomalar va oshxona printeri'} />
 
+      {posStage && (
       <Card>
         <CardHeader title="Chek chop etish" icon={<Printer className="w-[18px] h-[18px]" />} />
         <div className="divide-y divide-edge">
@@ -190,11 +202,13 @@ const SettingsPage: React.FC = () => {
           </Button>
         </div>
       </Card>
+      )}
 
       {/* Rahbar va manager: barcha qurilmalar uchun ish tartibi */}
       {!isCashier() && <WorkModeCard />}
 
       {/* Faqat egasi: kunlik tushum hisoboti Telegram'ga */}
+      {!isManager() && <TelegramOrdersGroupCard />}
       {!isManager() && <TelegramReportCard />}
 
       {/* Faqat egasi: qaysi to'lov usullari qabul qilinadi (menejer ko'rmaydi) */}
@@ -239,9 +253,11 @@ const SettingsPage: React.FC = () => {
         )}
       </Card>
 
-      <PosLockCard />
+      {posStage && <PosLockCard />}
 
-      <PrintersCard />
+      <div id="printers" className="scroll-mt-[calc(var(--appbar-h,56px)+12px)]">
+        <PrintersCard />
+      </div>
 
       {!desktop && (
         <Card>

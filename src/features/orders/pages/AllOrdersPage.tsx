@@ -22,6 +22,7 @@ import { filialApi } from '../services/filialApi';
 import type { PartnerFilial } from '../services/filialApi';
 import { EditOrderModal } from '../components/EditOrderModal';
 import { printReceipt as printReceiptUtil } from '../utils/printing';
+import { usePlatformConfig } from '../../../core/lib/platformStage';
 import { useToast } from '../../../core/components/ToastProvider';
 import {
   Badge,
@@ -104,6 +105,8 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 const AllOrdersPage: React.FC = () => {
+  // Mijoz cheki — 2-bosqich (Q51)
+  const { pos: posStage } = usePlatformConfig();
   const toast = useToast();
   const partner = getPartner();
   const manager = partner?.role === 'manager';
@@ -246,7 +249,7 @@ const AllOrdersPage: React.FC = () => {
     return <Badge tone="neutral">{deliveryTypeLabel(o.delivery_type)}</Badge>;
   };
 
-  const printButtons = (o: Order, size: 'sm' | 'md' | 'lg' = 'sm') => (
+  const printButtons = (o: Order, size: 'sm' | 'md' | 'lg' = 'sm') => posStage && (
     <>
       <Button
         size={size}
@@ -588,7 +591,8 @@ const AllOrdersPage: React.FC = () => {
         subtitle={o ? formatDateTime(o.created_at) : undefined}
         size="md"
         footer={
-          o && (
+          // 1-bosqich: tarixdan tahrir va chek yo'q (taomni olib tashlash — faqat navbatda, Q54)
+          o && posStage && (
             <>
               <Button variant="secondary" size="lg" icon={<Pencil className="w-4 h-4" />} onClick={() => setEditingOrder(o)}>
                 Tahrirlash

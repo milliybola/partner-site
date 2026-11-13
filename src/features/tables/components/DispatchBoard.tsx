@@ -8,6 +8,7 @@ import { statusGroup, statusLabel } from '../../orders/utils/status';
 import type { QueueGroup } from '../../orders/utils/status';
 import type { CourierModel } from '../../staff/services/couriersApi';
 import { courierColor, normPhone, orderCourierKey } from '../lib/courierColors';
+import { t } from '../../../core/i18n';
 
 /** Buyurtma holati chizig'i: yangi — sariq, tayyorlanmoqda — yashil, tayyor — ko'k, yo'lda — to'q */
 const GROUP_CHIP: Record<QueueGroup, string> = {
@@ -19,7 +20,7 @@ const GROUP_CHIP: Record<QueueGroup, string> = {
 };
 
 const STATUS_DOT: Record<string, string> = { online: '#16a34a', busy: '#f59e0b', offline: '#94a3b8' };
-const STATUS_LABEL: Record<string, string> = { online: 'Onlayn', busy: 'Band', offline: 'Oflayn' };
+const STATUS_LABEL: Record<string, string> = { online: t('bar.online'), busy: t('courier.busy'), offline: t('courier.offline') };
 const rank = (s?: string) => (s === 'online' ? 0 : s === 'busy' ? 1 : 2);
 
 const toNum = (v: unknown) => {
@@ -39,10 +40,10 @@ const haversineKm = (a: { lat: number; lng: number }, b: { lat: number; lng: num
 const mapUrl = (lat: number, lng: number) => `https://yandex.uz/maps/?pt=${lng},${lat}&z=16&l=map`;
 
 const agoLabel = (iso: string | undefined, now: number) => {
-  const t = iso ? new Date(iso).getTime() : NaN;
-  if (!Number.isFinite(t)) return { text: '', stale: true };
-  const m = Math.max(0, Math.round((now - t) / 60000));
-  return { text: m < 1 ? 'hozir' : m < 60 ? `${m} daq oldin` : `${Math.floor(m / 60)} s oldin`, stale: m >= 5 };
+  const ts = iso ? new Date(iso).getTime() : NaN;
+  if (!Number.isFinite(ts)) return { text: '', stale: true };
+  const m = Math.max(0, Math.round((now - ts) / 60000));
+  return { text: m < 1 ? t('card.now') : m < 60 ? t('time.ago', { n: m }) : t('time.hAgo', { n: Math.floor(m / 60) }), stale: m >= 5 };
 };
 
 const OrderCard: React.FC<{ order: Order; now: number; accent: string; onOpen: () => void; cta?: string; distanceKm?: number | null }> = ({ order, now, accent, onOpen, cta, distanceKm }) => {
@@ -76,12 +77,12 @@ const OrderCard: React.FC<{ order: Order; now: number; accent: string; onOpen: (
           <span className={`px-2 py-0.5 rounded-md text-[11px] font-extrabold ${GROUP_CHIP[statusGroup(order.status)]}`}>{statusLabel(order.status)}</span>
           <span className={`inline-flex items-center gap-1 text-[12px] tabular-nums ${mins >= 60 ? 'font-black text-danger' : 'font-semibold text-muted'}`}>
             <Clock className="w-3.5 h-3.5" />
-            {mins >= 60 ? `${Math.floor(mins / 60)} s ${mins % 60} daq` : `${mins} daq`}
+            {mins >= 60 ? t('time.hm', { h: Math.floor(mins / 60), m: mins % 60 }) : t('card.min', { n: mins })}
           </span>
         </span>
         {distanceKm != null && (
           <span className="flex items-center gap-1 text-[12px] font-extrabold text-ink">
-            <Navigation className="w-3.5 h-3.5 shrink-0" /> Kuryer mijozdan {distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm.toFixed(1)} km`} masofada
+            <Navigation className="w-3.5 h-3.5 shrink-0" /> {t('dispatch.distance', { n: distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm.toFixed(1)} km` })}
           </span>
         )}
         {cta && <span className="block text-center rounded-lg bg-brand text-white text-[12px] font-extrabold py-1.5">{cta}</span>}
@@ -127,7 +128,7 @@ export const DispatchBoard: React.FC<{
     const k = orderCourierKey(o);
     if (k && !known.has(k) && !strangers.has(k)) {
       strangers.set(k, {
-        name: o.courier?.full_name || [o.courier?.first_name, o.courier?.last_name].filter(Boolean).join(' ') || 'Kuryer',
+        name: o.courier?.full_name || [o.courier?.first_name, o.courier?.last_name].filter(Boolean).join(' ') || t('detail.courier'),
         phone: o.courier_phone || o.courier?.phone || '',
       });
     }
@@ -148,8 +149,8 @@ export const DispatchBoard: React.FC<{
           header={
             <div className="flex items-center justify-between gap-2">
               <div>
-                <div className="text-[15px] font-black text-ink tracking-tightest">Kuryer biriktirilmagan</div>
-                <div className="text-[12px] font-semibold text-muted">Kuryer tanlash kerak</div>
+                <div className="text-[15px] font-black text-ink tracking-tightest">{t('dispatch.unassigned')}</div>
+                <div className="text-[12px] font-semibold text-muted">{t('dispatch.unassignedHint')}</div>
               </div>
               <span className="min-w-[30px] h-[30px] px-2 rounded-full bg-danger text-white text-[15px] font-black flex items-center justify-center tabular-nums">{unassigned.length}</span>
             </div>
@@ -160,12 +161,12 @@ export const DispatchBoard: React.FC<{
             onClick={onNew}
             className="w-full rounded-xl border-2 border-dashed border-edge-strong bg-surface py-3 flex items-center justify-center gap-2 text-muted hover:text-brand hover:border-brand/50 transition cursor-pointer text-[13px] font-extrabold"
           >
-            <Plus className="w-4 h-4" /> Yangi dostavka
+            <Plus className="w-4 h-4" /> {t('board.newOrder')}
           </button>
           {unassigned.map((o) => (
-            <OrderCard key={o.uuid} order={o} now={now} accent="#dc2626" cta="Kuryer biriktirish" onOpen={() => onAssign(o)} />
+            <OrderCard key={o.uuid} order={o} now={now} accent="#dc2626" cta={t('act.assignCourier')} onOpen={() => onAssign(o)} />
           ))}
-          {!loading && unassigned.length === 0 && <EmptyLane text="Hammasiga kuryer biriktirilgan" />}
+          {!loading && unassigned.length === 0 && <EmptyLane text={t('dispatch.allAssigned')} />}
         </Lane>
 
         {/* Kuryer ustunlari */}
@@ -216,13 +217,13 @@ export const DispatchBoard: React.FC<{
                       className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-[12px] font-extrabold ${ago.stale ? 'bg-warning/20 text-ink' : 'bg-brand/10 text-brand'}`}
                     >
                       <span className="inline-flex items-center gap-1">
-                        <Navigation className="w-3.5 h-3.5" /> Xaritada ko'rish
+                        <Navigation className="w-3.5 h-3.5" /> {t('dispatch.onMap')}
                       </span>
                       <span className="font-semibold">{ago.text}</span>
                     </a>
                   ) : (
                     <div className="flex items-center gap-1 rounded-lg bg-field px-2 py-1.5 text-[12px] font-bold text-muted">
-                      <Navigation className="w-3.5 h-3.5" /> Joylashuv ma'lum emas
+                      <Navigation className="w-3.5 h-3.5" /> {t('dispatch.noLocation')}
                     </div>
                   )}
                   <div className="h-1.5 rounded-full bg-field overflow-hidden">
@@ -237,7 +238,7 @@ export const DispatchBoard: React.FC<{
                 const dist = hasPoint && dl != null && dg != null ? haversineKm({ lat: here!.lat as number, lng: here!.lng as number }, { lat: dl, lng: dg }) : null;
                 return <OrderCard key={o.uuid} order={o} now={now} accent={color} distanceKm={dist} onOpen={() => onOpen(o.uuid)} />;
               })}
-              {mine.length === 0 && <EmptyLane text={st === 'online' ? "Bo'sh — buyurtma kutmoqda" : "Buyurtma yo'q"} />}
+              {mine.length === 0 && <EmptyLane text={st === 'online' ? t('dispatch.idle') : t('dispatch.noOrders')} />}
             </Lane>
           );
         })}
@@ -268,7 +269,7 @@ export const DispatchBoard: React.FC<{
 
       {resting.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[12px] font-extrabold uppercase tracking-wide text-muted">Oflayn kuryerlar</span>
+          <span className="text-[12px] font-extrabold uppercase tracking-wide text-muted">{t('dispatch.offlineCouriers')}</span>
           {resting.map((c) => (
             <span key={c.uuid} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-field text-[12px] font-bold text-muted">
               <span className="w-2 h-2 rounded-full" style={{ background: STATUS_DOT.offline }} />
@@ -278,7 +279,7 @@ export const DispatchBoard: React.FC<{
         </div>
       )}
       {!loading && active.length === 0 && orders.length === 0 && (
-        <EmptyState className="py-8" title="Faol dostavka yo'q" description="Yangi dostavka kelganda shu yerda paydo bo'ladi." />
+        <EmptyState className="py-8" title={t('board.emptyDelivery')} description={t('dispatch.emptyHint')} />
       )}
     </div>
   );

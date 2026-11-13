@@ -57,6 +57,12 @@ export interface Order {
   total_price: number | string;
   /** Aksiya/chegirmalar yig'indisi (server hisoblaydi) */
   discount_amount?: number | string;
+  /** Qo'lda chegirma (A10, menejer/rahbar): summa, foiz (0 — summa bilan berilgan), sabab, kim va qachon */
+  manual_discount_amount?: number | string;
+  manual_discount_percent?: number | string;
+  manual_discount_reason?: string;
+  manual_discount_by?: string;
+  manual_discount_at?: string | null;
   waiter_name?: string | null;
   waiter_uuid?: string | null;
   /** Biriktirilgan xodim roli: waiter — haqiqiy ofitsiant; cashier/manager — kassa ochgan */
@@ -116,6 +122,22 @@ export const isAwaitingQrConfirm = (o: { order_source?: string; status?: string 
 export const needsWaiter = (o: { delivery_type?: string; hall_uuid?: string | null; table_number?: string | null; waiter_role?: string | null }) =>
   o.delivery_type === 'DINE_IN' && !o.hall_uuid && !!o.table_number && o.waiter_role !== 'waiter';
 
+/**
+ * To'langan buyurtmaga taom qo'shilsa server ALOHIDA yangi hisob ochadi (backend `_opens_new_bill` bilan bir xil):
+ * faqat stol (stolli DINE_IN) va olib ketish. O'z-o'ziga xizmat zali va yetkazib berishda to'langan tarkib butunlay qulf.
+ */
+export const opensNewBill = (o: { is_paid?: boolean; hall_uuid?: string | null; delivery_type?: string; table_number?: string | null }) =>
+  !!o.is_paid && !o.hall_uuid && (o.delivery_type === 'DINE_IN' ? !!o.table_number : o.delivery_type === 'PICKUP');
+
+/** `add-items` javobi: `new_bill` — to'langan buyurtma uchun yangi hisob ochildi (`data` — yangi buyurtma) */
+export interface AddItemsResult {
+  success?: boolean;
+  new_bill?: boolean;
+  parent_order_uuid?: string;
+  message?: string;
+  data?: { uuid?: string; order_number?: string } & Record<string, any>;
+}
+
 export const ordersApi = {
   /** Buyurtmaga biriktiriladigan ofitsiantlar (buyurtma filialidagi faol ofitsiantlar) */
   getOrderWaiters: async (orderUuid: string): Promise<QrWaiter[]> => {
@@ -161,12 +183,35 @@ export const ordersApi = {
     return response.data.data || [];
   },
 
-  /** `reason` — rad etish sababi: `REJECTED` uchun backend majburiy talab qiladi. */
+  /**
+   * `reason` — rad etish / bekor qilish sababi: `REJECTED` uchun va to'langan buyurtmani bekor qilishda
+   * backend majburiy talab qiladi. Bekor qilish — alohida yo'l (`cancelOrder`).
+   */
   updateOrderStatus: async (orderUuid: string, status: string, reason?: string): Promise<any> => {
+    if (status === 'CANCELLED') return ordersApi.cancelOrder(orderUuid, reason);
     const slug = getStatusSlug(status);
     const url = ENDPOINTS.ORDERS.UPDATE_STATUS(orderUuid, slug);
     const response = await apiClient.post(url, reason ? { reject_reason: reason } : undefined);
     return response.data;
+  },
+
+  /**
+   * Buyurtmani bekor qilish (`partner-pos/<uuid>/cancel/`). To'langan buyurtmani faqat menejer/ega bekor qiladi
+   * va sabab (≥3 belgi) majburiy: kassirga 403 PAID_CANCEL_MANAGER_ONLY, sababsiz — 400 REASON_REQUIRED.
+   */
+  cancelOrder: async (orderUuid: string, reason?: string): Promise<any> => {
+    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/cancel/`, reason ? { reject_reason: reason } : {});
+    return response.data;
+  },
+
+  /**
+   * Qo'lda chegirma (`partner-pos/<uuid>/discount/`, 2-bosqich): `{percent | amount, reason}`; 0 — bekor qilish.
+   * Faqat menejer/rahbar (403 DISCOUNT_MANAGER_ONLY), menejerga chegara (403 DISCOUNT_LIMIT + limit_percent),
+   * to'langan — 409 ORDER_PAID. Javob — yangilangan buyurtma (jami, xizmat haqi, manual_discount_*).
+   */
+  applyDiscount: async (orderUuid: string, payload: { percent: number; reason?: string } | { amount: number; reason?: string }): Promise<Order> => {
+    const response = await apiClient.post(`orders/partner-pos/${orderUuid}/discount/`, payload);
+    return response.data?.data;
   },
 
   getOrderReceipt: async (orderUuid: string): Promise<any> => {
@@ -311,7 +356,7 @@ export const ordersApi = {
     orderUuid: string,
     payload: { items: { product_uuid: string; quantity: number }[] },
     managerToken?: string
-  ): Promise<any> => {
+  ): Promise<AddItemsResult> => {
     const config: any = {};
     if (managerToken) {
       config.headers = {

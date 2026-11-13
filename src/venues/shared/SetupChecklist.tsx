@@ -6,6 +6,7 @@ import { Card, IconButton } from '../../core/ui';
 import { escposPrinter } from '../../core/lib/printerConfig';
 import { getPartner, isShop } from '../../core/lib/session';
 import { useTariff } from '../../core/lib/tariff';
+import { usePlatformConfig } from '../../core/lib/platformStage';
 
 interface Step {
   key: string;
@@ -32,6 +33,8 @@ const readDismissed = () => {
 export const SetupChecklist: React.FC = () => {
   const shop = isShop();
   const { tariff, loading } = useTariff();
+  // Stollar — 2-bosqich (Q50); 1-bosqichda printer — faqat oshxona cheki (Q51)
+  const { pos: posStage } = usePlatformConfig();
   const [hours, setHours] = useState<boolean | null>(null);
   const [telegram, setTelegram] = useState<boolean | null>(null);
   const [dismissed, setDismissed] = useState(readDismissed);
@@ -63,13 +66,13 @@ export const SetupChecklist: React.FC = () => {
       done: tariff.usage.products > 0,
     },
     { key: 'hours', title: 'Ish vaqtini belgilang', hint: 'Mijozlar qachon buyurtma bera olishini biladi', to: '/profile', done: hours },
-    ...(!shop && tariff.allow_dine_in
+    ...(!shop && posStage && tariff.allow_dine_in
       ? [{ key: 'tables', title: "Stollarni qo'shing", hint: 'Zal buyurtmalari va QR menyu uchun', to: '/tables', done: tariff.usage.tables > 0 }]
       : []),
     {
       key: 'printer',
-      title: 'Chek printerini ulang',
-      hint: 'Ixtiyoriy — brauzer orqali ham chop etiladi',
+      title: posStage ? 'Chek printerini ulang' : 'Oshxona printerini ulang',
+      hint: posStage ? 'Ixtiyoriy — brauzer orqali ham chop etiladi' : 'Ixtiyoriy — ilova buyurtmasi oshxonaga qog‘ozda chiqadi',
       to: '/settings',
       done: !!(escposPrinter('receipt') || escposPrinter('kitchen')),
       optional: true,

@@ -96,7 +96,7 @@ const TableCallCards: React.FC = () => {
   return (
     <>
     <TableBillSheet table={billTable} canPay={canPay} onClose={() => setBillTable(null)} onChanged={() => {}} />
-    <div className="pointer-events-none fixed bottom-[calc(var(--tabbar-h)+12px)] left-3 right-3 z-[60] space-y-2.5 md:bottom-6 md:left-auto md:right-6 md:w-[380px]">
+    <div className="pointer-events-none fixed bottom-[calc(var(--tabbar-h)+12px)] left-3 right-3 z-[60] space-y-2.5 md:bottom-[calc(var(--statusbar-h,0px)+24px)] md:left-auto md:right-6 md:w-[380px]">
       {calls.slice(0, 4).map((c) => (
         <article key={c.uuid} role="alert" className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-gold bg-gold-soft p-3.5 shadow-xl animate-new-order">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gold text-ink">

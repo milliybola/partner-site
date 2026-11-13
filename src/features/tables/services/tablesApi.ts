@@ -178,8 +178,16 @@ export const tablesApi = {
     return response.data?.data;
   },
 
-  /** Hisobni kassada to'lash. orderUuids berilmasa — butun stol; berilsa — faqat shu buyurtmalar (bo'lib to'lash) */
-  payTableBill: async (uuid: string, paymentMethod: string, orderUuids?: string[]): Promise<TableBill> => {
+  /**
+   * Hisobni kassada to'lash: faqat `orderUuids` dagi buyurtmalar. Kassa doim kassir ko'rgan ro'yxatni yuboradi
+   * (D14) — ro'yxatsiz server o'sha paytdagi hamma to'lanmaganni to'laydi, kassir ko'rmagan yangi buyurtma ham.
+   * Javobda `paid.total` — haqiqatda to'langan summa.
+   */
+  payTableBill: async (
+    uuid: string,
+    paymentMethod: string,
+    orderUuids?: string[],
+  ): Promise<TableBill & { paid?: { total: number | string } }> => {
     const response = await apiClient.post<any>(`${ENDPOINTS.TABLES.DETAIL(uuid)}bill/pay/`, {
       payment_method: paymentMethod,
       ...(orderUuids ? { order_uuids: orderUuids } : {}),

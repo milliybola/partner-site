@@ -8,6 +8,7 @@ import { getQueueActions, isFinal, isHandedToCourier, isPendingLike, itemName, o
 import type { ActionContext, QueueAction } from './actions';
 import { LocationBadge } from './DeliveryAddressSection';
 import { FilialTag } from './FilialTag';
+import { t } from '../../../../core/i18n';
 
 const TypeIcon: React.FC<{ type?: string }> = ({ type }) =>
   type === 'DINE_IN' ? <Utensils className="w-3.5 h-3.5" /> : type === 'PICKUP' ? <ShoppingBag className="w-3.5 h-3.5" /> : <Bike className="w-3.5 h-3.5" />;
@@ -26,7 +27,7 @@ export const ElapsedChip: React.FC<{ createdAt: string; now: number; final?: boo
   return (
     <span title={`Qabul qilingan vaqt: ${formatTime(createdAt)}`} className={`inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[12px] font-bold tabular-nums ${tone}`}>
       <Clock className="w-3.5 h-3.5" />
-      {min < 1 ? 'hozir' : min < 60 ? `${min} daq` : `${Math.floor(min / 60)} soat ${min % 60} daq`}
+      {min < 1 ? t('card.now') : min < 60 ? t('card.min', { n: min }) : t('card.hourMin', { h: Math.floor(min / 60), m: min % 60 })}
     </span>
   );
 };
@@ -92,13 +93,13 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
             {order.call_number ? (
-              <span className="shrink-0 h-7 px-2 rounded-lg bg-ink text-white text-[16px] font-black tabular-nums flex items-center" title="Chaqiruv raqami">
+              <span className="shrink-0 h-7 px-2 rounded-lg bg-ink text-white text-[16px] font-black tabular-nums flex items-center" title={t('card.callNumber')}>
                 № {order.call_number}
               </span>
             ) : null}
             <span className="text-[15px] font-black text-ink tracking-tightest truncate">{orderNo(order)}</span>
-            {highlighted && <Badge tone="brand">Yangi</Badge>}
-            {order.delivery_type === 'DELIVERY' && !final && !(order.courier || order.courier_phone) && <Badge tone="danger">Kuryer yo'q</Badge>}
+            {highlighted && <Badge tone="brand">{t('status.new')}</Badge>}
+            {order.delivery_type === 'DELIVERY' && !final && !(order.courier || order.courier_phone) && <Badge tone="danger">{t('card.noCourier')}</Badge>}
           </div>
           {order.deadline_at && COUNTDOWN_STATUSES.has(order.status) ? (
             <DeadlineChip deadlineAt={order.deadline_at} />
@@ -110,11 +111,11 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <Badge tone={order.delivery_type === 'DELIVERY' ? 'info' : order.delivery_type === 'DINE_IN' ? 'success' : 'gold'}>
             <TypeIcon type={order.delivery_type} />
-            {order.delivery_type === 'DINE_IN' && order.table_number ? `${order.table_number}-stol` : deliveryTypeLabel(order.delivery_type)}
+            {order.delivery_type === 'DINE_IN' && order.table_number ? t('table.n', { n: order.table_number }) : deliveryTypeLabel(order.delivery_type)}
           </Badge>
-          {order.order_source === 'QR' && <Badge tone="gold">Stol QR</Badge>}
+          {order.order_source === 'QR' && <Badge tone="gold">{t('table.qr')}</Badge>}
           {showStatus && <Badge tone={statusTone(order.status)}>{statusLabel(order.status)}</Badge>}
-          {order.is_paid && <Badge tone="success">To'langan</Badge>}
+          {order.is_paid && <Badge tone="success">{t('card.paid')}</Badge>}
           <FilialTag order={order} />
         </div>
 
@@ -126,7 +127,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
                 <span className="truncate">{itemName(it)}</span>
               </li>
             ))}
-            {more > 0 && <li className="text-muted text-[12px]">yana {more} ta mahsulot</li>}
+            {more > 0 && <li className="text-muted text-[12px]">{t('card.more', { n: more })}</li>}
           </ul>
         )}
 
@@ -151,7 +152,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
 
         {order.reject_reason && (order.status === 'REJECTED' || order.status === 'CANCELLED') && (
           <p className="mt-2 text-[12px] font-semibold text-danger-ink bg-danger-soft rounded-lg px-2 py-1 line-clamp-2">
-            Sabab: {order.reject_reason}
+            {t('card.reason', { n: order.reject_reason })}
           </p>
         )}
 
@@ -162,7 +163,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
       </button>
 
       {!primary && !danger && isHandedToCourier(order) && (
-        <p className="px-3.5 pb-3.5 text-[12px] font-semibold text-muted">Kuryerda — holatni kuryer boshqaradi</p>
+        <p className="px-3.5 pb-3.5 text-[12px] font-semibold text-muted">{t('card.atCourier')}</p>
       )}
 
       {(primary || danger) && (
@@ -176,10 +177,10 @@ export const OrderCard: React.FC<OrderCardProps> = ({ order, now, ctx, highlight
                   disabled={busy}
                   onClick={() => onAction(danger)}
                   icon={<X className="w-5 h-5" />}
-                  aria-label="Rad etish"
+                  aria-label={t('act.reject')}
                   className="px-4"
                 >
-                  <span className={dense ? 'sr-only' : ''}>Rad etish</span>
+                  <span className={dense ? 'sr-only' : ''}>{t('act.reject')}</span>
                 </Button>
               )}
               {primary && (

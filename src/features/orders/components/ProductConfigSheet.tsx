@@ -201,7 +201,7 @@ const Inner: React.FC<{ product: PosProduct; onClose: () => void; onConfirm: (cf
           )}
           {qtyError && <p className="mt-1.5 text-[12px] font-medium text-danger-ink">{qtyError}</p>}
           {missing && <p className="mt-1.5 text-[12px] font-medium text-danger-ink">«{missing.name}» tanlanishi shart</p>}
-          <p className="mt-1.5 text-[12px] text-muted">Narx taxminiy — aksiya va yakuniy summani server hisoblaydi.</p>
+          <p className="mt-1.5 text-[12px] text-muted">Aksiya chegirmasi savatda hisoblanadi.</p>
         </section>
       </div>
     </Sheet>

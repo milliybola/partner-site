@@ -1,6 +1,7 @@
 import React from 'react';
-import { AlertTriangle, Inbox, Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Inbox, Loader2, RefreshCw, WifiOff } from 'lucide-react';
 import { Button } from './Button';
+import { classifyError, getErrorMessage } from '../lib/errors';
 
 /* ----------------------------------------------------------------- Card */
 export const Card: React.FC<React.HTMLAttributes<HTMLDivElement> & { padded?: boolean; interactive?: boolean }> = ({
@@ -137,32 +138,45 @@ export const EmptyState: React.FC<{ icon?: React.ReactNode; title: string; descr
   </div>
 );
 
-export const ErrorState: React.FC<{ title?: string; message?: string; onRetry?: () => void; className?: string }> = ({
-  title = "Ma'lumotlarni yuklab bo'lmadi",
+/**
+ * Xato holati. `error` berilsa — tur bo'yicha (errors.ts → classifyError): internet yo'q bo'lsa WifiOff ikonka va
+ * «Internet yo'q» sarlavhasi; `message` berilmagan bo'lsa matn ham shu yerdan olinadi.
+ */
+export const ErrorState: React.FC<{ title?: string; message?: string; error?: unknown; onRetry?: () => void; className?: string }> = ({
+  title,
   message,
+  error,
   onRetry,
   className = '',
-}) => (
-  <div className={`flex flex-col items-center justify-center text-center gap-2 py-12 px-6 ${className}`} role="alert">
-    <span className="w-14 h-14 rounded-2xl bg-danger-soft text-danger flex items-center justify-center mb-1">
-      <AlertTriangle className="w-7 h-7" />
-    </span>
-    <h3 className="text-[16px] font-extrabold text-ink tracking-tightest">{title}</h3>
-    {message && <p className="text-[14px] text-muted max-w-sm">{message}</p>}
-    {onRetry && (
-      <Button variant="outline" className="mt-3" icon={<RefreshCw className="w-4 h-4" />} onClick={onRetry}>
-        Qayta urinish
-      </Button>
-    )}
-  </div>
-);
-
-export const InlineAlert: React.FC<{ tone?: 'danger' | 'warning' | 'info' | 'success'; children: React.ReactNode; className?: string; icon?: React.ReactNode }> = ({
-  tone = 'danger',
-  children,
-  className = '',
-  icon,
 }) => {
+  const c = error !== undefined && error !== null ? classifyError(error) : null;
+  const offline = c?.kind === 'offline';
+  const shownTitle = offline ? "Internet yo'q" : title || "Ma'lumotlarni yuklab bo'lmadi";
+  const shownMessage = offline ? c!.message : message ?? (c ? getErrorMessage(error) : undefined);
+  return (
+    <div className={`flex flex-col items-center justify-center text-center gap-2 py-12 px-6 ${className}`} role="alert">
+      <span className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-1 ${offline ? 'bg-field text-muted' : 'bg-danger-soft text-danger'}`}>
+        {offline ? <WifiOff className="w-7 h-7" /> : <AlertTriangle className="w-7 h-7" />}
+      </span>
+      <h3 className="text-[16px] font-extrabold text-ink tracking-tightest">{shownTitle}</h3>
+      {shownMessage && <p className="text-[14px] text-muted max-w-sm">{shownMessage}</p>}
+      {onRetry && (
+        <Button variant="outline" className="mt-3" icon={<RefreshCw className="w-4 h-4" />} onClick={onRetry}>
+          Qayta urinish
+        </Button>
+      )}
+    </div>
+  );
+};
+
+export const InlineAlert: React.FC<{
+  tone?: 'danger' | 'warning' | 'info' | 'success';
+  children: React.ReactNode;
+  className?: string;
+  icon?: React.ReactNode;
+  /** Berilsa — o'ng tomonda «Qayta urinish» tugmasi */
+  onRetry?: () => void;
+}> = ({ tone = 'danger', children, className = '', icon, onRetry }) => {
   const t = {
     danger: 'bg-danger-soft text-danger-ink',
     warning: 'bg-warning-soft text-warning-ink',
@@ -172,7 +186,16 @@ export const InlineAlert: React.FC<{ tone?: 'danger' | 'warning' | 'info' | 'suc
   return (
     <div className={`flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-[14px] font-medium ${t} ${className}`} role={tone === 'danger' ? 'alert' : undefined}>
       <span className="shrink-0 mt-0.5">{icon || <AlertTriangle className="w-4 h-4" />}</span>
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0 flex-1">{children}</div>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="shrink-0 -my-1.5 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-surface/70 hover:bg-surface text-[13px] font-bold cursor-pointer"
+        >
+          <RefreshCw className="w-4 h-4" /> Qayta urinish
+        </button>
+      )}
     </div>
   );
 };

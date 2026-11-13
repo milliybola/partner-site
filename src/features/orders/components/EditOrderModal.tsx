@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, Trash2, Loader2, ShoppingBag } from 'lucide-react';
+import { Plus, Trash2, Loader2, ShoppingBag, Lock } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
 import apiClient from '../../../core/api/client';
 import { useToast } from '../../../core/components/ToastProvider';
@@ -7,12 +7,24 @@ import { useConfirm } from '../../../core/components/ConfirmProvider';
 import { getPartner, wording } from '../../../core/lib/session';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { formatMoney } from '../../../core/lib/format';
+import { t } from '../../../core/i18n';
 import { Button, EmptyState, ErrorState, LoadingState, QtyStepper, SearchInput, Segmented, Sheet } from '../../../core/ui';
 
 interface EditOrderModalProps {
   orderUuid: string;
   orderNumber: string;
-  onClose: (refresh: boolean) => void;
+  /**
+   * To'langan buyurtma: mavjud taomlar qulf (server 409 ORDER_PAID). `newBill` — qo'shilgan taom yangi hisobga
+   * yoziladi (stol, olib ketish); `locked` — umuman o'zgartirib bo'lmaydi.
+   */
+  paidLock?: 'newBill' | 'locked';
+  /**
+   * 1-bosqich (Q54): ilova buyurtmasidan faqat taomni olib tashlash (taom tugadi) — qo'shish va miqdorni oshirish yo'q.
+   * Miqdor kamaytirish ham olib tashlash (remove-items) orqali yuboriladi.
+   */
+  removeOnly?: boolean;
+  /** `newBillUuid` — to'langan buyurtmaga taom qo'shilib, ochilgan yangi hisob (uni ko'rsatish uchun) */
+  onClose: (refresh: boolean, newBillUuid?: string) => void;
 }
 
 interface CatalogProduct {
@@ -36,7 +48,7 @@ const extractItems = (response: any): any[] => {
   return [];
 };
 
-export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, orderNumber, onClose }) => {
+export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, orderNumber, paidLock, removeOnly, onClose }) => {
   const toast = useToast();
   const confirm = useConfirm();
   const w = wording();
@@ -98,8 +110,23 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
 
   useEffect(() => {
     fetchItems();
-    fetchCatalog();
-  }, [fetchItems, fetchCatalog]);
+    if (!removeOnly) fetchCatalog();
+  }, [fetchItems, fetchCatalog, removeOnly]);
+
+  /** 1-bosqich: miqdorni kamaytirish — shu sonni olib tashlash (update-item 2-bosqichda) */
+  const handleDecrease = async (itemUuid: string, by: number) => {
+    if (by <= 0) return;
+    setActionLoading(itemUuid);
+    try {
+      await ordersApi.removeOrderItems(orderUuid, { items: [{ item_uuid: itemUuid, quantity: by }] });
+      setHasChanges(true);
+      await fetchItems();
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Miqdorni yangilashda xatolik yuz berdi.'));
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const handleUpdateQuantity = async (itemUuid: string, newQuantity: number) => {
     setActionLoading(itemUuid);
@@ -132,7 +159,13 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
   const handleAddProduct = async (product: CatalogProduct) => {
     setActionLoading(product.uuid);
     try {
-      await ordersApi.addOrderItems(orderUuid, { items: [{ product_uuid: product.uuid, quantity: 1 }] });
+      const res = await ordersApi.addOrderItems(orderUuid, { items: [{ product_uuid: product.uuid, quantity: 1 }] });
+      if (res?.new_bill) {
+        // To'langan buyurtma: taom yangi hisobga yozildi — shu oyna yopilib, yangi hisob ochiladi
+        toast.info(t('bill.newBill', { n: orderNumber, m: res.data?.order_number || '' }));
+        onClose(true, res.data?.uuid);
+        return;
+      }
       setHasChanges(true);
       toast.success(`${product.name} qo'shildi`);
       await fetchItems();
@@ -195,6 +228,9 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
                     {formatMoney(price)} × {qty} = <span className="text-ink font-semibold">{formatMoney(price * qty)}</span>
                   </p>
                 </div>
+                {paidLock ? (
+                  <span className="shrink-0 text-[15px] font-bold text-ink tabular-nums">×{qty}</span>
+                ) : (
                 <div className="flex items-center gap-1 shrink-0">
                   {busy ? (
                     <span className="w-[120px] flex justify-center">
@@ -206,7 +242,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
                       value={qty}
                       min={1}
                       disabled={!!actionLoading}
-                      onChange={(v) => handleUpdateQuantity(itemUuid, v)}
+                      max={removeOnly ? qty : undefined}
+                      onChange={(v) => (removeOnly ? handleDecrease(itemUuid, qty - v) : handleUpdateQuantity(itemUuid, v))}
                     />
                   )}
                   <button
@@ -219,6 +256,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
+                )}
               </div>
             );
           })}
@@ -296,7 +334,19 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
         </>
       }
     >
-      <div className="md:hidden mb-3">
+      {removeOnly && !paidLock && (
+        <div role="status" className="mb-3 flex items-start gap-2.5 rounded-2xl bg-info-soft px-3.5 py-3 text-[14px] font-semibold text-ink">
+          <Trash2 className="w-4 h-4 mt-0.5 shrink-0 text-info" />
+          <span>{t('bill.removeOnly')}</span>
+        </div>
+      )}
+      {paidLock && (
+        <div role="status" className="mb-3 flex items-start gap-2.5 rounded-2xl bg-info-soft px-3.5 py-3 text-[14px] font-semibold text-ink">
+          <Lock className="w-4 h-4 mt-0.5 shrink-0 text-info" />
+          <span>{t(paidLock === 'newBill' ? 'bill.paidLockedAdd' : 'bill.paidLocked')}</span>
+        </div>
+      )}
+      <div className={`md:hidden mb-3 ${paidLock === 'locked' || removeOnly ? 'hidden' : ''}`}>
         <Segmented
           value={pane}
           onChange={setPane}
@@ -308,11 +358,11 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
         />
       </div>
       <div className="md:grid md:grid-cols-12 md:gap-6">
-        <div className={`md:col-span-7 ${pane === 'items' ? '' : 'hidden md:block'}`}>
+        <div className={`${removeOnly ? 'md:col-span-12' : 'md:col-span-7'} ${pane === 'items' || removeOnly ? '' : 'hidden md:block'}`}>
           <div className="hidden md:block text-[12px] font-bold uppercase tracking-wider text-subtle mb-1">Buyurtma tarkibi</div>
           {itemsPane}
         </div>
-        <div className={`md:col-span-5 md:border-l md:border-edge md:pl-6 ${pane === 'add' ? '' : 'hidden md:block'}`}>
+        <div className={`md:col-span-5 md:border-l md:border-edge md:pl-6 ${paidLock === 'locked' || removeOnly ? 'hidden' : pane === 'add' ? '' : 'hidden md:block'}`}>
           <div className="hidden md:block text-[12px] font-bold uppercase tracking-wider text-subtle mb-2">Mahsulot qo'shish</div>
           {addPane}
         </div>

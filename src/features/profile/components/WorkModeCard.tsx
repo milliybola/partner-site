@@ -5,6 +5,7 @@ import { useToast } from '../../../core/components/ToastProvider';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { isShop } from '../../../core/lib/session';
 import { useWorkSettings, type WorkSettings } from '../../../core/lib/workSettings';
+import { usePlatformConfig } from '../../../core/lib/platformStage';
 
 /** Ish tartibi (barcha qurilmalarda bir xil): Tez rejim va Ombor bo'limi. Rahbar va manager uchun. */
 export const WorkModeCard: React.FC = () => {
@@ -12,6 +13,8 @@ export const WorkModeCard: React.FC = () => {
   const { settings, loaded, save } = useWorkSettings();
   const [saving, setSaving] = useState<keyof WorkSettings | null>(null);
   const shop = isShop();
+  // Ombor/texkarta — 2-bosqich (Q55): 1-bosqichda tumbler yo'q (backend ham yoqishni 403 qiladi)
+  const { pos: posStage } = usePlatformConfig();
 
   const toggle = async (key: keyof WorkSettings, value: boolean) => {
     setSaving(key);
@@ -33,8 +36,8 @@ export const WorkModeCard: React.FC = () => {
           title="Tez rejim"
           description={
             shop
-              ? "Yangi buyurtma o'zi qabul qilinadi — «Qabul qilish» bosish shart emas. Stol QR buyurtmasini baribir xodim tasdiqlaydi."
-              : "Kichik kafe uchun. Yangi buyurtma (ilova, telegram) o'zi qabul qilinib oshxona printeriga chiqadi. Olib ketish va zal buyurtmasi bitta tugma bilan beriladi — «Tayyorlanmoqda», «Tayyor» bosqichlari yo'q. Keraksizini bekor qilasiz, xolos. Stol QR buyurtmasini esa har doim xodim tasdiqlaydi — u buyurtma uchun javobgar."
+              ? "Yangi buyurtmani baribir o'zingiz «Qabul qilish» bilan qabul qilasiz. Keyingi qadamlar qisqaradi."
+              : "Kichik kafe uchun. Yangi buyurtmani baribir o'zingiz «Qabul qilish» bilan qabul qilasiz; shundan keyin olib ketish va zal buyurtmasi bitta tugma bilan beriladi — «Tayyorlanmoqda», «Tayyor» bosqichlari yo'q."
           }
           control={
             <Switch
@@ -45,7 +48,7 @@ export const WorkModeCard: React.FC = () => {
             />
           }
         />
-        {!shop && (
+        {!shop && posStage && (
           <SettingRow
             title="Ombor va texkarta"
             description="Xom ashyo qoldig'i, kirim, inventarizatsiya va taom tannarxi. Har kuni kirim kiritadigan restoranlar uchun — kichik kafega shart emas."

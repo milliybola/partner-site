@@ -14,6 +14,11 @@ export const ApiGap: React.FC<{ title: string; label?: string; className?: strin
   block,
   children,
 }) => {
+  // Dasturchi uchun belgi: ishchi versiyada xodimga ko'rinmaydi (block matni oddiy izoh sifatida qoladi)
+  if (!import.meta.env.DEV) {
+    if (!children) return null;
+    return block ? <div className={`text-[13px] text-muted ${className}`}>{children}</div> : <span className={className}>{children}</span>;
+  }
   if (block) {
     return (
       <div

@@ -4,7 +4,7 @@ import { getToken } from './session';
 
 /**
  * Hamkorning ish tartibi (backend: GET/PATCH /partner/work-settings/) — barcha qurilmalarda bir xil.
- *   fast_mode         — Tez rejim: buyurtma o'zi qabul qilinadi, navbatda bitta tugma («Berildi»)
+ *   fast_mode         — Tez rejim: buyurtmani hamkor o'zi qabul qiladi (avtomatik qabul yo'q), navbatda bitta tugma («Berildi»)
  *   warehouse_enabled — «Ombor va texkarta» bo'limi sidebar'da ko'rinadi
  */
 export interface WorkSettings {

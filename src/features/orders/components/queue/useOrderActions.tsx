@@ -11,17 +11,21 @@ import { printReceipt as printReceiptUtil, printPreCheck as printPreCheckUtil } 
 import { EditOrderModal } from '../EditOrderModal';
 import { useToast } from '../../../../core/components/ToastProvider';
 import { useConfirm } from '../../../../core/components/ConfirmProvider';
+import { useShiftNotOpenPrompt } from '../../../../core/components/useShiftNotOpenPrompt';
 import { useRejectReason } from '../../../../core/components/RejectReasonProvider';
-import { getPartner, isManager, isShop } from '../../../../core/lib/session';
+import { getPartner, isCashier, isManager, isShop } from '../../../../core/lib/session';
+import { t } from '../../../../core/i18n';
 import { getErrorMessage } from '../../../../core/lib/errors';
 import { formatMoney } from '../../../../core/lib/format';
+import { OFFLINE_SHEET_EVENT, enqueuePayment, isNetworkError, isPaymentQueued } from '../../../../core/lib/offline';
 import { OrderDetailSheet } from './OrderDetailSheet';
 import { PaymentSheet } from './PaymentSheet';
 import type { PaymentMethod } from './PaymentSheet';
 import { CourierPickerSheet } from './CourierPickerSheet';
 import { WaiterPickSheet } from './WaiterPickSheet';
 import type { WaiterPickMode } from './WaiterPickSheet';
-import { needsWaiter } from '../../services/ordersApi';
+import { needsWaiter, opensNewBill } from '../../services/ordersApi';
+import { usePlatformConfig } from '../../../../core/lib/platformStage';
 import { HANDED_NOTE, orderNo } from './actions';
 import type { ActionContext, QueueAction } from './actions';
 
@@ -45,11 +49,14 @@ interface Options {
 export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing, fastMode, onTouched }: Options) {
   const toast = useToast();
   const confirm = useConfirm();
+  const promptShift = useShiftNotOpenPrompt();
   const askRejectReason = useRejectReason();
   const partner = getPartner();
   const manager = isManager(partner);
   const shop = isShop(partner);
   const partnerUuid = partner?.uuid;
+  // 1-bosqich: zal/stol, mijoz cheki, taom qo'shish yo'q — ilova buyurtmasi smenasiz yakunlanadi
+  const { pos: posStage } = usePlatformConfig();
 
   const [selectedUuid, setSelectedUuid] = useState<string | null>(null);
   /** Stol buyurtmasi: QR tasdiqlash / «Tayyor» / almashtirishda ofitsiant tanlanadi */
@@ -77,7 +84,7 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
       .getCouriers()
       .then(setCouriers)
       .catch(() => setCouriers([]));
-    if (!shop) {
+    if (!shop && posStage) {
       tablesApi
         .getTables()
         .then(setTables)
@@ -89,9 +96,10 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
         .then(setFilials)
         .catch(() => setFilials([]));
     }
-  }, [manager, shop]);
+  }, [manager, shop, posStage]);
 
-  const ctx: ActionContext = { skipPreparing, fastMode, hasOwnCouriers: couriers.length > 0, shop };
+  // To'langan buyurtmani bekor qilish — faqat menejer/ega (kassirga tugma ko'rsatilmaydi)
+  const ctx: ActionContext = { skipPreparing, fastMode, hasOwnCouriers: couriers.length > 0, shop, canCancelPaid: !isCashier(partner), pos: posStage };
   const touch = (uuid: string) => onTouched?.(uuid);
   const selectedOrder = selectedUuid ? orders.find((o) => o.uuid === selectedUuid) || null : null;
 
@@ -106,11 +114,13 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
   );
 
   const handlePrintReceipt = async (orderUuid: string, withQr: boolean) => {
+    // Mijoz cheki — 2-bosqich (Q51): 1-bosqichda yakunlashdan keyin chek so'ralmaydi (server 403 bermasin)
+    if (!posStage) return;
     setPrintingUuid(orderUuid);
     try {
       await printReceiptUtil(orderUuid, withQr);
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Chekni chop etishda xatolik yuz berdi.'));
+      toast.error(getErrorMessage(err, t('msg.printFail')));
     } finally {
       setPrintingUuid(null);
     }
@@ -120,7 +130,7 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
     try {
       await printPreCheckUtil(order);
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Pre-chekni chop etishda xatolik yuz berdi.'));
+      toast.error(getErrorMessage(err, t('msg.preCheckFail')));
     }
   };
 
@@ -134,6 +144,8 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
 
   // 409 HANDED_TO_COURIER: kuryer buyurtmani olgan — xabar ko'rsatib, ro'yxatni yangilaymiz.
   const reportActionError = (err: unknown, fallback: string) => {
+    // D36: smena ochilmagan — to'lov yozilmadi, buyurtma o'zgarmadi; kassirga «Smenani ochish»
+    if (promptShift(err)) return;
     const e = err as { response?: { status?: number; data?: { code?: string; message?: string } } };
     if (e?.response?.status === 409 && e.response.data?.code === 'HANDED_TO_COURIER') {
       toast.error(e.response.data.message || HANDED_NOTE);
@@ -159,7 +171,7 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
       refresh();
     } catch (err) {
       setOrders(previous);
-      reportActionError(err, 'Buyurtma holatini yangilashda xatolik yuz berdi.');
+      reportActionError(err, t('msg.statusFail'));
     } finally {
       setBusyUuid(null);
     }
@@ -167,14 +179,14 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
 
   const acceptOrder = (order: Order) => {
     if (order.partner_uuid && partnerUuid && order.partner_uuid !== partnerUuid) {
-      toast.error('Bu buyurtma sizning muassasangizga tegishli emas.');
+      toast.error(t('msg.notYourOrder'));
       return;
     }
     if (order.order_source === 'QR') {
       pickWaiter(order, 'qr');
       return;
     }
-    updateStatus(order, 'ACCEPTED', `${orderNo(order)} qabul qilindi`);
+    updateStatus(order, 'ACCEPTED', t('msg.accepted', { n: orderNo(order) }));
   };
 
   const openCourierPicker = (order: Order, thenReady = false) => {
@@ -184,7 +196,7 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
     couriersApi
       .getCouriers()
       .then(setCouriers)
-      .catch((err) => toast.error(getErrorMessage(err, "Kuryerlar ro'yxatini yuklashda xatolik yuz berdi.")))
+      .catch((err) => toast.error(getErrorMessage(err, t('msg.couriersFail'))))
       .finally(() => setLoadingCouriers(false));
   };
 
@@ -195,30 +207,82 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
       await ordersApi.assignOwnCourier(courierOrder.uuid, courierUuid);
       touch(courierOrder.uuid);
       setOrders((prev) => prev.map((o) => (o.uuid === courierOrder.uuid ? { ...o, status: 'ACCEPTED' } : o)));
-      toast.success('Kuryer biriktirildi, buyurtma qabul qilindi.');
+      toast.success(t('msg.courierAssigned'));
       const goReady = readyAfterAssign.current;
       readyAfterAssign.current = false;
       setCourierOrder(null);
-      if (goReady) void updateStatus({ ...courierOrder, status: 'ACCEPTED' }, 'READY_FOR_PICKUP', `${orderNo(courierOrder)} tayyor`);
+      if (goReady) void updateStatus({ ...courierOrder, status: 'ACCEPTED' }, 'READY_FOR_PICKUP', t('msg.ready', { n: orderNo(courierOrder) }));
       else refresh();
     } catch (err) {
-      reportActionError(err, 'Kuryerni biriktirishda xatolik yuz berdi.');
+      reportActionError(err, t('msg.courierAssignFail'));
     } finally {
       setAssigningCourierUuid(null);
     }
   };
 
+  /** To'lovi/yakunlanishi oflayn navbatda turgan buyurtma — qayta to'lov olinmaydi (pul ikki marta olinmasin) */
+  const blockIfQueued = (order: Order) => {
+    if (!isPaymentQueued(order.uuid)) return false;
+    toast.error(t('msg.payQueuedNoRepeat', { n: orderNo(order) }));
+    window.dispatchEvent(new Event(OFFLINE_SHEET_EVENT));
+    return true;
+  };
+
+  /**
+   * Internet yo'q: to'lov/yakunlash navbatga yoziladi, karta darhol «yakunlangan»ga o'tadi.
+   * Internet qaytgach navbat o'zi yuboriladi (core/lib/offline.ts → sendPayment).
+   */
+  const queueOffline = (order: Order, pay: { collect: boolean; method: string; payments?: PaymentPart[]; splitCount?: number }) => {
+    let added: boolean;
+    try {
+      added = enqueuePayment({
+        label: order.table_number ? `${orderNo(order)} · ${t('table.n', { n: order.table_number })}` : orderNo(order),
+        total: Number(order.total_price) || 0,
+        payment: {
+          order_uuid: order.uuid,
+          collect: pay.collect,
+          method: pay.method,
+          ...(pay.payments && pay.payments.length > 1 ? { payments: pay.payments } : {}),
+          ...(pay.splitCount && pay.splitCount > 1 ? { split_count: pay.splitCount } : {}),
+          ...(order.hall_uuid ? { self_service: true } : {}),
+        },
+      });
+    } catch (e) {
+      toast.error(getErrorMessage(e, t('msg.paySaveFail')));
+      return;
+    }
+    if (!added) {
+      toast.error(t('msg.payAlreadyQueued', { n: orderNo(order) }));
+      return;
+    }
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.uuid === order.uuid
+          ? { ...o, status: 'DELIVERED', ...(pay.collect ? { is_paid: true, payment_method: pay.method, payment_breakdown: pay.payments && pay.payments.length > 1 ? pay.payments : [] } : {}) }
+          : o,
+      ),
+    );
+    if (selectedUuid === order.uuid) setSelectedUuid(null);
+    toast.success(
+      pay.collect
+        ? t('msg.payOfflineSaved', { n: orderNo(order) })
+        : t('msg.completeOffline', { n: orderNo(order) }),
+    );
+  };
+
   const completeOrder = async (order: Order) => {
+    if (blockIfQueued(order)) return;
     setBusyUuid(order.uuid);
     try {
       await ordersApi.completeOrder(order.uuid);
       freeTableForOrder(order);
       setSelectedUuid(null);
-      toast.success(order.call_number ? `№ ${order.call_number} mijozga berildi` : `${orderNo(order)} yakunlandi`);
+      toast.success(order.call_number ? t('msg.handedToCustomer', { n: order.call_number }) : t('msg.completed', { n: orderNo(order) }));
       if (!order.hall_uuid) handlePrintReceipt(order.uuid, true); // o'z-o'ziga xizmat: chek to'lovda (yaratishda) chiqqan
       refresh();
     } catch (err) {
-      reportActionError(err, 'Buyurtmani yakunlashda xatolik yuz berdi.');
+      if (isNetworkError(err)) queueOffline(order, { collect: false, method: order.payment_method || 'CASH' });
+      else reportActionError(err, t('msg.completeFail'));
     } finally {
       setBusyUuid(null);
     }
@@ -226,18 +290,30 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
 
   const submitPayment = async (method: PaymentMethod, splitCount: number, payments?: PaymentPart[]) => {
     if (!paymentOrder) return;
+    if (blockIfQueued(paymentOrder)) {
+      setPaymentOrder(null);
+      return;
+    }
     setPaymentSaving(true);
     try {
       // To'lov va yakunlash — bitta so'rovda (eski serverda mark-paid bilan to'ldiriladi); aralash — qismlar bilan
       await ordersApi.completeWithPayment(paymentOrder.uuid, method, splitCount, payments);
       freeTableForOrder(paymentOrder);
-      toast.success(`${orderNo(paymentOrder)} to'landi va yakunlandi`);
+      toast.success(t('msg.paidCompleted', { n: orderNo(paymentOrder) }));
       handlePrintReceipt(paymentOrder.uuid, true);
       if (selectedUuid === paymentOrder.uuid) setSelectedUuid(null);
       setPaymentOrder(null);
       refresh();
     } catch (err) {
-      reportActionError(err, "To'lov ma'lumotlarini saqlashda xatolik yuz berdi.");
+      if (isNetworkError(err)) {
+        // Javob kelmadi: server to'lovni yozgan-yozmagani noma'lum — navbat yuborishda server holatini tekshiradi
+        queueOffline(paymentOrder, { collect: true, method, payments, splitCount });
+        setPaymentOrder(null);
+      } else {
+        // D36: smena ochilmagan — to'lov oynasi yopiladi (pul olinmadi), smena ochilgach qayta qabul qilinadi
+        if (promptShift(err)) setPaymentOrder(null);
+        else reportActionError(err, t('msg.paymentFail'));
+      }
     } finally {
       setPaymentSaving(false);
     }
@@ -250,20 +326,38 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
         return;
       case 'reject': {
         const reason = await askRejectReason({ orderLabel: orderNo(order) });
-        if (reason) updateStatus(order, 'REJECTED', `${orderNo(order)} rad etildi`, reason);
+        if (reason) updateStatus(order, 'REJECTED', t('msg.rejected', { n: orderNo(order) }), reason);
         return;
       }
       case 'cancel': {
-        const msg = order.is_paid
-          ? `${order.call_number ? `№ ${order.call_number} (${orderNo(order)})` : orderNo(order)} buyurtmasi to'langan. Bekor qilsangiz, ${formatMoney(order.total_price)} mijozga qaytarilishi kerak.`
-          : `${orderNo(order)} buyurtmasini bekor qilasizmi?`;
-        const ok = await confirm(msg, {
-          title: 'Buyurtmani bekor qilish',
-          danger: true,
-          confirmText: 'Bekor qilish',
-          cancelText: 'Orqaga',
+        const done = t('cancel.done', { n: orderNo(order) });
+        if (!order.is_paid) {
+          const ok = await confirm(t('cancel.ask', { n: orderNo(order) }), {
+            title: t('cancel.title'),
+            danger: true,
+            confirmText: t('act.cancel'),
+            cancelText: t('cancel.back'),
+          });
+          if (ok) updateStatus(order, 'CANCELLED', done);
+          return;
+        }
+        // To'langan: faqat menejer/ega (server ham tekshiradi), sabab majburiy — bitta oynada tasdiq + sabab
+        if (!ctx.canCancelPaid) {
+          toast.error(t('err.paidCancelManagerOnly'));
+          return;
+        }
+        const label = order.call_number ? `№ ${order.call_number} (${orderNo(order)})` : orderNo(order);
+        const reason = await askRejectReason({
+          orderLabel: label,
+          title: t('cancel.paidTitle', { n: label }),
+          hint: t('cancel.paidHint', { sum: formatMoney(order.total_price) }),
+          presets: [t('cancel.reasonCustomer'), t('cancel.reasonMistake'), t('cancel.reasonOutOfStock'), t('cancel.reasonLongWait')],
+          otherLabel: t('cancel.reasonOther'),
+          placeholder: t('cancel.reasonPlaceholder'),
+          confirmText: t('act.cancel'),
+          backText: t('cancel.back'),
         });
-        if (ok) updateStatus(order, 'CANCELLED', `${orderNo(order)} bekor qilindi`);
+        if (reason) updateStatus(order, 'CANCELLED', done, reason);
         return;
       }
       case 'assign_courier':
@@ -283,7 +377,7 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
           pickWaiter(order, 'ready');
           return;
         }
-        updateStatus(order, 'READY_FOR_PICKUP', order.call_number ? `№ ${order.call_number} tayyor — mijozni chaqiring` : `${orderNo(order)} tayyor`);
+        updateStatus(order, 'READY_FOR_PICKUP', order.call_number ? t('msg.readyCall', { n: order.call_number }) : t('msg.ready', { n: orderNo(order) }));
         return;
       case 'back_to_accepted':
         updateStatus(order, 'ACCEPTED');
@@ -295,6 +389,7 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
         updateStatus(order, 'READY_FOR_PICKUP');
         return;
       case 'pay_and_complete':
+        if (blockIfQueued(order)) return;
         setPaymentOrder(order);
         return;
       case 'complete':
@@ -337,7 +432,7 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
                 uuid: waiterPick.order.uuid,
                 mode: waiterPick.mode,
                 currentWaiterUuid: waiterPick.order.waiter_role === 'waiter' ? waiterPick.order.waiter_uuid : null,
-                label: waiterPick.order.table_number ? `${waiterPick.order.table_number}-stol` : orderNo(waiterPick.order),
+                label: waiterPick.order.table_number ? t('table.n', { n: waiterPick.order.table_number }) : orderNo(waiterPick.order),
               }
             : null
         }
@@ -348,7 +443,7 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
         }}
       />
 
-      <PaymentSheet order={paymentOrder} saving={paymentSaving} onClose={() => !paymentSaving && setPaymentOrder(null)} onSubmit={submitPayment} />
+      <PaymentSheet simple={!posStage} order={paymentOrder} saving={paymentSaving} onClose={() => !paymentSaving && setPaymentOrder(null)} onSubmit={submitPayment} />
 
       <CourierPickerSheet
         order={courierOrder}
@@ -363,10 +458,14 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
       {editingOrder && (
         <EditOrderModal
           orderUuid={editingOrder.uuid}
+          removeOnly={!posStage}
           orderNumber={orderNo(editingOrder)}
-          onClose={(changed) => {
+          paidLock={editingOrder.is_paid ? (opensNewBill(editingOrder) ? 'newBill' : 'locked') : undefined}
+          onClose={(changed, newBillUuid) => {
             setEditingOrder(null);
             if (changed) refresh();
+            // To'langan buyurtmaga qo'shilgan taom — yangi hisob: ro'yxat yangilangach uning oynasi ochiladi
+            if (newBillUuid) openOrder(newBillUuid);
           }}
         />
       )}

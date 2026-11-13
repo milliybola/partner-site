@@ -7,8 +7,9 @@ import { staffApi } from '../services/staffApi';
 import type { StaffMember, StaffRole, UpdateStaffPayload } from '../services/staffApi';
 import type { PartnerFilial } from '../../orders/services/filialApi';
 import { useTariff } from '../../../core/lib/tariff';
+import { usePlatformConfig } from '../../../core/lib/platformStage';
 
-export const ROLE_LABEL: Record<string, string> = { manager: 'Menejer', cashier: 'Kassir', waiter: 'Ofitsant' };
+export const ROLE_LABEL: Record<string, string> = { manager: 'Menejer', cashier: 'Kassir', waiter: 'Ofitsiant' };
 
 export const StaffFormSheet: React.FC<{
   open: boolean;
@@ -25,7 +26,10 @@ export const StaffFormSheet: React.FC<{
   const [removePin, setRemovePin] = useState(false);
   // Zal/stollarsiz tarifda (yetkazib berish + olib ketish) ofitsiant yo'q
   const { tariff } = useTariff();
-  const waiterAllowed = tariff.allow_dine_in || staff?.role === 'waiter';
+  // Kassir va ofitsiant — 2-bosqich xodimlari (backend 403 STAGE_LOCKED); mavjud xodimning roli saqlanadi
+  const { pos: posStage } = usePlatformConfig();
+  const waiterAllowed = (posStage && tariff.allow_dine_in) || staff?.role === 'waiter';
+  const cashierAllowed = posStage || staff?.role === 'cashier';
   const [role, setRole] = useState<StaffRole>('waiter');
   const [isActive, setIsActive] = useState(true);
   const [homeFilial, setHomeFilial] = useState('');
@@ -42,13 +46,13 @@ export const StaffFormSheet: React.FC<{
     setShowPassword(false);
     setPin('');
     setRemovePin(false);
-    setRole(staff?.role || (tariff.allow_dine_in ? 'waiter' : 'cashier'));
+    setRole(staff?.role || (!posStage ? 'manager' : tariff.allow_dine_in ? 'waiter' : 'cashier'));
     setIsActive(staff?.is_active ?? true);
     setHomeFilial(staff?.home_filial?.uuid || '');
     setCurrentFilial(staff?.current_filial?.uuid || '');
     setErrors({});
     setFormError(null);
-  }, [open, staff, tariff.allow_dine_in]);
+  }, [open, staff, tariff.allow_dine_in, posStage]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,7 +102,7 @@ export const StaffFormSheet: React.FC<{
       onClose={onClose}
       persistent={saving}
       title={staff ? 'Xodimni tahrirlash' : "Yangi xodim"}
-      subtitle="Menejer, kassir va ofitsantlar telefon raqami va parol bilan kiradi"
+      subtitle="Menejer, kassir va ofitsiantlar telefon raqami va parol bilan kiradi"
       footer={
         <>
           <Button variant="secondary" size="lg" onClick={onClose} disabled={saving} className="w-full md:w-auto">Bekor qilish</Button>
@@ -134,11 +138,12 @@ export const StaffFormSheet: React.FC<{
           }
         />
         <Select label="Rol" value={role} onChange={(e) => setRole(e.target.value as StaffRole)}>
-          {waiterAllowed && <option value="waiter">Ofitsant</option>}
-          <option value="cashier">Kassir</option>
+          {waiterAllowed && <option value="waiter">Ofitsiant</option>}
+          {cashierAllowed && <option value="cashier">Kassir</option>}
           <option value="manager">Menejer</option>
         </Select>
-        {role !== 'waiter' && (
+        {/* Kassa PIN — kassa qulfi uchun (2-bosqich) */}
+        {role !== 'waiter' && posStage && (
           <Input
             label="Kassa PIN kodi"
             inputMode="numeric"

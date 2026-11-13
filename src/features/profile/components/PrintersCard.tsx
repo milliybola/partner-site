@@ -13,6 +13,7 @@ import {
   type PrinterSettings,
 } from '../../../core/lib/printerConfig';
 import { openCashDrawer, printTestTicket } from '../../orders/utils/printing';
+import { usePlatformConfig } from '../../../core/lib/platformStage';
 
 /** Bitta printer (kassa yoki oshxona) sozlamasi: ulanish turi, manzil/nom, qog'oz eni, kod sahifasi */
 const DeviceForm: React.FC<{
@@ -113,6 +114,8 @@ export const PrintersCard: React.FC = () => {
   const desktop = isTauri();
   const [agentStatus, setAgentStatus] = useState<'checking' | 'up' | 'down'>('checking');
   const direct = desktop || settings.agent;
+  // Kassa printeri (mijoz cheki, pre-chek, pul qutisi) — 2-bosqich (Q51); oshxona cheki 1-bosqichda ham
+  const { pos: posStage } = usePlatformConfig();
 
   const load = () => {
     void listPrinters().then(setSystemPrinters);
@@ -168,6 +171,7 @@ export const PrintersCard: React.FC = () => {
         )}
         {direct && (
           <>
+        {posStage && (
         <DeviceForm
           title="Kassa printeri"
           hint="Mijoz cheki va pre-chek. O'chiq bo'lsa — Windows'dagi asosiy printer ishlatiladi."
@@ -176,6 +180,7 @@ export const PrintersCard: React.FC = () => {
           systemPrinters={systemPrinters}
           onChange={(receipt) => update({ receipt })}
         />
+        )}
         <DeviceForm
           title="Oshxona printeri"
           hint="Buyurtma oshxonaga tushganda (kassa, ofitsiant, QR, ilova) narxsiz oshxona cheki chiqadi."
@@ -186,7 +191,7 @@ export const PrintersCard: React.FC = () => {
         />
           </>
         )}
-        {direct && settings.receipt && (
+        {direct && posStage && settings.receipt && (
           <SettingRow
             title="Pul qutisi"
             description="Naqd to'lov cheki chiqqanda kassa printeriga ulangan pul qutisi ochiladi"

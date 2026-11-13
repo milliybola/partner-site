@@ -10,16 +10,20 @@ import { useLiveOrders } from '../../shared/useLiveOrders';
 import { useTodayStats } from '../../shared/useTodayStats';
 import { LiveTile, QuickAction } from '../../shared/HomeParts';
 import { SetupChecklist } from '../../shared/SetupChecklist';
+import { usePlatformConfig } from '../../../core/lib/platformStage';
 
 /** Restoran bosh sahifasi: oshxona navbati, zal (stollar band/bo'sh) va bugungi savdo. */
 const RestaurantHomePage: React.FC = () => {
   const { orders } = useLiveOrders();
   const { stats, loading } = useTodayStats();
   const [tables, setTables] = useState<TableModel[] | null>(null);
+  // Zal, stol va kassadan buyurtma — 2-bosqich (Q50, Q53)
+  const { pos: posStage } = usePlatformConfig();
 
   useEffect(() => {
+    if (!posStage) return;
     tablesApi.getTables().then(setTables).catch(() => setTables(null));
-  }, []);
+  }, [posStage]);
 
   const live = useMemo(() => {
     const n = (statuses: string[]) => orders.filter((o) => statuses.includes(o.status)).length;
@@ -49,6 +53,7 @@ const RestaurantHomePage: React.FC = () => {
         <StatCard label="Bekor qilingan" value={loading ? '…' : stats?.cancelled ?? '—'} icon={<XCircle className="w-4 h-4" />} tone="danger" />
       </div>
 
+      {posStage && (
       <Card>
         <CardHeader
           title="Zal"
@@ -75,11 +80,16 @@ const RestaurantHomePage: React.FC = () => {
           </div>
         )}
       </Card>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <QuickAction to="/new-order" label="Yangi buyurtma" hint="Zal / olib ketish / yetkazish" icon={PlusCircle} />
+        {posStage && <QuickAction to="/new-order" label="Yangi buyurtma" hint="Zal / olib ketish / yetkazish" icon={PlusCircle} />}
         <QuickAction to="/kitchen" label="Oshxona ekrani" hint="Tayyorlash navbati" icon={ChefHat} />
-        <QuickAction to="/tables" label="Stollar" hint="Zal va ofitsiantlar" icon={Table} />
+        {posStage ? (
+          <QuickAction to="/tables" label="Stollar" hint="Zal va ofitsiantlar" icon={Table} />
+        ) : (
+          <QuickAction to="/orders" label="Buyurtmalar" hint="Ilovadan kelgan buyurtmalar" icon={ShoppingBag} />
+        )}
         <QuickAction to="/catalog" label="Menyu" hint="Taomlar va narxlar" icon={BookOpen} />
       </div>
     </div>

@@ -32,8 +32,10 @@ import type { RealtimeEvent } from '../../../core/realtime/RealtimeProvider';
 import { useWorkMode } from '../../../core/lib/workMode';
 import { getPartner, isCashier, isManager as isManagerRole } from '../../../core/lib/session';
 import { getErrorMessage } from '../../../core/lib/errors';
+import { applyQueuedPayments } from '../../../core/lib/offline';
 import { formatMoney, minutesSince } from '../../../core/lib/format';
 import { Button, EmptyState, ErrorState, IconButton, PageHeader, Skeleton, Tabs } from '../../../core/ui';
+import { t } from '../../../core/i18n';
 
 /** Stol nomi "Guruh | raqam" shaklida bo'lsa — guruh bo'lim sarlavhasi, raqam esa kartada ko'rinadi */
 const splitName = (name: string): { group: string; num: string } => {
@@ -56,9 +58,9 @@ const sortTables = (list: TableModel[]): TableModel[] =>
  */
 /** Buyurtmani kim ochgan: mehmon (QR), ofitsiant yoki kassa — kartada belgi bilan ajratiladi. */
 const orderOrigin = (o: NonNullable<TableModel['current_order']>) => {
-  if (o.order_source === 'QR') return { icon: QrCode, text: o.waiter_name ? `QR · ${o.waiter_name}` : 'QR-menyu' };
-  if (o.waiter_role === 'waiter') return { icon: Users, text: o.waiter_name || 'Ofitsiant' };
-  return { icon: Store, text: o.waiter_name ? `Kassa · ${o.waiter_name}` : 'Kassa' };
+  if (o.order_source === 'QR') return { icon: QrCode, text: o.waiter_name ? `QR · ${o.waiter_name}` : t('tp.qrMenu') };
+  if (o.waiter_role === 'waiter') return { icon: Users, text: o.waiter_name || t('role.waiter') };
+  return { icon: Store, text: o.waiter_name ? `${t('detail.srcPos')} · ${o.waiter_name}` : t('detail.srcPos') };
 };
 
 type Tone = { tile: string; text: string; sub: string; strip: string };
@@ -100,17 +102,17 @@ const TableTile: React.FC<{
   const canAssign = !!onAssignWaiter && !inactive && ready && order?.waiter_role !== 'waiter';
   const action = canReady ? 'ready' : canAssign ? 'assign' : null;
   const strip = waiting
-    ? 'Tasdiq kutilmoqda'
+    ? t('tp.awaitingConfirm')
     : order
       ? ready
         ? order.waiter_role === 'waiter'
-          ? `Tayyor · ${order.waiter_name || 'ofitsiant'} olib boradi`
-          : 'Tayyor · ofitsiant yo‘q'
+          ? t('tp.readyBy', { name: order.waiter_name || t('tp.waiterLower') })
+          : t('tp.readyNoWaiter')
         : order.is_paid
-          ? "To'langan"
-          : 'Ochiq hisob'
+          ? t('card.paid')
+          : t('tp.openBill')
       : table.status === 'RESERVED'
-        ? 'Bron'
+        ? t('tp.reserved')
         : '';
   return (
     <div
@@ -122,7 +124,7 @@ const TableTile: React.FC<{
         type="button"
         onClick={onOpen}
         className="flex-1 text-left p-2.5 flex flex-col gap-1 cursor-pointer active:scale-[0.98] transition"
-        aria-label={`Stol ${table.table_number}${busy ? ', band' : ", bo'sh"}`}
+        aria-label={`${t('table.n', { n: table.table_number })}, ${busy ? t('tp.busyLower') : t('tp.freeLower')}`}
       >
         <span className="flex items-start justify-between gap-2">
           <span className={`text-[22px] font-black tracking-tightest leading-none break-words ${inactive ? 'text-muted' : tone.text}`}>
@@ -134,7 +136,7 @@ const TableTile: React.FC<{
         </span>
 
         {inactive ? (
-          <span className="mt-auto text-[12px] font-bold text-muted">Nofaol</span>
+          <span className="mt-auto text-[12px] font-bold text-muted">{t('tp.inactive')}</span>
         ) : order ? (
           <span className={`mt-auto flex flex-col gap-0.5 text-[12px] font-semibold ${tone.sub}`}>
             {(() => {
@@ -150,13 +152,13 @@ const TableTile: React.FC<{
             {mins !== null && (
               <span className={`inline-flex items-center gap-1 tabular-nums ${mins >= 60 ? 'font-black underline decoration-2' : ''}`}>
                 <Clock className="w-3.5 h-3.5" />
-                {mins >= 60 ? `${Math.floor(mins / 60)} s ${mins % 60} daq` : `${mins} daq`}
+                {mins >= 60 ? t('time.hm', { h: Math.floor(mins / 60), m: mins % 60 }) : t('card.min', { n: mins })}
               </span>
             )}
           </span>
         ) : hasDraft ? (
           <span className={`mt-auto inline-flex items-center gap-1 text-[12px] font-extrabold ${tone.sub}`}>
-            <ShoppingBag className="w-3.5 h-3.5" /> Savat saqlangan · {draft!.count} ta
+            <ShoppingBag className="w-3.5 h-3.5" /> {t('tp.draftSaved', { n: draft!.count })}
           </span>
         ) : (
           <span className="mt-auto flex items-end justify-between gap-2">
@@ -181,13 +183,13 @@ const TableTile: React.FC<{
               onClick={action === 'ready' ? onReady : onAssignWaiter}
               className="shrink-0 h-8 px-3 rounded-lg bg-white text-ink text-[13px] font-black tracking-normal shadow-sm hover:bg-white/90 active:scale-95 transition disabled:opacity-60 cursor-pointer"
             >
-              {readyBusy ? '…' : action === 'ready' ? 'Tayyor' : 'Ofitsiant'}
+              {readyBusy ? '…' : action === 'ready' ? t('act.ready') : t('role.waiter')}
             </button>
           )}
         </div>
       )}
       {canManage && (
-        <IconButton label="Amallar" onClick={onMenu} className={`absolute ${strip && !inactive ? "bottom-0 right-0" : "top-0.5 right-0.5"} !min-h-0 !h-6 !w-6 ${strip && !inactive ? tone.text : ""}`}>
+        <IconButton label={t('tp.actions')} onClick={onMenu} className={`absolute ${strip && !inactive ? "bottom-0 right-0" : "top-0.5 right-0.5"} !min-h-0 !h-6 !w-6 ${strip && !inactive ? tone.text : ""}`}>
           <MoreVertical className="w-4 h-4" />
         </IconButton>
       )}
@@ -213,9 +215,9 @@ const HallRail: React.FC<{
     return { busy: list.filter((t) => t.current_order || t.status === 'OCCUPIED').length + selfBusy, all: list.length };
   };
   const items = [
-    { key: 'ALL', label: 'Barcha zallar', s: stat(null) },
-    ...halls.map((h) => ({ key: h.uuid, label: h.self_service ? `${h.name} · o'zi` : h.name, s: stat(h.uuid) })),
-    ...(hasUnassigned ? [{ key: '', label: 'Zalsiz', s: stat('') }] : []),
+    { key: 'ALL', label: t('tp.allHalls'), s: stat(null) },
+    ...halls.map((h) => ({ key: h.uuid, label: h.self_service ? `${h.name} · ${t('tp.selfShort')}` : h.name, s: stat(h.uuid) })),
+    ...(hasUnassigned ? [{ key: '', label: t('tp.noHall'), s: stat('') }] : []),
   ];
   return (
     <aside className="hidden lg:flex flex-col gap-1 w-48 shrink-0 self-start sticky top-[calc(var(--appbar-h,56px)+12px)]">
@@ -245,7 +247,7 @@ const HallRail: React.FC<{
           onClick={onManage}
           className="mt-1 w-full min-h-[40px] px-3 rounded-xl flex items-center gap-2 text-[13px] font-bold text-muted hover:text-ink cursor-pointer"
         >
-          <Layers className="w-4 h-4" /> Zallarni sozlash
+          <Layers className="w-4 h-4" /> {t('tp.manageHalls')}
         </button>
       )}
     </aside>
@@ -259,7 +261,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   const navigate = useNavigate();
   const { tariff, refresh: refreshTariffUsage } = useTariff();
   const limitReached = () => {
-    toast.error(`Stol limiti to'lgan (${tariff.usage.tables} / ${limitText(tariff.max_tables)}). Tarifni oshiring.`);
+    toast.error(t('tp.limit', { n: tariff.usage.tables, m: limitText(tariff.max_tables) }));
     navigate('/plan?need=tables');
   };
   const confirm = useConfirm();
@@ -292,7 +294,8 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
       const all = await ordersApi.getOrders();
       // Saboy, Dostavka va o'z-o'ziga xizmat zali (stolsiz zal buyurtmasi) — faol buyurtmalar
       setSvcOrders(
-        all.filter(
+        // Oflayn to'langanlari navbat yuborilguncha qaytib chiqmasin (DONE ga o'tadi)
+        applyQueuedPayments(all).filter(
           (o) => (o.delivery_type === 'PICKUP' || o.delivery_type === 'DELIVERY' || (o.delivery_type === 'DINE_IN' && !!o.hall_uuid)) && statusGroup(o.status) !== 'DONE',
         ),
       );
@@ -375,8 +378,8 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
       const data = await tablesApi.getTables();
       setTables(sortTables(Array.isArray(data) ? data : []));
     } catch (err) {
-      if (!silent) setError(getErrorMessage(err, "Stollar ma'lumotlarini yuklashda xatolik yuz berdi."));
-      else toast.error(getErrorMessage(err, 'Stollarni yangilab bo‘lmadi.'));
+      if (!silent) setError(getErrorMessage(err, t('tp.loadFail')));
+      else toast.error(getErrorMessage(err, t('tp.refreshFail')));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -474,13 +477,13 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
       if (map.size === 1 && map.has('') && !emptyTitle) return [{ key: 'all', title: '', items, byName: false }];
       return [...map.entries()].map(([g, list]) => ({ key: `n:${g}`, title: g || emptyTitle, items: list, byName: !!g }));
     };
-    if (hallFilter === '') return byPrefix(visible, 'Zalsiz');
+    if (hallFilter === '') return byPrefix(visible, t('tp.noHall'));
     if (hallFilter !== 'ALL') return [{ key: 'all', title: '', items: visible, byName: false }];
     if (halls.length === 0) return byPrefix(visible, '');
     const hallSecs: Sec[] = halls
       .map((h) => ({ key: h.uuid, title: h.name, items: visible.filter((t) => t.hall === h.uuid), byName: false }))
       .filter((h) => h.items.length > 0);
-    return [...hallSecs, ...byPrefix(visible.filter((t) => !t.hall), 'Zalsiz')];
+    return [...hallSecs, ...byPrefix(visible.filter((tb) => !tb.hall), t('tp.noHall'))];
   }, [visible, halls, hallFilter]);
   const hasUnassigned = halls.length > 0 && tables.some((t) => !t.hall);
   // O'z-o'ziga xizmat zallari: stol o'rniga buyurtma kartalari (kassada stolsiz olinadi)
@@ -497,7 +500,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   const heldOf = (h: Hall) =>
     heldCarts(drafts, h.uuid).map(({ key, draft }, i) => ({
       key,
-      title: draft.contact_name?.trim() || `Saqlangan ${i + 1}`,
+      title: draft.contact_name?.trim() || t('tp.held', { n: i + 1 }),
       count: draft.count,
       subtotal: draft.subtotal,
       savedAt: draft.saved_at,
@@ -507,28 +510,28 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   const [quickReadyUuid, setQuickReadyUuid] = useState<string | null>(null);
   // Ofitsiant o'zi ochgan stol — darhol (unga push boradi); kassa ochgan — kim olib borishini tanlaydi
   const [tableWaiterPick, setTableWaiterPick] = useState<{ table: TableModel; mode: WaiterPickMode } | null>(null);
-  const markTableReady = async (t: TableModel) => {
-    const o = t.current_order;
+  const markTableReady = async (tb: TableModel) => {
+    const o = tb.current_order;
     if (!o) return;
     if (o.waiter_role !== 'waiter') {
-      setTableWaiterPick({ table: t, mode: 'ready' });
+      setTableWaiterPick({ table: tb, mode: 'ready' });
       return;
     }
     setQuickReadyUuid(o.uuid);
     try {
       await ordersApi.markReady(o.uuid, null);
-      toast.success(`${t.table_number}-stol: buyurtma tayyor`);
+      toast.success(t('tp.tableReady', { n: t('table.n', { n: tb.table_number }) }));
       await fetchTables(true);
     } catch (err) {
-      toast.error(getErrorMessage(err, "Holatni o'zgartirib bo'lmadi."));
+      toast.error(getErrorMessage(err, t('tp.statusFail')));
     } finally {
       setQuickReadyUuid(null);
     }
   };
   const runQuick = (o: Order, a: QuickAction) =>
-    void runOrderAction(o, a === 'ready' ? { kind: 'mark_ready', label: 'Tayyor', tone: 'primary' } : o.is_paid
-        ? { kind: 'complete', label: 'Mijozga berish', tone: 'primary' }
-        : { kind: 'pay_and_complete', label: "To'lov va berish", tone: 'primary' });
+    void runOrderAction(o, a === 'ready' ? { kind: 'mark_ready', label: t('act.ready'), tone: 'primary' } : o.is_paid
+        ? { kind: 'complete', label: t('act.handOver'), tone: 'primary' }
+        : { kind: 'pay_and_complete', label: t('act.payAndHandOver'), tone: 'primary' });
   const selfBoard = (h: Hall, compact: boolean) => (
     <ServiceBoard
       kind="DINE_IN"
@@ -557,42 +560,42 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
 
   // BUGFIX: the quick toggle used PUT with only {is_active}; PUT requires the
   // full object so the request failed validation. Send the full record.
-  const toggleActive = async (t: TableModel) => {
+  const toggleActive = async (tb: TableModel) => {
     setMenuTable(null);
-    const next = !(t.is_active ?? true);
-    setTables((prev) => prev.map((x) => (x.uuid === t.uuid ? { ...x, is_active: next } : x)));
+    const next = !(tb.is_active ?? true);
+    setTables((prev) => prev.map((x) => (x.uuid === tb.uuid ? { ...x, is_active: next } : x)));
     try {
-      await tablesApi.updateTable(t.uuid, {
-        table_number: t.table_number,
-        capacity: t.capacity,
-        status: t.status,
-        notes: t.notes || '',
-        display_order: t.display_order ?? 0,
-        filial_uuid: manager ? undefined : t.filial_uuid || undefined,
+      await tablesApi.updateTable(tb.uuid, {
+        table_number: tb.table_number,
+        capacity: tb.capacity,
+        status: tb.status,
+        notes: tb.notes || '',
+        display_order: tb.display_order ?? 0,
+        filial_uuid: manager ? undefined : tb.filial_uuid || undefined,
         is_active: next,
       });
-      toast.success(next ? 'Stol faollashtirildi' : 'Stol nofaol qilindi');
+      toast.success(next ? t('tp.activated') : t('tp.deactivated'));
       fetchTables(true);
     } catch (err) {
-      setTables((prev) => prev.map((x) => (x.uuid === t.uuid ? { ...x, is_active: !next } : x)));
-      toast.error(getErrorMessage(err, "Stol faolligini o'zgartirishda xatolik."));
+      setTables((prev) => prev.map((x) => (x.uuid === tb.uuid ? { ...x, is_active: !next } : x)));
+      toast.error(getErrorMessage(err, t('tp.toggleFail')));
     }
   };
 
-  const deleteTable = async (t: TableModel) => {
+  const deleteTable = async (tb: TableModel) => {
     setMenuTable(null);
-    if (t.current_order) {
-      toast.error("Bu stolda faol buyurtma bor. Avval buyurtmani yakunlang.");
+    if (tb.current_order) {
+      toast.error(t('tp.deleteBusy'));
       return;
     }
-    const ok = await confirm(`${t.table_number}-stolni o'chirmoqchimisiz?`, { title: "Stolni o'chirish", danger: true, confirmText: "O'chirish" });
+    const ok = await confirm(t('tp.deleteAsk', { n: t('table.n', { n: tb.table_number }) }), { title: t('tp.deleteTitle'), danger: true, confirmText: t('tom.remove') });
     if (!ok) return;
     try {
-      await tablesApi.deleteTable(t.uuid);
-      toast.success("Stol o'chirildi");
+      await tablesApi.deleteTable(tb.uuid);
+      toast.success(t('tp.deleted'));
       fetchTables(true);
     } catch (err) {
-      toast.error(getErrorMessage(err, "Stolni o'chirishda xatolik yuz berdi."));
+      toast.error(getErrorMessage(err, t('tp.deleteFail')));
     }
   };
 
@@ -601,15 +604,15 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   return (
     <div className="pb-4">
       <PageHeader
-        title={isPos ? undefined : 'Stollar'}
-        subtitle={isPos ? undefined : loading ? 'Yuklanmoqda...' : `${counts.ALL} ta stol · ${counts.OCCUPIED} ta band · ${counts.AVAILABLE} ta bo'sh`}
+        title={isPos ? undefined : t('nav.tables')}
+        subtitle={isPos ? undefined : loading ? t('common.loading') : t('tp.summary', { all: counts.ALL, busy: counts.OCCUPIED, free: counts.AVAILABLE })}
         lead={!isPos ? undefined : (
-          <div className="grid grid-cols-3 gap-2.5 max-w-3xl" role="tablist" aria-label="Buyurtma turi">
+          <div className="grid grid-cols-3 gap-2.5 max-w-3xl" role="tablist" aria-label={t('type.pickTitle')}>
             {(
               [
-                { value: 'TABLES', label: 'Zal', count: counts.OCCUPIED, icon: <Table2 className="w-6 h-6" /> },
-                { value: 'PICKUP', label: 'Olib ketish', count: svcCount('PICKUP'), icon: <ShoppingBag className="w-6 h-6" /> },
-                { value: 'DELIVERY', label: 'Yetkazib berish', count: svcCount('DELIVERY'), icon: <Truck className="w-6 h-6" /> },
+                { value: 'TABLES', label: t('board.hall'), count: counts.OCCUPIED, icon: <Table2 className="w-6 h-6" /> },
+                { value: 'PICKUP', label: t('type.pickup'), count: svcCount('PICKUP'), icon: <ShoppingBag className="w-6 h-6" /> },
+                { value: 'DELIVERY', label: t('type.delivery'), count: svcCount('DELIVERY'), icon: <Truck className="w-6 h-6" /> },
               ] as const
             ).map((m) => {
               const on = view === m.value;
@@ -642,35 +645,35 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
         )}
         actions={
           <>
-            <IconButton label="Yangilash" variant="outline" onClick={() => fetchTables(true)} disabled={refreshing}>
+            <IconButton label={t('common.refresh')} variant="outline" onClick={() => fetchTables(true)} disabled={refreshing}>
               <RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} />
             </IconButton>
             {canManage && (
-              <IconButton label="Zallar" variant="outline" onClick={() => setHallsOpen(true)}>
+              <IconButton label={t('tp.halls')} variant="outline" onClick={() => setHallsOpen(true)}>
                 <Layers className="w-[18px] h-[18px]" />
               </IconButton>
             )}
             {canManage && (
-              <IconButton label="Stol QR-kodlari" variant="outline" onClick={() => setTableQrOpen(true)}>
+              <IconButton label={t('tp.tableQrs')} variant="outline" onClick={() => setTableQrOpen(true)}>
                 <ScanLine className="w-[18px] h-[18px]" />
               </IconButton>
             )}
             {canManage && !isPos && qrUrl && (
-              <IconButton label="QR-kod" variant="outline" onClick={() => setQrOpen(true)}>
+              <IconButton label={t('tp.qrCode')} variant="outline" onClick={() => setQrOpen(true)}>
                 <QrCode className="w-[18px] h-[18px]" />
               </IconButton>
             )}
             {canManage && (
               <>
                 <Button variant="outline" className="hidden sm:inline-flex" icon={<FileSpreadsheet className="w-4 h-4" />} onClick={openBulk}>
-                  Ko'plab qo'shish
+                  {t('tp.bulkAdd')}
                 </Button>
-                <IconButton label="Ko'plab qo'shish" variant="outline" className="sm:hidden" onClick={openBulk}>
+                <IconButton label={t('tp.bulkAdd')} variant="outline" className="sm:hidden" onClick={openBulk}>
                   <FileSpreadsheet className="w-[18px] h-[18px]" />
                 </IconButton>
                 <Button icon={<Plus className="w-4 h-4" />} onClick={() => openForm(null)}>
-                  <span className="hidden sm:inline">Stol qo'shish</span>
-                  <span className="sm:hidden">Stol</span>
+                  <span className="hidden sm:inline">{t('tp.addTable')}</span>
+                  <span className="sm:hidden">{t('tp.tableShort')}</span>
                 </Button>
               </>
             )}
@@ -684,13 +687,13 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
               value={hallFilter}
               onChange={setHallFilter}
               options={[
-                { value: 'ALL', label: 'Barcha zallar' },
+                { value: 'ALL', label: t('tp.allHalls') },
                 ...halls.map((h) => ({
                   value: h.uuid,
                   label: h.name,
-                  count: h.self_service ? selfCounts[h.uuid] || 0 : tables.filter((t) => t.hall === h.uuid).length,
+                  count: h.self_service ? selfCounts[h.uuid] || 0 : tables.filter((tb) => tb.hall === h.uuid).length,
                 })),
-                ...(hasUnassigned ? [{ value: '', label: 'Zalsiz', count: tables.filter((t) => !t.hall).length }] : []),
+                ...(hasUnassigned ? [{ value: '', label: t('tp.noHall'), count: tables.filter((tb) => !tb.hall).length }] : []),
               ]}
             />
             </div>
@@ -736,7 +739,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           selfHalls.map((h) => (
             <section key={h.uuid} className="mb-5">
               <h2 className="mb-0 text-[13px] font-extrabold uppercase tracking-wider text-subtle">
-                {h.name} <span className="text-muted normal-case">· o'z-o'ziga xizmat · {selfCounts[h.uuid] || 0}</span>
+                {h.name} <span className="text-muted normal-case">· {t('tom.selfService').toLowerCase()} · {selfCounts[h.uuid] || 0}</span>
               </h2>
               {selfBoard(h, true)}
             </section>
@@ -755,16 +758,16 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           tables.length === 0 && selfHalls.length > 0 ? null : tables.length === 0 ? (
             <EmptyState
               icon={<Table2 className="w-7 h-7" />}
-              title="Hali stol qo'shilmagan"
-              description="Zal stollarini qo'shing — keyin har bir stol uchun buyurtma ochishingiz mumkin."
+              title={t('tp.emptyTitle')}
+              description={t('tp.emptyHint')}
               action={
                 canManage && (
                   <div className="flex flex-col sm:flex-row gap-2">
                     <Button icon={<Plus className="w-4 h-4" />} onClick={() => openForm(null)}>
-                      Stol qo'shish
+                      {t('tp.addTable')}
                     </Button>
                     <Button variant="outline" icon={<FileSpreadsheet className="w-4 h-4" />} onClick={openBulk}>
-                      Ko'plab qo'shish
+                      {t('tp.bulkAdd')}
                     </Button>
                   </div>
                 )
@@ -772,8 +775,8 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             />
           ) : (
             <EmptyState
-              title="Mos stol topilmadi"
-              description="Tanlangan zalda stol yo'q."
+              title={t('tp.noMatch')}
+              description={t('tp.noMatchHint')}
             />
           )
         ) : (
@@ -786,26 +789,26 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
                   </h2>
                 )}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
-            {sec.items.map((t) => (
+            {sec.items.map((tb) => (
               <TableTile
-                key={t.uuid}
-                table={t}
+                key={tb.uuid}
+                table={tb}
                 now={now}
-                draft={drafts[t.uuid]}
-                label={sec.byName ? splitName(t.table_number).num : undefined}
+                draft={drafts[tb.uuid]}
+                label={sec.byName ? splitName(tb.table_number).num : undefined}
                 canManage
-                onReady={t.current_order ? () => void markTableReady(t) : undefined}
-                onAssignWaiter={t.current_order ? () => setTableWaiterPick({ table: t, mode: 'assign' }) : undefined}
-                readyBusy={!!t.current_order && quickReadyUuid === t.current_order.uuid}
+                onReady={tb.current_order ? () => void markTableReady(tb) : undefined}
+                onAssignWaiter={tb.current_order ? () => setTableWaiterPick({ table: tb, mode: 'assign' }) : undefined}
+                readyBusy={!!tb.current_order && quickReadyUuid === tb.current_order.uuid}
                 onOpen={() => {
-                  if (t.is_active === false) {
-                    if (canManage) setMenuTable(t);
-                    else toast.info('Bu stol nofaol.');
+                  if (tb.is_active === false) {
+                    if (canManage) setMenuTable(tb);
+                    else toast.info(t('tp.inactiveTable'));
                     return;
                   }
-                  setOrderingTable(t);
+                  setOrderingTable(tb);
                 }}
-                onMenu={() => setMenuTable(t)}
+                onMenu={() => setMenuTable(tb)}
               />
             ))}
           </div>
@@ -872,12 +875,12 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           setAssigningUuid(courierUuid);
           try {
             await ordersApi.assignOwnCourier(assignOrder.uuid, courierUuid);
-            toast.success('Kuryer biriktirildi, buyurtma qabul qilindi.');
+            toast.success(t('msg.courierAssigned'));
             setAssignOrder(null);
             void fetchSvcOrders();
             couriersApi.getCouriers().then(setCouriers).catch(() => undefined);
           } catch (err) {
-            toast.error(getErrorMessage(err, 'Kuryerni biriktirishda xatolik yuz berdi.'));
+            toast.error(getErrorMessage(err, t('msg.courierAssignFail')));
           } finally {
             setAssigningUuid(null);
           }
@@ -895,7 +898,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
         onClose={() => setFormOpen(false)}
         onSaved={() => {
           setFormOpen(false);
-          toast.success(editing ? 'Stol saqlandi' : "Stol qo'shildi");
+          toast.success(editing ? t('tp.saved') : t('tp.added'));
           fetchTables(true);
           fetchHalls();
         }}
@@ -905,7 +908,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
         open={bulkOpen}
         onClose={() => setBulkOpen(false)}
         onDone={() => {
-          toast.success('Stollar qo‘shildi');
+          toast.success(t('tp.bulkAdded'));
           fetchTables(true);
         }}
       />
@@ -925,13 +928,13 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
         restaurantName={partner?.name || partner?.partner_name || 'Restoran'}
         logo={partner?.logo}
         canManage={canManage}
-        onReset={async (t) => {
+        onReset={async (tb) => {
           try {
-            await tablesApi.resetTableQr(t.uuid);
-            toast.success("QR yangilandi. Eski QR kodlar ishlamaydi, yangisini chop eting.");
+            await tablesApi.resetTableQr(tb.uuid);
+            toast.success(t('tp.qrReset'));
             await fetchTables(true);
           } catch (err) {
-            toast.error(getErrorMessage(err, "QR'ni yangilab bo'lmadi."));
+            toast.error(getErrorMessage(err, t('tp.qrResetFail')));
           }
         }}
       />
@@ -973,7 +976,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             ? {
                 uuid: tableWaiterPick.table.current_order.uuid,
                 mode: tableWaiterPick.mode,
-                label: `${tableWaiterPick.table.table_number}-stol`,
+                label: t('table.n', { n: tableWaiterPick.table.table_number }),
               }
             : null
         }

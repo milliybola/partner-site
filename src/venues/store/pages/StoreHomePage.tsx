@@ -9,6 +9,7 @@ import { useLiveOrders } from '../../shared/useLiveOrders';
 import { useTodayStats } from '../../shared/useTodayStats';
 import { LiveTile, QuickAction } from '../../shared/HomeParts';
 import { SetupChecklist } from '../../shared/SetupChecklist';
+import { usePlatformConfig } from '../../../core/lib/platformStage';
 import { inventoryApi } from '../inventoryApi';
 import type { InventoryList } from '../inventoryApi';
 
@@ -17,13 +18,16 @@ const StoreHomePage: React.FC = () => {
   const { orders } = useLiveOrders();
   const { stats, loading } = useTodayStats();
   const [stock, setStock] = useState<InventoryList | null>(null);
+  // Ombor va kassa — 2-bosqich (Q53, Q55)
+  const { pos: posStage } = usePlatformConfig();
 
   useEffect(() => {
+    if (!posStage) return;
     inventoryApi
       .list({ page_size: 5, ordering: 'quantity', state: 'out', threshold: env.lowStockThreshold })
       .then(setStock)
       .catch(() => setStock(null));
-  }, []);
+  }, [posStage]);
 
   const live = useMemo(() => {
     const n = (statuses: string[]) => orders.filter((o) => statuses.includes(o.status)).length;
@@ -48,6 +52,7 @@ const StoreHomePage: React.FC = () => {
         <StatCard label="Bugungi buyurtmalar" value={loading ? '…' : stats?.orders ?? '—'} icon={<ShoppingBag className="w-4 h-4" />} />
         <StatCard label="Bugungi tushum" value={loading ? '…' : stats ? formatMoney(stats.revenue) : '—'} icon={<Banknote className="w-4 h-4" />} tone="gold" />
         <StatCard label="O'rtacha chek" value={loading ? '…' : stats?.avgCheck !== undefined ? formatMoney(stats.avgCheck) : '—'} icon={<Receipt className="w-4 h-4" />} tone="info" />
+        {posStage && (
         <StatCard
           label="Omborda e'tibor"
           value={stock ? attention : '—'}
@@ -55,8 +60,10 @@ const StoreHomePage: React.FC = () => {
           tone={attention > 0 ? 'danger' : 'brand'}
           hint={stock ? `${stock.summary.out} tugagan · ${stock.summary.low} oz qoldi` : undefined}
         />
+        )}
       </div>
 
+      {posStage && (
       <Card>
         <CardHeader
           title="Tugagan mahsulotlar"
@@ -77,11 +84,12 @@ const StoreHomePage: React.FC = () => {
           </ul>
         )}
       </Card>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <QuickAction to="/new-order" label="Kassa" hint="Shtrix-kod bilan sotuv" icon={ScanBarcode} />
+        {posStage && <QuickAction to="/new-order" label="Kassa" hint="Shtrix-kod bilan sotuv" icon={ScanBarcode} />}
         <QuickAction to="/picking" label="Yig'ish" hint="Buyurtmalarni yig'ish" icon={ClipboardCheck} />
-        <QuickAction to="/inventory" label="Ombor" hint="Qoldiq, kirim, chiqim" icon={Boxes} />
+        {posStage && <QuickAction to="/inventory" label="Ombor" hint="Qoldiq, kirim, chiqim" icon={Boxes} />}
         <QuickAction to="/catalog" label="Mahsulotlar" hint="Narx, birlik, qadoq" icon={Boxes} />
       </div>
     </div>

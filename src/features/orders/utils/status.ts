@@ -1,4 +1,5 @@
 import type { BadgeTone } from '../../../core/ui';
+import { t } from '../../../core/i18n';
 
 /**
  * Single source of truth for order status labels / colors / grouping.
@@ -21,25 +22,25 @@ export type OrderStatus =
 export type QueueGroup = 'NEW' | 'PREPARING' | 'READY' | 'ON_THE_WAY' | 'DONE';
 
 export const STATUS_META: Record<string, { label: string; tone: BadgeTone; group: QueueGroup }> = {
-  PENDING: { label: 'Yangi', tone: 'gold', group: 'NEW' },
-  SEARCHING_COURIER: { label: 'Kuryer qidirilmoqda', tone: 'gold', group: 'NEW' },
-  ACCEPTED: { label: 'Qabul qilindi', tone: 'info', group: 'PREPARING' },
-  PREPARING: { label: 'Tayyorlanmoqda', tone: 'warning', group: 'PREPARING' },
-  READY_FOR_PICKUP: { label: 'Tayyor', tone: 'success', group: 'READY' },
-  PICKED_UP: { label: 'Kuryer oldi', tone: 'info', group: 'ON_THE_WAY' },
-  ON_THE_WAY: { label: "Yo'lda", tone: 'info', group: 'ON_THE_WAY' },
-  COMPLETED: { label: 'Yakunlangan', tone: 'neutral', group: 'DONE' },
-  DELIVERED: { label: 'Yetkazildi', tone: 'neutral', group: 'DONE' },
-  REJECTED: { label: 'Rad etilgan', tone: 'danger', group: 'DONE' },
-  CANCELLED: { label: 'Bekor qilingan', tone: 'danger', group: 'DONE' },
+  PENDING: { label: t('status.new'), tone: 'gold', group: 'NEW' },
+  SEARCHING_COURIER: { label: t('status.searchingCourier'), tone: 'gold', group: 'NEW' },
+  ACCEPTED: { label: t('status.accepted'), tone: 'info', group: 'PREPARING' },
+  PREPARING: { label: t('status.preparing'), tone: 'warning', group: 'PREPARING' },
+  READY_FOR_PICKUP: { label: t('status.ready'), tone: 'success', group: 'READY' },
+  PICKED_UP: { label: t('status.pickedUp'), tone: 'info', group: 'ON_THE_WAY' },
+  ON_THE_WAY: { label: t('status.onTheWay'), tone: 'info', group: 'ON_THE_WAY' },
+  COMPLETED: { label: t('status.completed'), tone: 'neutral', group: 'DONE' },
+  DELIVERED: { label: t('status.delivered'), tone: 'neutral', group: 'DONE' },
+  REJECTED: { label: t('status.rejected'), tone: 'danger', group: 'DONE' },
+  CANCELLED: { label: t('status.cancelled'), tone: 'danger', group: 'DONE' },
 };
 
 export const QUEUE_GROUPS: { key: QueueGroup; label: string; statuses: string[] }[] = [
-  { key: 'NEW', label: 'Yangi', statuses: ['PENDING', 'SEARCHING_COURIER'] },
-  { key: 'PREPARING', label: 'Tayyorlanmoqda', statuses: ['ACCEPTED', 'PREPARING'] },
-  { key: 'READY', label: 'Tayyor', statuses: ['READY_FOR_PICKUP'] },
-  { key: 'ON_THE_WAY', label: "Yo'lda", statuses: ['PICKED_UP', 'ON_THE_WAY'] },
-  { key: 'DONE', label: 'Yakunlangan', statuses: ['COMPLETED', 'DELIVERED', 'REJECTED', 'CANCELLED'] },
+  { key: 'NEW', label: t('status.new'), statuses: ['PENDING', 'SEARCHING_COURIER'] },
+  { key: 'PREPARING', label: t('status.preparing'), statuses: ['ACCEPTED', 'PREPARING'] },
+  { key: 'READY', label: t('status.ready'), statuses: ['READY_FOR_PICKUP'] },
+  { key: 'ON_THE_WAY', label: t('status.onTheWay'), statuses: ['PICKED_UP', 'ON_THE_WAY'] },
+  { key: 'DONE', label: t('status.completed'), statuses: ['COMPLETED', 'DELIVERED', 'REJECTED', 'CANCELLED'] },
 ];
 
 export const statusLabel = (s?: string) => (s && STATUS_META[s]?.label) || s || '—';
@@ -47,14 +48,14 @@ export const statusTone = (s?: string): BadgeTone => (s && STATUS_META[s]?.tone)
 export const statusGroup = (s?: string): QueueGroup => (s && STATUS_META[s]?.group) || 'DONE';
 
 export const DELIVERY_TYPE_LABEL: Record<string, string> = {
-  DELIVERY: 'Yetkazib berish',
-  PICKUP: 'Olib ketish',
-  DINE_IN: 'Zalda',
+  DELIVERY: t('type.delivery'),
+  PICKUP: t('type.pickup'),
+  DINE_IN: t('type.dineIn'),
 };
 
 export const PAYMENT_LABEL: Record<string, string> = {
-  CASH: 'Naqd',
-  CARD: 'Karta',
+  CASH: t('pay.cash'),
+  CARD: t('pay.card'),
   CLICK: 'Click',
   PAYME: 'Payme',
   UZCARD: 'Uzcard',

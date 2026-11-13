@@ -10,7 +10,7 @@ import { promotionsApi } from '../services/promotionsApi';
 import type { CatalogProduct, ComboSet, SetPayload } from '../services/promotionsApi';
 
 export const BACKEND_NOT_READY_MSG =
-  "Backend hali tayyor emas: bu funksiya serverda ishga tushirilgach saqlash mumkin bo'ladi.";
+  'Bu funksiya hali yoqilmagan.';
 
 export const SetEditorSheet: React.FC<{
   open: boolean;

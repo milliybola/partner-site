@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Bell, ListOrdered, Plus, RefreshCw, SlidersHorizontal, X } from 'lucide-react';
+import { AlertTriangle, Bell, CheckCircle2, ListOrdered, Plus, RefreshCw, SlidersHorizontal, X } from 'lucide-react';
 import { ordersApi } from '../services/ordersApi';
 import type { Order } from '../services/ordersApi';
 import { useToast } from '../../../core/components/ToastProvider';
@@ -9,6 +9,7 @@ import type { RealtimeEvent } from '../../../core/realtime/RealtimeProvider';
 import { getPartner, isCashier, isShop, wording } from '../../../core/lib/session';
 import { useWorkSettings } from '../../../core/lib/workSettings';
 import { getErrorMessage } from '../../../core/lib/errors';
+import { applyQueuedPayments } from '../../../core/lib/offline';
 import { formatMoney, parseDate } from '../../../core/lib/format';
 import {
   Button,
@@ -29,6 +30,7 @@ import { OrderCard } from '../components/queue/OrderCard';
 import { isPendingLike } from '../components/queue/actions';
 import { readPrefs, writePrefs, type QueuePrefs } from '../components/queue/prefs';
 import { useOrderActions } from '../components/queue/useOrderActions';
+import { t } from '../../../core/i18n';
 
 const DONE_LIMIT = 30;
 
@@ -57,6 +59,18 @@ const OrdersPage: React.FC = () => {
   // `/orders?open=<uuid>` — kassadagi Saboy/Dostavka kartasidan: buyurtma tafsiloti ochiladi
   const [openParams, setOpenParams] = useSearchParams();
   const openUuid = openParams.get('open');
+  // D16: `/orders?unpaid=<smena opened_at>` — smena sahifasidan: shu smenadagi to'lanmagan buyurtmalar
+  const unpaidParam = openParams.get('unpaid');
+  const unpaidSince = unpaidParam === null ? null : (parseDate(unpaidParam)?.getTime() ?? 0);
+  const clearUnpaid = () =>
+    setOpenParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        n.delete('unpaid');
+        return n;
+      },
+      { replace: true },
+    );
 
   // Orders that arrived via realtime and haven't been opened/actioned yet.
   const [freshUuids, setFreshUuids] = useState<Set<string>>(new Set());
@@ -96,7 +110,7 @@ const OrdersPage: React.FC = () => {
     if (mode === 'manual') setRefreshing(true);
     try {
       const data = await ordersApi.getOrders();
-      setOrders(Array.isArray(data) ? data : []);
+      setOrders(Array.isArray(data) ? applyQueuedPayments(data) : []);
       setError(null);
     } catch (err) {
       // Keep showing the last good list on silent refresh failures.
@@ -190,6 +204,16 @@ const OrdersPage: React.FC = () => {
     return g;
   }, [typeFiltered]);
 
+  // Smena hisobi bilan bir xil: bekor/rad etilganlarsiz, smena ochilgandan keyin yaratilgan, to'lanmagan
+  const unpaidList = useMemo(() => {
+    if (unpaidSince === null) return [];
+    const ts = (o: Order) => parseDate(o.created_at)?.getTime() ?? 0;
+    return typeFiltered
+      .filter((o) => !o.is_paid && o.status !== 'CANCELLED' && o.status !== 'REJECTED' && ts(o) >= unpaidSince)
+      .sort((a, b) => ts(a) - ts(b));
+  }, [typeFiltered, unpaidSince]);
+  const unpaidSum = useMemo(() => unpaidList.reduce((s, o) => s + (Number(o.total_price) || 0), 0), [unpaidList]);
+
   const typeOptions = useMemo(() => {
     const opts: { value: TypeFilter; label: string }[] = [{ value: 'ALL', label: 'Barchasi' }, { value: 'DELIVERY', label: 'Yetkazish' }];
     if (!shop || orders.some((o) => o.delivery_type === 'PICKUP')) opts.push({ value: 'PICKUP', label: 'Olib ketish' });
@@ -200,7 +224,15 @@ const OrdersPage: React.FC = () => {
   useEffect(() => {
     if (!openUuid || !orders.some((o) => o.uuid === openUuid)) return;
     openByUuid(openUuid);
-    setOpenParams({}, { replace: true });
+    // Faqat `open` olib tashlanadi — `unpaid` filtri saqlansin
+    setOpenParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        n.delete('open');
+        return n;
+      },
+      { replace: true },
+    );
   }, [openUuid, orders, setOpenParams, openByUuid]);
 
   const groupLabel = (key: QueueGroup, fallback: string) => (key === 'PREPARING' ? w.preparing : fallback);
@@ -260,20 +292,25 @@ const OrdersPage: React.FC = () => {
             <IconButton label="Navbat sozlamalari" variant="outline" onClick={() => setPrefsOpen(true)}>
               <SlidersHorizontal className="w-[18px] h-[18px]" />
             </IconButton>
-            <Button className="md:hidden" icon={<Plus className="w-4 h-4" />} onClick={() => navigate('/new-order')} aria-label="Yangi buyurtma">
-              Yangi
-            </Button>
+            {/* Kassadan yangi buyurtma — 2-bosqich (ctx.pos) */}
+            {ctx.pos !== false && (
+              <Button className="md:hidden" icon={<Plus className="w-4 h-4" />} onClick={() => navigate('/new-order')} aria-label="Yangi buyurtma">
+                Yangi
+              </Button>
+            )}
           </>
         }
       >
         <div className="flex flex-col lg:flex-row lg:items-center gap-2">
           {/* Phone/tablet: status tabs */}
-          <Tabs
-            className="lg:hidden"
-            value={activeGroup}
-            onChange={setActiveGroup}
-            options={QUEUE_GROUPS.map((g) => ({ value: g.key, label: groupLabel(g.key, g.label), count: grouped[g.key].length }))}
-          />
+          {unpaidSince === null && (
+            <Tabs
+              className="lg:hidden"
+              value={activeGroup}
+              onChange={setActiveGroup}
+              options={QUEUE_GROUPS.map((g) => ({ value: g.key, label: groupLabel(g.key, g.label), count: grouped[g.key].length }))}
+            />
+          )}
           <div className="flex items-center gap-2 min-w-0">
             {typeOptions.length > 2 && <Segmented value={typeFilter} onChange={setTypeFilter} options={typeOptions} />}
           </div>
@@ -340,6 +377,40 @@ const OrdersPage: React.FC = () => {
         <SkeletonList rows={4} className="mt-2" />
       ) : error && orders.length === 0 ? (
         <ErrorState message={error} onRetry={() => fetchOrders('initial')} />
+      ) : unpaidSince !== null ? (
+        <div className="mt-1 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl bg-warning-soft text-warning-ink px-4 py-3">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="text-[15px] font-extrabold">{t('queue.unpaidTitle')}</div>
+                <div className="text-[13px] font-semibold tabular-nums">{t('queue.unpaidSummary', { n: unpaidList.length, sum: formatMoney(unpaidSum) })}</div>
+              </div>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button variant="outline" onClick={clearUnpaid} className="flex-1 sm:flex-none">{t('queue.clearFilter')}</Button>
+              <Button onClick={() => navigate('/shift')} className="flex-1 sm:flex-none">{t('queue.backToShift')}</Button>
+            </div>
+          </div>
+          {unpaidList.length === 0 ? (
+            <EmptyState className="py-10" icon={<CheckCircle2 className="w-7 h-7" />} title={t('queue.unpaidEmpty')} description={t('queue.unpaidEmptyHint')} />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {unpaidList.map((o) => (
+                <OrderCard
+                  key={o.uuid}
+                  order={o}
+                  now={now}
+                  ctx={ctx}
+                  showStatus
+                  busy={busyUuid === o.uuid}
+                  onOpen={() => openOrder(o)}
+                  onAction={(a) => runAction(o, a)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       ) : (
         <>
           {/* Phone / tablet: one group at a time */}
@@ -380,8 +451,8 @@ const OrdersPage: React.FC = () => {
             title="Tez rejim"
             description={
               shop
-                ? "Yangi buyurtma o'zi qabul qilinadi (stol QR buyurtmasidan tashqari — uni xodim tasdiqlaydi). Barcha qurilmalarda amal qiladi."
-                : "Kichik kafe uchun: yangi buyurtma o'zi qabul qilinib oshxonaga chiqadi, olib ketish va zal buyurtmasi bitta tugma bilan beriladi. Barcha qurilmalarda amal qiladi."
+                ? "Buyurtmani har doim o'zingiz qabul qilasiz; keyingi qadamlar qisqaradi. Barcha qurilmalarda amal qiladi."
+                : "Kichik kafe uchun: buyurtmani o'zingiz qabul qilasiz, keyin olib ketish va zal buyurtmasi bitta tugma bilan beriladi. Barcha qurilmalarda amal qiladi."
             }
             control={
               <Switch

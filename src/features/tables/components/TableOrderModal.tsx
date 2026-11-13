@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CheckCircle, ChevronDown, CreditCard, FileText, ImageOff, Plus, Printer, Save, ShoppingBag, Trash2 } from 'lucide-react';
+import { ArrowLeft, BadgePercent, CheckCircle, ChevronDown, CreditCard, FileText, ImageOff, Plus, Printer, Save, ShoppingBag, Trash2 } from 'lucide-react';
 import { filialApi } from '../../orders/services/filialApi';
 import { clearDraft, getDraft, saveDraft } from '../lib/tableDrafts';
 import { isAwaitingQrConfirm, ordersApi } from '../../orders/services/ordersApi';
@@ -11,8 +11,11 @@ import { printReceipt as printReceiptUtil, printPreCheck as printPreCheckUtil } 
 import apiClient from '../../../core/api/client';
 import { useToast } from '../../../core/components/ToastProvider';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
-import { getFilialUuid, getPartner, isManager, wording } from '../../../core/lib/session';
+import { useShiftNotOpenPrompt } from '../../../core/components/useShiftNotOpenPrompt';
+import { getFilialUuid, getPartner, isManager, isShop } from '../../../core/lib/session';
 import { getErrorMessage } from '../../../core/lib/errors';
+import { t } from '../../../core/i18n';
+import { OFFLINE_SHEET_EVENT, enqueuePayment, isNetworkError, isPaymentQueued } from '../../../core/lib/offline';
 import { normalizePayCode, usePaymentMethods } from '../../../core/lib/payments';
 import type { PayMethod } from '../../../core/lib/payments';
 import { cleanPhone, formatMoney, maskPhoneInput, minutesSince } from '../../../core/lib/format';
@@ -34,30 +37,31 @@ import {
 } from '../../../core/ui';
 import { SplitBill } from '../../orders/components/queue/SplitBill';
 import { tablesApi } from '../services/tablesApi';
+import { CartTotals } from '../../orders/components/CartTotals';
+import { DiscountSheet, discountableOrder, useCanDiscount } from '../../orders/components/DiscountSheet';
+import { flyToCart as flyToCartUtil } from '../../orders/utils/flyToCart';
+import {
+  buildPosItems,
+  cartSummary,
+  countItems,
+  dealNote,
+  filterProducts,
+  giftOf,
+  linePrice,
+  mapCategories,
+  mapPosProduct,
+  openOrderSummary,
+  orderItemsCount,
+  orderTotal,
+} from '../../orders/utils/posCart';
+import type { CartLine, CatalogCategory, CatalogProduct, ServerBill } from '../../orders/utils/posCart';
+import { quotePosCart } from '../../orders/services/ordersApi';
+import type { PosQuote } from '../../orders/services/ordersApi';
 import type { Hall, TableModel } from '../services/tablesApi';
 
-interface Product {
-  uuid: string;
-  name: string;
-  description: string;
-  price: number;
-  original_price: number;
-  discount: number;
-  is_available: boolean;
-  image_url?: string | null;
-}
-
-interface Category {
-  uuid: string;
-  name: string;
-  is_active: boolean;
-  products: Product[];
-}
-
-interface CartItem {
-  product: Product;
-  quantity: number;
-}
+type Product = CatalogProduct;
+type Category = CatalogCategory;
+type CartItem = CartLine;
 
 interface TableOrderModalProps {
   table: TableModel;
@@ -75,7 +79,7 @@ type PaymentMethod = PayMethod;
 const PaymentPicker: React.FC<{ value: PaymentMethod; onChange: (v: PaymentMethod) => void }> = ({ value, onChange }) => {
   const { methods } = usePaymentMethods();
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" role="radiogroup" aria-label="To'lov turi">
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" role="radiogroup" aria-label={t('pay.method')}>
       {methods.map((m) => (
         <button
           key={m.value}
@@ -101,7 +105,8 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     toastRef.current = toast;
   });
   const confirm = useConfirm();
-  const w = wording();
+  const promptShift = useShiftNotOpenPrompt();
+  const shop = isShop(getPartner());
   const isEditMode = !!table.current_order;
   const orderUuid = table.current_order?.uuid;
   // Mehmon stol QR'idan bergan, hali tasdiqlanmagan buyurtma: to'lov yopiq, avval xodim tasdiqlaydi (ofitsiant tanlanadi)
@@ -116,15 +121,15 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     setRejecting(true);
     try {
       await ordersApi.updateOrderStatus(orderUuid, 'REJECTED', reason);
-      toast.success('QR buyurtma rad etildi — mehmon sababni ko‘radi');
+      toast.success(t('tom.qrRejected'));
       onClose(true);
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Rad etib bo‘lmadi.'));
+      toast.error(getErrorMessage(err, t('tom.rejectFail')));
     } finally {
       setRejecting(false);
     }
   };
-  const placeLabel = selfHall ? selfHall.name : `Stol ${table.table_number}`;
+  const placeLabel = selfHall ? selfHall.name : t('table.n', { n: table.table_number });
   const [prepayOpen, setPrepayOpen] = useState(false);
 
   const [mobilePane, setMobilePane] = useState<'menu' | 'order'>(isEditMode ? 'order' : 'menu');
@@ -134,14 +139,15 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   const [activeCategoryUuid, setActiveCategoryUuid] = useState<string>('all');
   /** Mijoz ismi, telefon, izoh — odatda yashirin (kerak bo'lsa ochiladi) */
   const [showExtra, setShowExtra] = useState(false);
-  /** Filialning xizmat haqi foizi (stol buyurtmasiga qo'shiladi; 0 — olinmaydi) */
-  const [scPercent, setScPercent] = useState(0);
+  /** Filialning xizmat haqi foizi (stol buyurtmasiga qo'shiladi; 0 — olinmaydi; null — hali noma'lum, server quote'dagisi olinadi) */
+  const [scPercent, setScPercent] = useState<number | null>(null);
   useEffect(() => {
     if (selfHall) return; // o'z-o'ziga xizmat zalida xizmat haqi olinmaydi
     let alive = true;
-    // Server (partner_order_serializers) bilan bir xil tanlov: xodimning joriy filiali → stol filiali → asosiy filial
+    // Server buyurtma yaratganda (partner_order_serializers, DINE_IN) bilan bir xil tanlov:
+    // stol filiali → xodimning joriy filiali → asosiy filial
     const staff = isManager(getPartner());
-    const known = (staff ? getFilialUuid() : undefined) || table.filial_uuid || undefined;
+    const known = table.filial_uuid || (staff ? getFilialUuid() : undefined) || undefined;
     const load = async () => {
       let percent: number | undefined;
       if (known) {
@@ -173,11 +179,15 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
 
   // Edit mode
   const [orderItems, setOrderItems] = useState<any[]>([]);
+  const [orderBill, setOrderBill] = useState<ServerBill | null>(null);
   const [loadingItems, setLoadingItems] = useState(isEditMode);
   const [itemsError, setItemsError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [printingPreCheck, setPrintingPreCheck] = useState(false);
   const [printingReceipt, setPrintingReceipt] = useState(false);
+  // Qo'lda chegirma (A10): menejer/rahbar, 2-bosqich, to'lanmagan ochiq buyurtma
+  const canDiscount = useCanDiscount();
+  const [discountOpen, setDiscountOpen] = useState(false);
   /** Ochiq buyurtma cheki (to'lovdan oldin ham — mehmon so'rasa) */
   const handlePrintReceipt = async () => {
     if (!orderUuid) return;
@@ -185,7 +195,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     try {
       await printReceiptUtil(orderUuid, false);
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Chekni chop etishda xatolik.'));
+      toast.error(getErrorMessage(err, t('msg.printFail')));
     } finally {
       setPrintingReceipt(false);
     }
@@ -206,33 +216,11 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     setErrorCatalog(null);
     try {
       const partnerUuid = getPartner()?.uuid;
-      if (!partnerUuid) throw new Error("Muassasa ma'lumotlari topilmadi. Qaytadan tizimga kiring.");
+      if (!partnerUuid) throw new Error(t('tom.noPartner'));
       const catsResponse = await apiClient.get(`partner/category/?partner=${partnerUuid}`);
       const rawCats = catsResponse.data?.data?.categories || catsResponse.data?.categories || catsResponse.data?.data || catsResponse.data || [];
-      const mapped: Category[] = Array.isArray(rawCats)
-        ? rawCats.map((c: any) => ({
-            uuid: c.uuid,
-            name: c.category_details?.name || c.name || "Nomi yo'q",
-            is_active: !!c.is_active,
-            products: Array.isArray(c.products)
-              ? c.products.map((p: any) => {
-                  const rawPrice = parseFloat(p.price || '0');
-                  const discountPercent = p.discount ? parseFloat(p.discount) : 0;
-                  const finalPrice = discountPercent > 0 ? rawPrice * (1 - discountPercent / 100) : rawPrice;
-                  return {
-                    uuid: p.uuid,
-                    name: p.name,
-                    description: p.description || '',
-                    price: finalPrice,
-                    original_price: rawPrice,
-                    discount: discountPercent,
-                    is_available: !!p.is_available && !!p.is_active,
-                    image_url: p.images?.find((img: any) => img.is_main)?.image || p.images?.[0]?.image || p.image_url || null,
-                  };
-                })
-              : [],
-          }))
-        : [];
+      // Kassa bilan bir xil: birlik narxi serverdan (`final_price`), aksiya (1+1/2+1)
+      const mapped: Category[] = mapCategories(rawCats, mapPosProduct);
       const activeCats = mapped.filter((c) => c.is_active);
       setCategories(activeCats);
       const draft = isEditMode ? null : getDraft(table.uuid);
@@ -251,10 +239,10 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         setComment(draft.comment);
         if (draft.contact_name || draft.contact_phone.length > 4 || draft.comment) setShowExtra(true);
         savedSnap.current = JSON.stringify([restored.map((i) => [i.product.uuid, i.quantity]), draft.contact_name, draft.contact_phone, draft.comment]);
-        if (dropped > 0) toastRef.current.info(`Qoralamadagi ${dropped} ta mahsulot menyuda yo'q yoki tugagan — olib tashlandi.`);
+        if (dropped > 0) toastRef.current.info(t('tom.draftDropped', { n: dropped }));
       }
     } catch (err) {
-      setErrorCatalog(getErrorMessage(err, "Menyuni yuklashda xatolik yuz berdi."));
+      setErrorCatalog(getErrorMessage(err, t('tom.menuFail')));
     } finally {
       setLoadingCatalog(false);
     }
@@ -275,8 +263,10 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
               ? response.data
               : [];
       setOrderItems(list);
+      // Server jami (aksiya, qo'lda chegirma, xizmat haqi) — stol oynasida shu ko'rsatiladi
+      setOrderBill(response && !Array.isArray(response) && response.total_price !== undefined ? (response as ServerBill) : null);
     } catch (err) {
-      setItemsError(getErrorMessage(err, 'Buyurtma tarkibini yuklashda xatolik yuz berdi.'));
+      setItemsError(getErrorMessage(err, t('tom.itemsFail')));
     } finally {
       setLoadingItems(false);
     }
@@ -287,23 +277,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     if (isEditMode) fetchOrderItems();
   }, [fetchCatalog, fetchOrderItems, isEditMode]);
 
-  const filteredProducts = useMemo(() => {
-    let list: Product[] = [];
-    if (activeCategoryUuid === 'all') {
-      const seen = new Set<string>();
-      categories.forEach((c) =>
-        c.products.forEach((p) => {
-          if (!seen.has(p.uuid)) {
-            seen.add(p.uuid);
-            list.push(p);
-          }
-        }),
-      );
-    } else {
-      list = categories.find((c) => c.uuid === activeCategoryUuid)?.products || [];
-    }
-    return list;
-  }, [categories, activeCategoryUuid]);
+  const filteredProducts = useMemo(() => filterProducts(categories, activeCategoryUuid), [categories, activeCategoryUuid]);
 
   /* ----------------------------------------------------- create mode cart */
   const setCartQty = (product: Product, qty: number) => {
@@ -314,14 +288,40 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     });
   };
   const cartQty = (uuid: string) => cart.find((i) => i.product.uuid === uuid)?.quantity || 0;
-  const cartSubtotal = useMemo(() => cart.reduce((s, i) => s + i.product.price * i.quantity, 0), [cart]);
-  const cartCount = useMemo(() => cart.reduce((s, i) => s + i.quantity, 0), [cart]);
+  const cartCount = useMemo(() => countItems(cart), [cart]);
+
+  // Narxni SERVER hisoblaydi (kassa bilan bir xil quote): 1+1/2+1 sovg'a, aksiya, chegirma.
+  // Savat o'zgarsa 350 ms dan keyin qayta so'raladi; javob kelguncha taxminiy narx ko'rsatiladi.
+  const quoteKey = JSON.stringify(buildPosItems(cart));
+  const [quoteState, setQuoteState] = useState<{ key: string; quote: PosQuote | null; error: string | null } | null>(null);
+  useEffect(() => {
+    if (isEditMode || cart.length === 0) return;
+    let alive = true;
+    const timer = setTimeout(() => {
+      quotePosCart(buildPosItems(cart), 'DINE_IN')
+        .then((quote) => alive && setQuoteState({ key: quoteKey, quote, error: null }))
+        .catch((err) => alive && setQuoteState({ key: quoteKey, quote: null, error: getErrorMessage(err, "Narxni hisoblab bo'lmadi.") }));
+    }, 350);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteKey, isEditMode]);
+  const quoteSettled = cart.length > 0 && quoteState?.key === quoteKey;
+  const quote = quoteSettled ? quoteState.quote : null;
+  const quoteError = quoteSettled ? quoteState.error : null;
+  const cartSum = useMemo(
+    () => cartSummary(cart, quote, { noServiceCharge: !!selfHall, serviceChargePercent: selfHall ? 0 : scPercent }),
+    [cart, quote, selfHall, scPercent],
+  );
+  const cartSubtotal = cartSum.subtotal;
 
   const handleCreateOrder = async (prepaid?: { method: string; payments?: PaymentPart[] }) => {
     if (cart.length === 0 || submitting) return;
     const phoneDigits = cleanPhone(contactPhone).replace(/\D/g, '');
     if (phoneDigits.length > 3 && phoneDigits.length !== 12) {
-      setSubmitError("Telefon raqami to'liq emas. Misol: +998 (90) 123-45-67");
+      setSubmitError(t('tom.phoneShort'));
       setMobilePane('order');
       return;
     }
@@ -340,21 +340,22 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         contact_phone: phoneDigits.length === 12 ? phoneDigits : undefined,
         contact_name: contactName.trim() || undefined,
         description: comment.trim() || undefined,
-        items: cart.map((i) => ({ product_uuid: i.product.uuid, quantity: i.quantity })),
+        // Kassa bilan bir xil: promo qatorida to'langan + avto-sovg'a (server bepulni tasdiqlaydi)
+        items: buildPosItems(cart),
       });
       clearDraft(table.uuid);
       if (selfHall) {
         const uuid = created?.data?.uuid || created?.uuid;
         const no = created?.data?.order_number || created?.order_number || '';
-        toast.success(`${placeLabel}: to'lov qabul qilindi${no ? ` — ${no}` : ''}, buyurtma oshxonaga yuborildi`);
+        toast.success(t('tom.prepaidSent', { n: placeLabel, no: no ? ` — ${no}` : '' }));
         // Chek (buyurtma raqami bilan) — mijoz shu raqam bilan kutadi
-        if (uuid) printReceiptUtil(uuid, true).catch((err) => toast.error(getErrorMessage(err, 'Chekni chop etib bo‘lmadi.')));
+        if (uuid) printReceiptUtil(uuid, true).catch((err) => toast.error(getErrorMessage(err, t('offline.receiptFail'))));
       } else {
-        toast.success(`${placeLabel}: buyurtma yaratildi`);
+        toast.success(t('tom.created', { n: placeLabel }));
       }
       onClose(true);
     } catch (err) {
-      setSubmitError(getErrorMessage(err, 'Buyurtma yaratishda xatolik yuz berdi.'));
+      setSubmitError(getErrorMessage(err, t('tom.createFail')));
       setMobilePane('order');
     } finally {
       setSubmitting(false);
@@ -375,17 +376,17 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
       count: cartCount,
       subtotal: cartSubtotal,
     });
-    toast.success(selfHall ? `${placeLabel}: savat saqlab qo'yildi — Sotuv'dagi sariq kartadan davom ettirasiz` : `${placeLabel}: savat saqlandi`);
+    toast.success(selfHall ? t('tom.heldSaved', { n: placeLabel }) : t('tom.cartSaved', { n: placeLabel }));
     onClose(false);
   };
 
   /** Orqaga: saqlanmagan o'zgarish bo'lsa so'raydi */
   const handleBack = async () => {
     if (!isEditMode && cart.length > 0 && snapshot() !== savedSnap.current) {
-      const ok = await confirm("Savatdagi o'zgarishlar saqlanmagan. Saqlamasdan chiqasizmi?", {
-        title: 'Orqaga qaytish',
-        confirmText: 'Chiqish',
-        cancelText: 'Qolish',
+      const ok = await confirm(t('tom.unsavedAsk'), {
+        title: t('tom.backTitle'),
+        confirmText: t('tom.leave'),
+        cancelText: t('tom.stay'),
         danger: true,
       });
       if (!ok) return;
@@ -395,10 +396,10 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
 
   const handleClearCart = async () => {
     if (!hasContent) return;
-    const ok = await confirm('Savat tozalansinmi? Qoralama ham o\'chadi.', {
-      title: 'Savatni tozalash',
-      confirmText: 'Tozalash',
-      cancelText: 'Bekor qilish',
+    const ok = await confirm(t('tom.clearAsk'), {
+      title: t('tom.clearTitle'),
+      confirmText: t('tom.clear'),
+      cancelText: t('common.cancel'),
       danger: true,
     });
     if (!ok) return;
@@ -412,11 +413,8 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   };
 
   /* -------------------------------------------------- edit mode (live order) */
-  const editItemsTotal = useMemo(
-    () => orderItems.reduce((s, i) => s + Number(i.price_at_time_of_order || i.product?.price || 0) * (i.quantity || 0), 0),
-    [orderItems],
-  );
-  const editItemsCount = useMemo(() => orderItems.reduce((s, i) => s + (i.quantity || 0), 0), [orderItems]);
+  const editSum = useMemo(() => openOrderSummary(orderItems, orderBill, scPercent ?? 0), [orderItems, orderBill, scPercent]);
+  const editItemsCount = useMemo(() => orderItemsCount(orderItems), [orderItems]);
   // Menyu kartasidagi badge: shu mahsulot buyurtmada nechta (bir mahsulot bir necha qatorda bo'lishi mumkin)
   const orderQtyByProduct = useMemo(() => {
     const m = new Map<string, number>();
@@ -431,12 +429,18 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     if (!orderUuid || actionLoading) return;
     setActionLoading(product.uuid);
     try {
-      await ordersApi.addOrderItems(orderUuid, { items: [{ product_uuid: product.uuid, quantity: 1 }] });
+      const res = await ordersApi.addOrderItems(orderUuid, { items: [{ product_uuid: product.uuid, quantity: 1 }] });
+      if (res?.new_bill) {
+        // Stol buyurtmasi to'langan edi: taom yangi hisobga yozildi — stollar yangilanadi, yangi hisob stolda ochiladi
+        toast.info(t('bill.newBill', { n: `#${table.current_order?.order_number || ''}`, m: res.data?.order_number || '' }));
+        onClose(true);
+        return;
+      }
       await fetchOrderItems();
       setItemsChanged(true);
-      toast.success(`${product.name} qo'shildi`);
+      toast.success(t('tom.added', { n: product.name }));
     } catch (err) {
-      toast.error(getErrorMessage(err, "Mahsulot qo'shishda xatolik yuz berdi."));
+      toast.error(getErrorMessage(err, t('tom.addFail')));
     } finally {
       setActionLoading(null);
     }
@@ -444,7 +448,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
 
   const handleRemoveOrderItem = async (itemUuid: string, currentQuantity: number) => {
     if (!orderUuid) return;
-    const ok = await confirm("Ushbu mahsulotni buyurtmadan o'chirmoqchimisiz?", { danger: true, confirmText: "O'chirish" });
+    const ok = await confirm(t('tom.removeAsk'), { danger: true, confirmText: t('tom.remove') });
     if (!ok) return;
     setActionLoading(itemUuid);
     try {
@@ -452,7 +456,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
       await fetchOrderItems();
       setItemsChanged(true);
     } catch (err) {
-      toast.error(getErrorMessage(err, "Mahsulotni o'chirishda xatolik yuz berdi."));
+      toast.error(getErrorMessage(err, t('tom.removeFail')));
     } finally {
       setActionLoading(null);
     }
@@ -467,7 +471,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
       await fetchOrderItems();
       setItemsChanged(true);
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Miqdorni yangilashda xatolik yuz berdi.'));
+      toast.error(getErrorMessage(err, t('tom.qtyFail')));
     } finally {
       setActionLoading(null);
     }
@@ -477,7 +481,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
     setPrintingPreCheck(true);
     try {
       if (isEditMode) {
-        await printPreCheckUtil({ table_number: table.table_number, total_price: total, split_count: splitCount, items: orderItems });
+        await printPreCheckUtil({ table_number: table.table_number, total_price: total, split_count: splitCount, items: orderItems, manual_discount_amount: editSum.discount });
       } else {
         await printPreCheckUtil({
           table_number: table.table_number,
@@ -486,7 +490,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         });
       }
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Pre-chekni chop etishda xatolik.'));
+      toast.error(getErrorMessage(err, t('msg.preCheckFail')));
     } finally {
       setPrintingPreCheck(false);
     }
@@ -497,79 +501,67 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   // (duplicate) payment. Printing is now handled separately.
   const handleConfirmPayment = async () => {
     if (!orderUuid || paymentSaving) return;
+    const label = `${t('table.n', { n: table.table_number })} · #${table.current_order?.order_number || ''}`;
+    if (isPaymentQueued(orderUuid)) {
+      toast.error(t('msg.payQueuedNoRepeat', { n: label }));
+      setPaymentOpen(false);
+      window.dispatchEvent(new Event(OFFLINE_SHEET_EVENT));
+      return;
+    }
     setPaymentSaving(true);
     try {
       // To'lov va yakunlash — bitta so'rovda (eski serverda mark-paid bilan to'ldiriladi)
       await ordersApi.completeWithPayment(orderUuid, editPaymentMethod, splitCount);
     } catch (err) {
-      toast.error(getErrorMessage(err, "To'lovni yakunlashda xatolik yuz berdi."));
+      if (isNetworkError(err)) {
+        // Internet yo'q: to'lov navbatga yoziladi (summa — kassir ko'rgan va olgan summa); serverda stol o'zi bo'shaydi
+        try {
+          const added = enqueuePayment({
+            label,
+            total,
+            payment: { order_uuid: orderUuid, collect: true, method: editPaymentMethod, ...(splitCount > 1 ? { split_count: splitCount } : {}) },
+          });
+          if (added) toast.success(t('msg.payOfflineSaved', { n: t('table.n', { n: table.table_number }) }));
+          else toast.error(t('msg.payAlreadyQueued', { n: label }));
+          setPaymentSaving(false);
+          onClose(true);
+        } catch (e) {
+          toast.error(getErrorMessage(e, t('msg.paySaveFail')));
+          setPaymentSaving(false);
+        }
+        return;
+      }
+      // D36: smena ochilmagan — to'lov yozilmadi, buyurtma o'zgarmadi; to'lov oynasi yopiladi
+      if (promptShift(err)) setPaymentOpen(false);
+      else toast.error(getErrorMessage(err, t('tom.payFail')));
       setPaymentSaving(false);
       return;
     }
     // Same as the kanban flow (OrdersPage): free the table explicitly after a
     // dine-in order completes. Previously this path left the table OCCUPIED.
     tablesApi.updateTableStatus(table.uuid, 'AVAILABLE').catch(() => {
-      toast.error("Stol holatini 'Bo'sh' ga o'tkazib bo'lmadi. Qo'lda o'zgartiring.");
+      toast.error(t('tom.freeTableFail'));
     });
     try {
       await printReceiptUtil(orderUuid, true);
     } catch (err) {
-      toast.error(getErrorMessage(err, "To'lov qabul qilindi, lekin chekni chop etib bo'lmadi."));
+      toast.error(getErrorMessage(err, t('tom.paidPrintFail')));
     }
-    toast.success(`Stol ${table.table_number}: to'lov qabul qilindi`);
+    toast.success(t('tom.paid', { n: t('table.n', { n: table.table_number }) }));
     setPaymentSaving(false);
     onClose(true);
   };
 
   const orderMins = table.current_order?.created_at ? minutesSince(table.current_order.created_at) : null;
-  const subtotal = isEditMode ? editItemsTotal : cartSubtotal;
-  // Server bilan bir xil: foiz summaning so'mgacha yaxlitlangani (backend: service_charge_for)
-  const serviceAmount = scPercent > 0 && subtotal > 0 ? Math.round((subtotal * scPercent) / 100) : 0;
-  const total = subtotal + serviceAmount;
+  // Jami — kassa bilan bitta formula (posCart): yangi savatda server quote, ochiq buyurtmada server `total_price` asosiy
+  const sum = isEditMode ? editSum : cartSum;
+  const { subtotal, discount, serviceCharge: serviceAmount, serviceChargePercent } = sum;
+  const total = isEditMode ? editSum.total : orderTotal(subtotal, serviceAmount);
   const count = isEditMode ? editItemsCount : cartCount;
 
   /** Mahsulot bosilganda uning rasmi savat tomon uchib boradi (telefonda savat yashirin bo'lsa — animatsiya yo'q) */
   const cartRef = useRef<HTMLDivElement>(null);
-  const flyToCart = (card: HTMLElement) => {
-    const target = cartRef.current?.getBoundingClientRect();
-    const src = (card.querySelector('img') ?? card.firstElementChild) as HTMLElement | null;
-    if (!target || target.width === 0 || !src) return;
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-    const from = src.getBoundingClientRect();
-    const size = 56;
-    const ghost = document.createElement('div');
-    Object.assign(ghost.style, {
-      position: 'fixed',
-      left: from.left + from.width / 2 - size / 2 + 'px',
-      top: from.top + from.height / 2 - size / 2 + 'px',
-      width: size + 'px',
-      height: size + 'px',
-      borderRadius: '16px',
-      overflow: 'hidden',
-      zIndex: '200',
-      pointerEvents: 'none',
-      boxShadow: '0 8px 24px rgba(0,0,0,.25)',
-      background: 'rgb(var(--color-brand))',
-    });
-    if (src instanceof HTMLImageElement && src.src) {
-      const img = document.createElement('img');
-      img.src = src.src;
-      Object.assign(img.style, { width: '100%', height: '100%', objectFit: 'cover' });
-      ghost.appendChild(img);
-    }
-    document.body.appendChild(ghost);
-    const dx = target.left + target.width / 2 - (from.left + from.width / 2);
-    const dy = target.top + Math.min(90, target.height / 3) - (from.top + from.height / 2);
-    const anim = ghost.animate(
-      [
-        { transform: 'translate(0,0) scale(1)', opacity: 1 },
-        { transform: `translate(${dx * 0.55}px, ${dy * 0.55 - 40}px) scale(0.85)`, opacity: 1, offset: 0.55 },
-        { transform: `translate(${dx}px, ${dy}px) scale(0.25)`, opacity: 0.35 },
-      ],
-      { duration: 650, easing: 'cubic-bezier(.4,0,.2,1)' },
-    );
-    anim.onfinish = anim.oncancel = () => ghost.remove();
-  };
+  const flyToCart = (card: HTMLElement) => flyToCartUtil(card, cartRef.current);
 
   /* --------------------------------------------------------------- panes */
   const menuPane = (
@@ -580,7 +572,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
             size="sm"
             value={activeCategoryUuid}
             onChange={setActiveCategoryUuid}
-            options={[{ value: 'all', label: 'Barchasi' }, ...categories.map((c) => ({ value: c.uuid, label: c.name }))]}
+            options={[{ value: 'all', label: t('tom.all') }, ...categories.map((c) => ({ value: c.uuid, label: c.name }))]}
           />
         )}
       </div>
@@ -594,7 +586,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         ) : errorCatalog ? (
           <ErrorState message={errorCatalog} onRetry={fetchCatalog} />
         ) : filteredProducts.length === 0 ? (
-          <EmptyState title={`${w.products} yo'q`} />
+          <EmptyState title={shop ? t('tom.noGoods') : t('tom.noDishes')} />
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 items-start">
             {filteredProducts.map((p) => {
@@ -624,7 +616,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                         <ImageOff className="w-6 h-6 text-subtle" />
                       )}
                       {!p.is_available && (
-                        <span className="absolute inset-0 bg-surface/70 flex items-center justify-center text-[12px] font-extrabold text-danger-ink">Tugagan</span>
+                        <span className="absolute inset-0 bg-surface/70 flex items-center justify-center text-[12px] font-extrabold text-danger-ink">{t('tom.soldOut')}</span>
                       )}
                       {qty > 0 && (
                         <span className="absolute top-1.5 right-1.5 min-w-[26px] h-[26px] px-1.5 rounded-full bg-brand text-white text-[13px] font-extrabold flex items-center justify-center">
@@ -656,22 +648,18 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
 
   const footer = (
     <div className="w-full space-y-2">
-      <div className="space-y-0.5">
-        <div className="flex items-center justify-between text-[13px] text-muted font-semibold">
-          <span>Jami{count > 0 ? ` · ${count} ta` : ''}</span>
-          <span className="tabular-nums">{formatMoney(subtotal)}</span>
-        </div>
-        {scPercent > 0 && (
-          <div className="flex items-center justify-between text-[13px] text-muted font-semibold">
-            <span>Xizmat haqi ({scPercent}%)</span>
-            <span className="tabular-nums">{formatMoney(serviceAmount)}</span>
-          </div>
-        )}
-        <div className="flex items-center justify-between pt-0.5">
-          <span className="text-[14px] text-ink font-extrabold">Umumiy summa</span>
-          <span className="text-[20px] font-black text-ink tracking-tightest tabular-nums leading-tight">{formatMoney(total)}</span>
-        </div>
-      </div>
+      <CartTotals
+        countLabel={count > 0 ? t('cart.totalCount', { n: count }) : t('common.total')}
+        subtotal={subtotal}
+        discount={discount}
+        // Ochiq buyurtmada aksiya qatorlarga kirgan — ajratilgani faqat qo'lda chegirma
+        discountLabel={isEditMode ? t('disc.line') : undefined}
+        serviceCharge={serviceAmount}
+        serviceChargePercent={serviceChargePercent}
+        showServiceCharge={serviceAmount > 0 || (!selfHall && serviceChargePercent > 0)}
+        totalLabel={t('tom.grandTotal')}
+        total={total}
+      />
       {isEditMode && orderItems.length > 0 && (
         <SplitBill total={total} count={splitCount} onChange={setSplitCount} />
       )}
@@ -679,16 +667,16 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <Button variant="outline" icon={<ArrowLeft className="w-4 h-4" />} onClick={handleBack}>
-              Orqaga
+              {t('cancel.back')}
             </Button>
             <Button variant="outline" icon={<Trash2 className="w-4 h-4" />} disabled={!hasContent} onClick={handleClearCart}>
-              Tozalash
+              {t('tom.clear')}
             </Button>
             <Button variant="outline" icon={<FileText className="w-4 h-4" />} loading={printingPreCheck} disabled={cart.length === 0} onClick={handlePrintPreCheck}>
-              Pre-chek
+              {t('detail.preCheck')}
             </Button>
             <Button variant="outline" icon={<Save className="w-4 h-4" />} disabled={cart.length === 0} onClick={handleSaveDraft}>
-              {selfHall ? 'Saqlab turish' : 'Saqlash'}
+              {selfHall ? t('tom.hold') : t('tom.save')}
             </Button>
           </div>
           <Button
@@ -697,10 +685,11 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
             variant={selfHall ? 'success' : undefined}
             icon={selfHall ? <CreditCard className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
             loading={submitting}
-            disabled={cart.length === 0}
+            // O'z-o'ziga xizmat: to'lov oldindan — server summasi kelguncha kutamiz (aksiyada summa farq qilmasin)
+            disabled={cart.length === 0 || (!!selfHall && !quoteSettled)}
             onClick={() => handleCreateOrder()}
           >
-            {selfHall ? "To'lov va buyurtma berish" : 'Buyurtma yaratish'}
+            {selfHall ? t('cart.prepay') : t('cart.create')}
           </Button>
         </div>
       ) : (
@@ -708,7 +697,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         {isEditMode && awaitingQr ? (
           <>
             <Button variant="danger-soft" size="lg" className="shrink-0" loading={rejecting} onClick={rejectQr}>
-              Rad etish
+              {t('act.reject')}
             </Button>
             <Button
               size="lg"
@@ -717,20 +706,35 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
               disabled={orderItems.length === 0 || loadingItems}
               onClick={() => setQrConfirmOpen(true)}
             >
-              Tasdiqlash
+              {t('act.confirm')}
             </Button>
           </>
         ) : isEditMode ? (
-          <Button
-            variant="success"
-            size="lg"
-            className="flex-1"
-            icon={<CreditCard className="w-5 h-5" />}
-            disabled={orderItems.length === 0 || loadingItems}
-            onClick={() => setPaymentOpen(true)}
-          >
-            To'lov qilish
-          </Button>
+          <>
+            {canDiscount && discountableOrder(table.current_order) && orderItems.length > 0 && editSum.fromServer && (
+              <Button
+                variant="outline"
+                size="lg"
+                className="shrink-0"
+                icon={<BadgePercent className="w-5 h-5" />}
+                disabled={loadingItems || paymentSaving}
+                onClick={() => setDiscountOpen(true)}
+                aria-label={t('disc.btn')}
+              >
+                <span className="hidden xs:inline">{t('disc.btn')}</span>
+              </Button>
+            )}
+            <Button
+              variant="success"
+              size="lg"
+              className="flex-1"
+              icon={<CreditCard className="w-5 h-5" />}
+              disabled={orderItems.length === 0 || loadingItems}
+              onClick={() => setPaymentOpen(true)}
+            >
+              {t('tom.payBtn')}
+            </Button>
+          </>
         ) : null}
       </div>
       )}
@@ -739,11 +743,10 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
 
   const orderPane = (
     <div className={`${mobilePane === 'order' ? 'flex' : 'hidden'} md:flex md:col-span-4 flex-col min-h-0`}>
-      <div className="shrink-0 px-4 md:px-5 pt-3 text-[13px] font-bold text-muted uppercase tracking-wide">{isEditMode ? 'Buyurtma tarkibi' : 'Savat'}</div>
+      <div className="shrink-0 px-4 md:px-5 pt-3 text-[13px] font-bold text-muted uppercase tracking-wide">{isEditMode ? t('tom.orderItems') : t('cart.title')}</div>
       {awaitingQr && (
         <div className="md:hidden shrink-0 mx-4 mt-2 rounded-2xl bg-warning-soft text-warning-ink px-3.5 py-2.5 text-[13px] font-semibold">
-          Mehmon stol QR'idan buyurtma berdi — hali tasdiqlanmagan. Tarkibni mehmon bilan kelishib tuzatish mumkin;
-          «Tasdiqlash»da buyurtmani olib boradigan ofitsiant tanlanadi, shundan keyin oshxonaga chiqadi va to'lov ochiladi.
+          {t('tom.qrPending')}
         </div>
       )}
       <div ref={cartRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 md:px-5 pt-2 pb-3 space-y-3">
@@ -758,20 +761,28 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
           ) : itemsError ? (
             <ErrorState message={itemsError} onRetry={() => { setLoadingItems(true); fetchOrderItems(); }} className="py-6" />
           ) : orderItems.length === 0 ? (
-            <EmptyState icon={<ShoppingBag className="w-7 h-7" />} title="Buyurtma bo'sh" description={`${w.menu}dan qo'shing.`} className="py-8" />
+            <EmptyState icon={<ShoppingBag className="w-7 h-7" />} title={t('tom.orderEmpty')} description={shop ? t('tom.addFromGoods') : t('tom.addFromMenu')} className="py-8" />
           ) : (
             <div className="space-y-2">
               {orderItems.map((item, idx) => {
-                const name = item.product_name || item.name || item.product?.name || "Noma'lum";
+                const name = item.product_name || item.name || item.product?.name || t('courier.unknown');
                 const price = Number(item.price_at_time_of_order || item.product?.price || 0);
+                // Server qator summasi (aksiya/sovg'a ayirilgan); sovg'a soni alohida ko'rsatiladi
+                const free = Number(item.free_quantity) || 0;
+                const lineTotal = item.line_total !== undefined && item.line_total !== null ? Number(item.line_total) || 0 : price * item.quantity;
                 const modifying = actionLoading === item.uuid;
                 return (
                   <div key={item.uuid || idx} className="rounded-2xl border border-edge bg-surface p-3 flex items-center gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="text-[14px] font-bold text-ink truncate">{name}</div>
                       <div className="text-[12px] text-muted tabular-nums">
-                        {formatMoney(price)} × {item.quantity} = <span className="font-bold text-ink">{formatMoney(price * item.quantity)}</span>
+                        {formatMoney(price)} × {free > 0 ? Number((item.quantity - free).toFixed(3)) : item.quantity} = <span className="font-bold text-ink">{formatMoney(lineTotal)}</span>
                       </div>
+                      {free > 0 && (
+                        <div className="text-[12px] font-bold text-brand">
+                          + {free} ta sovg'a 🎁{item.promotion_label ? ` · ${item.promotion_label}` : ''}
+                        </div>
+                      )}
                     </div>
                     {modifying ? (
                       <Spinner />
@@ -784,24 +795,38 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
             </div>
           )
         ) : cart.length === 0 ? (
-          <EmptyState icon={<ShoppingBag className="w-7 h-7" />} title="Savat bo'sh" description={`${w.menu}dan ${w.product.toLowerCase()} tanlang.`} className="py-8" />
+          <EmptyState icon={<ShoppingBag className="w-7 h-7" />} title={t('cart.empty')} description={shop ? t('tom.pickFromGoods') : t('tom.pickFromMenu')} className="py-8" />
         ) : (
           <div className="space-y-2">
-            {cart.map((i) => (
+            {cart.map((i, idx) => {
+              // Kassa bilan bir xil: server qator summasi (sovg'a bepul), kelguncha taxminiy
+              const q = quote?.items[idx];
+              const gift = giftOf(i);
+              const note = dealNote(i);
+              return (
               <div key={i.product.uuid} className="rounded-2xl border border-edge bg-surface p-3 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="text-[14px] font-bold text-ink truncate">{i.product.name}</div>
-                  <div className="text-[12px] text-muted tabular-nums">{formatMoney(i.product.price * i.quantity)}</div>
+                  <div className="text-[12px] text-muted tabular-nums">{formatMoney(q ? q.line_total : linePrice(i))}</div>
+                  {gift > 0 ? (
+                    <div className="text-[12px] font-bold text-brand">
+                      {i.quantity} ta olindi + {gift} ta sovg'a 🎁
+                    </div>
+                  ) : (
+                    note && <div className="text-[12px] font-bold text-warning-ink">{note}</div>
+                  )}
                 </div>
                 <QtyStepper size="sm" value={i.quantity} onChange={(v) => setCartQty(i.product, v)} />
-                <IconButton label="Olib tashlash" variant="danger-soft" size="sm" onClick={() => setCartQty(i.product, 0)}>
+                <IconButton label={t('tom.removeLine')} variant="danger-soft" size="sm" onClick={() => setCartQty(i.product, 0)}>
                   <Trash2 className="w-4 h-4" />
                 </IconButton>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
+        {!isEditMode && quoteError && <InlineAlert tone="danger">{quoteError}</InlineAlert>}
         {submitError && <InlineAlert>{submitError}</InlineAlert>}
       </div>
         {!isEditMode && (
@@ -813,7 +838,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
               className="w-full flex items-center justify-between gap-2 text-left text-[13px] font-bold text-muted hover:text-ink cursor-pointer"
             >
               <span className="min-w-0 truncate">
-                Qo'shimcha ma'lumot
+                {t('tom.extra')}
                 {!showExtra && (contactName || contactPhone.length > 4 || comment) && (
                   <span className="font-semibold text-ink"> · {[contactName, contactPhone.length > 4 ? contactPhone : '', comment].filter(Boolean).join(', ')}</span>
                 )}
@@ -822,9 +847,9 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
             </button>
             <div className={`${showExtra ? 'space-y-3' : 'hidden'}`}>
             <div className="grid grid-cols-1 xs:grid-cols-2 gap-3">
-              <Input label="Mijoz ismi" placeholder="Ixtiyoriy" value={contactName} onChange={(e) => setContactName(e.target.value)} />
+              <Input label={t('tom.customerName')} placeholder={t('tom.optional')} value={contactName} onChange={(e) => setContactName(e.target.value)} />
               <Input
-                label="Telefon"
+                label={t('detail.phone')}
                 type="tel"
                 inputMode="tel"
                 placeholder="+998 (90) 123-45-67"
@@ -833,8 +858,8 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                 onChange={(e) => setContactPhone(e.target.value.trim() ? maskPhoneInput(e.target.value) : '')}
               />
             </div>
-            <Textarea label="Izoh" rows={2} placeholder="Masalan: achchiqsiz" value={comment} onChange={(e) => setComment(e.target.value)} />
-            <p className="text-[12px] text-muted">To'lov usuli yaratishda so'ralmaydi — buyurtma topshirilganda (hisob-kitobda) bir marta qabul qilinadi.</p>
+            <Textarea label={t('tom.comment')} rows={2} placeholder={t('tom.commentPh')} value={comment} onChange={(e) => setComment(e.target.value)} />
+            <p className="text-[12px] text-muted">{t('tom.payLaterHint')}</p>
             </div>
           </div>
         )}
@@ -853,15 +878,15 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         title={
           <span className="flex items-center gap-2">
             {placeLabel}
-            {selfHall ? <Badge tone="info">O'z-o'ziga xizmat</Badge> : isEditMode ? <Badge tone="gold">Band</Badge> : <Badge tone="success">Bo'sh</Badge>}
+            {selfHall ? <Badge tone="info">{t('tom.selfService')}</Badge> : isEditMode ? <Badge tone="gold">{t('tom.busy')}</Badge> : <Badge tone="success">{t('tom.free')}</Badge>}
           </span>
         }
         subtitle={
           isEditMode
-            ? `Buyurtma #${table.current_order?.order_number || ''}${orderMins !== null ? ` · ${orderMins} daq oldin` : ''}${table.current_order?.waiter_name ? ` · ${table.current_order.waiter_name}` : ''}`
+            ? `${t('detail.title', { n: `#${table.current_order?.order_number || ''}` })}${orderMins !== null ? ` · ${t('time.ago', { n: orderMins })}` : ''}${table.current_order?.waiter_name ? ` · ${table.current_order.waiter_name}` : ''}`
             : selfHall
-              ? "Yangi buyurtma · to'lov oldindan, tayyor bo'lganda raqam bilan chaqiriladi"
-              : `Yangi buyurtma · ${table.capacity} kishilik`
+              ? t('tom.newSelf')
+              : t('tom.newSeats', { n: table.capacity })
         }
         headerAction={
           isEditMode ? (
@@ -869,8 +894,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
               {awaitingQr && (
                 // Keng ekranda — sarlavha qatorida (savat ustini band qilmaydi); telefonda savat ustida
                 <div className="hidden md:flex items-center w-[min(48vw,820px)] mr-1 rounded-xl bg-warning-soft text-warning-ink px-3.5 py-2 text-[13px] font-semibold leading-snug">
-                  Mehmon stol QR'idan buyurtma berdi — hali tasdiqlanmagan. Tarkibni mehmon bilan kelishib tuzatish mumkin;
-                  «Tasdiqlash»da buyurtmani olib boradigan ofitsiant tanlanadi, shundan keyin oshxonaga chiqadi va to'lov ochiladi.
+                  {t('tom.qrPending')}
                 </div>
               )}
               <Button
@@ -880,7 +904,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                 disabled={orderItems.length === 0}
                 onClick={handlePrintPreCheck}
               >
-                <span className="hidden sm:inline">Pre-chek</span>
+                <span className="hidden sm:inline">{t('detail.preCheck')}</span>
               </Button>
               <Button
                 variant="outline"
@@ -889,7 +913,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                 disabled={orderItems.length === 0 || awaitingQr}
                 onClick={handlePrintReceipt}
               >
-                <span className="hidden sm:inline">Chek</span>
+                <span className="hidden sm:inline">{t('offline.receipt')}</span>
               </Button>
             </div>
           ) : undefined
@@ -904,8 +928,8 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
               value={mobilePane}
               onChange={setMobilePane}
               options={[
-                { value: 'menu', label: w.menu, icon: <Plus className="w-4 h-4" /> },
-                { value: 'order', label: `${isEditMode ? 'Buyurtma' : 'Savat'}${count ? ` (${count})` : ''}`, icon: <ShoppingBag className="w-4 h-4" /> },
+                { value: 'menu', label: shop ? t('word.goods') : t('word.menu'), icon: <Plus className="w-4 h-4" /> },
+                { value: 'order', label: `${isEditMode ? t('word.order') : t('cart.title')}${count ? ` (${count})` : ''}`, icon: <ShoppingBag className="w-4 h-4" /> },
               ]}
             />
           </div>
@@ -916,9 +940,27 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         </div>
       </Sheet>
 
+      {discountOpen && orderUuid && (
+        <DiscountSheet
+          open
+          onClose={() => setDiscountOpen(false)}
+          orderUuid={orderUuid}
+          label={`${placeLabel} · #${table.current_order?.order_number || ''}`}
+          subtotal={editSum.subtotal}
+          serviceChargePercent={editSum.serviceChargePercent}
+          deliveryFee={Number(orderBill?.delivery_fee) || 0}
+          current={editSum.discount > 0 ? { amount: editSum.discount, percent: 0 } : null}
+          onDone={() => {
+            // Jami, xizmat haqi va chegirma — serverdan qayta (bitta haqiqat manbai)
+            fetchOrderItems();
+            setItemsChanged(true);
+          }}
+        />
+      )}
+
       {qrConfirmOpen && orderUuid && (
         <WaiterPickSheet
-          target={{ uuid: orderUuid, mode: 'qr', label: `${table.table_number}-stol · #${table.current_order?.order_number || ''}` }}
+          target={{ uuid: orderUuid, mode: 'qr', label: `${t('table.n', { n: table.table_number })} · #${table.current_order?.order_number || ''}` }}
           onClose={() => setQrConfirmOpen(false)}
           onDone={() => {
             setQrConfirmOpen(false);
@@ -936,9 +978,9 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
               : null
           }
           saving={submitting}
-          title="To'lov va buyurtma berish"
-          subtitle={`${selfHall.name} · to'lovdan keyin oshxonaga chiqadi`}
-          confirmLabel="To'lovni qabul qilish va buyurtma berish"
+          title={t('cart.prepay')}
+          subtitle={t('tom.prepaySub', { n: selfHall.name })}
+          confirmLabel={t('cart.prepayConfirm')}
           onClose={() => !submitting && setPrepayOpen(false)}
           onSubmit={(method, _split, payments) => {
             setPrepayOpen(false);
@@ -952,31 +994,31 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         size="sm"
         persistent={paymentSaving}
         onClose={() => setPaymentOpen(false)}
-        title="To'lovni qabul qilish"
-        subtitle={`Stol ${table.table_number}`}
+        title={t('tom.payTitle')}
+        subtitle={t('table.n', { n: table.table_number })}
         footer={
           <>
             <Button variant="secondary" size="lg" disabled={paymentSaving} onClick={() => setPaymentOpen(false)} className="md:w-auto w-full">
-              Bekor qilish
+              {t('common.cancel')}
             </Button>
             <Button variant="success" size="lg" loading={paymentSaving} icon={<CheckCircle className="w-5 h-5" />} onClick={handleConfirmPayment} className="md:w-auto w-full">
-              To'landi va yopish
+              {t('tom.paidClose')}
             </Button>
           </>
         }
       >
         <div className="space-y-4">
           <div className="rounded-2xl bg-field p-4 text-center">
-            <div className="text-[13px] text-muted font-semibold">To'lov summasi</div>
+            <div className="text-[13px] text-muted font-semibold">{t('tom.paySum')}</div>
             <div className="text-[28px] font-black text-ink tracking-tightest tabular-nums">{formatMoney(total)}</div>
           </div>
           <PaymentPicker value={editPaymentMethod} onChange={setEditPaymentMethod} />
           {splitCount > 1 && (
             <p className="text-[13px] font-semibold text-ink text-center">
-              Hisob {splitCount} kishiga bo'linadi — chekda ko'rsatiladi
+              {t('tom.splitNote', { n: splitCount })}
             </p>
           )}
-          <p className="text-[13px] text-muted">Tasdiqlangandan so'ng buyurtma yakunlanadi, stol bo'shatiladi va chek chop etiladi.</p>
+          <p className="text-[13px] text-muted">{t('tom.payFootnote')}</p>
         </div>
       </Sheet>
     </>

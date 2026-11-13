@@ -5,7 +5,9 @@ import apiClient from '../../../core/api/client';
 import { ENDPOINTS } from '../../../core/config/constants';
 import { Button, InlineAlert, Input } from '../../../core/ui';
 import { cleanPhone, maskPhoneInput } from '../../../core/lib/format';
-import { getErrorMessage } from '../../../core/lib/errors';
+import { getErrorMessage, isStageLocked } from '../../../core/lib/errors';
+import { loadPlatformConfig } from '../../../core/lib/platformStage';
+import { t } from '../../../core/i18n';
 import { applySession } from '../../../core/lib/applySession';
 import { getWorkMode, posHome } from '../../../core/lib/workMode';
 
@@ -41,6 +43,8 @@ const LoginForm: React.FC = () => {
       }
 
       const partnerData = applySession(data);
+      // Bosqich yangi bo'lsin: 1-bosqichda kassa rejimi yo'q (xato bo'lsa — oxirgi ma'lum qiymat)
+      await loadPlatformConfig(true);
 
       // Kassir va kassa rejimidagi qurilma — kassaga; ega — bosh sahifaga; menejer — navbatga
       navigate(
@@ -49,6 +53,11 @@ const LoginForm: React.FC = () => {
       );
     } catch (err: any) {
       const status = err?.response?.status;
+      // Kassir/ofitsiant 1-bosqichda (backend 403 STAGE_LOCKED) — hisob o'chirilmagan, faqat hozircha ishlamaydi
+      if (isStageLocked(err)) {
+        setError(`${t('stage.accountTitle')}. ${t('stage.accountHint')}`);
+        return;
+      }
       setError(
         status === 401 || status === 400
           ? getErrorMessage(err, "Telefon raqami yoki parol noto'g'ri.")

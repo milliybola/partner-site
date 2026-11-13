@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Check, Lock, Sparkles } from 'lucide-react';
 import { Badge, Card, CardHeader, InlineAlert, PageHeader, Skeleton } from '../../../core/ui';
 import { limitText, useTariff } from '../../../core/lib/tariff';
+import { usePlatformConfig } from '../../../core/lib/platformStage';
 import type { PartnerTariff, TariffPlan } from '../../../core/lib/tariff';
 import { formatMoney } from '../../../core/lib/format';
 
@@ -108,8 +109,18 @@ const summary = (t: PartnerTariff) =>
 
 /** Hamkor tarifi: ochiq imkoniyatlar, limitlar va hozirgi foydalanish. */
 const PlanPage: React.FC = () => {
-  const { tariff, loading, refresh } = useTariff();
+  const { tariff: rawTariff, loading, refresh } = useTariff();
   const [params] = useSearchParams();
+  // 1-bosqich: zal/stol va stol QR qatorlari umuman ko'rsatilmaydi — kafe hali ishlamaydigan narsaga qaramasin (Q52)
+  const { pos: posStage } = usePlatformConfig();
+  const tariff: PartnerTariff = posStage
+    ? rawTariff
+    : {
+        ...rawTariff,
+        allow_dine_in: false,
+        allow_qr_menu: false,
+        plans: rawTariff.plans?.map((p) => ({ ...p, allow_dine_in: false, allow_qr_menu: false })),
+      };
 
   // Tarif sahifasi ochilganda — eng so'nggi tarif (superadmin hozirgina o'zgartirgan bo'lishi mumkin)
   useEffect(() => {

@@ -4,17 +4,33 @@ import { ordersApi } from '../services/ordersApi';
 import { publicAsset, sendToPrinter } from '../../../core/platform';
 import { EscPos } from '../../../core/platform/escpos';
 import { escposPrinter, getPrinterSettings, type PrinterDevice } from '../../../core/lib/printerConfig';
+import { t } from '../../../core/i18n';
+import { DELIVERY_TYPE_LABEL } from './status';
+
+/** Mijoz chekidagi buyurtma turi — kassa tilida (Q46); server matni faqat noma'lum tur uchun. Oshxona cheki esa doim o'zbekcha (KIND_LABEL). */
+const typeLabel = (d: { delivery_type?: string; delivery_type_display?: string }) =>
+  (d.delivery_type && DELIVERY_TYPE_LABEL[d.delivery_type]) || d.delivery_type_display || '';
 
 const money = (v: unknown) => Math.round(Number(v) || 0).toLocaleString('uz-UZ'); // bo'linmas bo'shliqni EscPos almashtiradi
 const copiesCount = () => parseInt(localStorage.getItem('milliygo_print_copies') || '1', 10) || 1;
-const PAY_LABEL: Record<string, string> = { CASH: 'Naqd', CARD: 'Karta', TRANSFER: "O'tkazma", CLICK: 'Click', PAYME: 'Payme' };
+const PAY_LABEL: Record<string, string> = { CASH: t('pay.cash'), CARD: t('pay.card'), TRANSFER: t('pay.transfer'), CLICK: 'Click', PAYME: 'Payme' };
 
 /* ------------------------------------------------------------ ESC/POS (desktop) */
 // Desktop ilovada printer sozlangan bo'lsa chek oynasiz, to'g'ridan-to'g'ri printerga ketadi
 // (Sozlamalar → Printerlar). Aks holda pastdagi HTML + window.print usuli ishlaydi.
 
+/**
+ * Qo'lda chegirma (A10). Chekdagi `subtotal` — chegirmadan OLDINGI taomlar summasi:
+ * subtotal − chegirma + yetkazish + xizmat haqi = jami (server shunday qaytaradi).
+ */
+const manualDiscount = (d: { manual_discount_amount?: number | string | null }) => Math.round(Number(d.manual_discount_amount) || 0);
+const discountLabel = (d: { manual_discount_percent?: number | string | null }) => {
+  const pct = Number(d.manual_discount_percent) || 0;
+  return t('rc.discount', { p: pct > 0 ? ` (${Number(pct.toFixed(2))}%)` : '' });
+};
+
 const itemName = (item: { product_name?: string; name?: string; product?: { name?: string } | null }) =>
-  item.product_name || item.name || item.product?.name || "Noma'lum taom";
+  item.product_name || item.name || item.product?.name || t('rc.unknownItem');
 
 // Eski (HTML) chek dizayni bilan bir xil tartib va yozuvlar: sarlavha, ma'lumot qatorlari, MAHSULOT/SUMMA jadvali,
 // jami bloki, to'lov turi, rahmat. Logo rasmi matnda yo'q — o'rniga "MilliyGo | NOM" qatori.
@@ -30,62 +46,63 @@ const receiptEscpos = (d: ReceiptData, device: PrinterDevice, drawer: boolean): 
 
   // O'z-o'ziga xizmat: mijoz shu raqam bilan chaqiriladi — markazda eng katta shrift
   if (d.call_number) {
-    p.align('center').bold().line('BUYURTMA RAQAMINGIZ').size(2, 2).line(String(d.call_number)).size().bold(false);
+    p.align('center').bold().line(t('rc.yourNumber')).size(2, 2).line(String(d.call_number)).size().bold(false);
     if (d.hall_name) p.line(d.hall_name);
-    p.line('Tayyor bo\'lganda raqamingiz chaqiriladi').align('left').divider();
+    p.line(t('rc.calledWhenReady')).align('left').divider();
   }
 
   // Ma'lumot qatorlari
-  if (d.order_number) p.pair('Buyurtma:', d.order_number);
-  p.pair('Sana:', d.created_at || new Date().toLocaleString('uz-UZ'));
-  if (!isDelivery && d.contact_name) p.pair('Mijoz:', d.contact_name);
-  if (!isDelivery && d.contact_phone) p.pair('Tel:', d.contact_phone);
-  if (d.delivery_type_display) p.pair('Turi:', d.delivery_type_display);
-  if (d.hall_name) p.pair('Zal:', d.hall_name);
-  else if (d.table_number) p.pair('Stol:', `${d.table_number}-stol`);
+  if (d.order_number) p.pair(t('rc.order'), d.order_number);
+  p.pair(t('rc.date'), d.created_at || new Date().toLocaleString('uz-UZ'));
+  if (!isDelivery && d.contact_name) p.pair(t('rc.customer'), d.contact_name);
+  if (!isDelivery && d.contact_phone) p.pair(t('rc.phone'), d.contact_phone);
+  if (typeLabel(d)) p.pair(t('rc.type'), typeLabel(d));
+  if (d.hall_name) p.pair(t('rc.hall'), d.hall_name);
+  else if (d.table_number) p.pair(t('rc.table'), t('table.n', { n: d.table_number }));
 
   // Yetkazish: kuryerga manzil va telefon (xarita QR yo'q — kuryer ilovasi bor)
   if (isDelivery) {
-    p.divider().bold().line('YETKAZISH').bold(false);
+    p.divider().bold().line(t('rc.delivery')).bold(false);
     if (d.contact_name) p.bold().para(d.contact_name).bold(false);
     if (d.contact_phone) p.bold().size(1, 2).line(d.contact_phone).size().bold(false);
     if ((d.address || '').trim()) p.bold().para(d.address!.trim()).bold(false);
-    else p.bold().para(`MANZIL KIRITILMAGAN - mijozga qo'ng'iroq qiling: ${d.contact_phone ?? ''}`).bold(false);
+    else p.bold().para(t('rc.noAddress', { phone: d.contact_phone ?? '' })).bold(false);
   }
 
   // Mahsulotlar
-  p.divider().bold().pair('MAHSULOT', 'SUMMA').bold(false).divider('=');
+  p.divider().bold().pair(t('rc.colItem'), t('rc.colSum')).bold(false).divider('=');
   for (const item of d.items || []) {
     const qty = item.unit === 'KG' ? `${Number(Number(item.quantity).toFixed(3))} kg` : `${item.quantity}${item.packaging_name ? ` ${item.packaging_name}` : ''}`;
     p.bold().pair(itemName(item), `${money(item.line_total)} UZS`).bold(false);
     const opts = (item.options || []).map((o) => o.name).join(', ');
     if (opts) p.para(opts);
     const free = Number(item.free_quantity) || 0;
-    p.para(`${money(item.unit_price)} UZS x ${qty}${free > 0 ? ` (+${free} bepul${item.promotion_label ? `, ${item.promotion_label}` : ''})` : ''}`);
+    p.para(`${money(item.unit_price)} UZS x ${qty}${free > 0 ? ` (+${t('rc.free', { n: free })}${item.promotion_label ? `, ${item.promotion_label}` : ''})` : ''}`);
   }
 
   // Jami bloki
-  p.divider().pair('Summa:', `${money(d.subtotal)} UZS`);
-  if (isDelivery) p.pair('Yetkazib berish:', `${money(d.delivery_fee)} UZS`);
+  p.divider().pair(t('rc.subtotal'), `${money(d.subtotal)} UZS`);
+  if (manualDiscount(d) > 0) p.pair(discountLabel(d), `-${money(manualDiscount(d))} UZS`);
+  if (isDelivery) p.pair(t('rc.deliveryFee'), `${money(d.delivery_fee)} UZS`);
   if (Number(d.service_charge_amount || 0) > 0) {
     const pct = Number(d.service_charge_percent || 0) > 0 ? ` (${d.service_charge_percent}%)` : '';
-    p.pair(`Xizmat haqi${pct}:`, `${money(d.service_charge_amount)} UZS`);
+    p.pair(`${t('detail.serviceCharge')}${pct}:`, `${money(d.service_charge_amount)} UZS`);
   }
-  p.divider('=').bold().size(1, 2).pair('JAMI:', `${money(d.total_price)} UZS`).size().bold(false).divider('=');
+  p.divider('=').bold().size(1, 2).pair(t('rc.total'), `${money(d.total_price)} UZS`).size().bold(false).divider('=');
 
   // To'lov
   if (d.payment_breakdown?.length) {
-    p.bold().pair("To'lov turi:", 'Aralash').bold(false);
+    p.bold().pair(t('rc.payMethod'), t('pay.mixed')).bold(false);
     for (const part of d.payment_breakdown) p.pair(`  ${PAY_LABEL[part.method] || part.method}:`, `${money(part.amount)} UZS`);
   } else {
-    p.bold().pair("To'lov turi:", d.payment_method_display || d.payment_method || '').bold(false);
+    p.bold().pair(t('rc.payMethod'), d.payment_method_display || d.payment_method || '').bold(false);
   }
   if ((d.split_count ?? 1) > 1) {
-    p.divider().bold().pair(`Kishi boshiga (${d.split_count} kishi):`, `${money(splitEach(d.total_price, d.split_count!))} UZS`).bold(false);
+    p.divider().bold().pair(t('rc.perPerson', { n: d.split_count! }), `${money(splitEach(d.total_price, d.split_count!))} UZS`).bold(false);
   }
-  if (d.description) p.pair('Izoh:', d.description);
+  if (d.description) p.pair(t('rc.comment'), d.description);
 
-  p.feed(1).align('center').bold().line('XARIDINGIZ UCHUN RAHMAT!').bold(false);
+  p.feed(1).align('center').bold().line(t('rc.thanks')).bold(false);
   if (drawer) p.openDrawer();
   return p.cut().build();
 };
@@ -200,7 +217,11 @@ export interface ReceiptData {
     free_quantity?: number | string;
     promotion_label?: string;
   }>;
+  /** Taomlar summasi — qo'lda chegirmadan OLDIN */
   subtotal: number | string;
+  /** Qo'lda chegirma (A10): > 0 bo'lsa «Chegirma: −X» qatori */
+  manual_discount_amount?: number | string | null;
+  manual_discount_percent?: number | string | null;
   delivery_fee?: number | string;
   service_charge_percent?: number | string;
   service_charge_amount?: number | string;
@@ -303,16 +324,16 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
   // Kuryerga: chekning o'zida manzil va telefon (xarita QR yo'q — kuryer ilovasida yo'l ko'rsatiladi).
   const deliveryBlock = isDelivery ? `
         <div class="divider"></div>
-        <div style="font-weight: 800; font-size: 13px; margin-bottom: 3px;">YETKAZISH</div>
+        <div style="font-weight: 800; font-size: 13px; margin-bottom: 3px;">${esc(t('rc.delivery'))}</div>
         ${receiptData.contact_name ? `<div style="font-size: 13px; font-weight: 700;">${esc(receiptData.contact_name)}</div>` : ''}
         ${receiptData.contact_phone ? `<div style="font-size: 18px; font-weight: 800; margin: 2px 0;">${esc(receiptData.contact_phone)}</div>` : ''}
         ${(receiptData.address || '').trim()
           ? `<div style="font-size: 13px; font-weight: 700; line-height: 1.3;">${esc(receiptData.address)}</div>`
-          : `<div style="font-size: 13px; font-weight: 800; border: 2px solid #000; padding: 4px; margin-top: 3px;">MANZIL KIRITILMAGAN — mijozga qo'ng'iroq qiling: ${esc(receiptData.contact_phone)}</div>`}
+          : `<div style="font-size: 13px; font-weight: 800; border: 2px solid #000; padding: 4px; margin-top: 3px;">${esc(t('rc.noAddress', { phone: receiptData.contact_phone ?? '' }))}</div>`}
   ` : '';
 
   const itemsHtml = (receiptData.items || []).map((item: any) => {
-    const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
+    const productName = item.product_name || item.name || item.product?.name || t('rc.unknownItem');
     const unitPrice = Number(item.unit_price || 0).toLocaleString('uz-UZ');
     const lineTotal = Number(item.line_total || 0).toLocaleString('uz-UZ');
     const qty = item.unit === 'KG' ? `${Number(Number(item.quantity).toFixed(3))} kg` : `${item.quantity}${item.packaging_name ? ` ${item.packaging_name}` : ''}`;
@@ -326,7 +347,7 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
         </div>
         ${options ? `<div style="font-size: 10px; color: #000;">${esc(options)}</div>` : ''}
         <div style="font-size: 10px; color: #000; font-weight: 500; margin-top: 1px;">
-          ${unitPrice} UZS x ${qty}${free > 0 ? ` (+${free} bepul${item.promotion_label ? `, ${esc(item.promotion_label)}` : ''})` : ''}
+          ${unitPrice} UZS x ${qty}${free > 0 ? ` (+${esc(t('rc.free', { n: free }))}${item.promotion_label ? `, ${esc(item.promotion_label)}` : ''})` : ''}
         </div>
       </div>
     `;
@@ -459,46 +480,46 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
 
         ${receiptData.call_number ? `
         <div style="text-align: center; margin: 6px 0 4px;">
-          <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.5px;">BUYURTMA RAQAMINGIZ</div>
+          <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.5px;">${esc(t('rc.yourNumber'))}</div>
           <div style="font-size: 64px; font-weight: 900; line-height: 1; margin: 4px 0;">№ ${esc(receiptData.call_number)}</div>
           ${receiptData.hall_name ? `<div style="font-size: 13px; font-weight: 700;">${esc(receiptData.hall_name)}</div>` : ''}
-          <div style="font-size: 11px; margin-top: 2px;">Tayyor bo'lganda raqamingiz chaqiriladi</div>
+          <div style="font-size: 11px; margin-top: 2px;">${esc(t('rc.calledWhenReady'))}</div>
         </div>
         <div class="divider"></div>` : ''}
 
         ${receiptData.order_number ? `
         <div class="info-row">
-          <span class="info-label">Buyurtma:</span>
+          <span class="info-label">${esc(t('rc.order'))}</span>
           <span class="info-value bold">${esc(receiptData.order_number)}</span>
         </div>` : ''}
         <div class="info-row">
-          <span class="info-label">Sana:</span>
+          <span class="info-label">${esc(t('rc.date'))}</span>
           <span class="info-value">${formattedDate}</span>
         </div>
         ${!isDelivery && receiptData.contact_name ? `
         <div class="info-row">
-          <span class="info-label">Mijoz:</span>
+          <span class="info-label">${esc(t('rc.customer'))}</span>
           <span class="info-value">${esc(receiptData.contact_name)}</span>
         </div>` : ''}
         ${!isDelivery && receiptData.contact_phone ? `
         <div class="info-row">
-          <span class="info-label">Tel:</span>
+          <span class="info-label">${esc(t('rc.phone'))}</span>
           <span class="info-value">${esc(receiptData.contact_phone)}</span>
         </div>` : ''}
         
-        ${receiptData.delivery_type_display ? `
+        ${typeLabel(receiptData) ? `
         <div class="info-row">
-          <span class="info-label">Turi:</span>
-          <span class="info-value">${esc(receiptData.delivery_type_display)}</span>
+          <span class="info-label">${esc(t('rc.type'))}</span>
+          <span class="info-value">${esc(typeLabel(receiptData))}</span>
         </div>` : ''}
         ${receiptData.hall_name ? `
         <div class="info-row">
-          <span class="info-label">Zal:</span>
+          <span class="info-label">${esc(t('rc.hall'))}</span>
           <span class="info-value bold">${esc(receiptData.hall_name)}</span>
         </div>` : receiptData.table_number ? `
         <div class="info-row">
-          <span class="info-label">Stol:</span>
-          <span class="info-value bold">${esc(receiptData.table_number)}-stol</span>
+          <span class="info-label">${esc(t('rc.table'))}</span>
+          <span class="info-value bold">${esc(t('table.n', { n: receiptData.table_number ?? '' }))}</span>
         </div>` : ''}
         ${deliveryBlock}
 
@@ -506,8 +527,8 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
         <div class="divider"></div>
 
         <div class="items-header">
-          <span>MAHSULOT</span>
-          <span>SUMMA</span>
+          <span>${esc(t('rc.colItem'))}</span>
+          <span>${esc(t('rc.colSum'))}</span>
         </div>
 
         ${itemsHtml}
@@ -516,13 +537,21 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
 
         <div class="totals-section">
           <div class="totals-row">
-            <span class="info-label">Summa:</span>
+            <span class="info-label">${esc(t('rc.subtotal'))}</span>
             <span class="info-value">${Number(receiptData.subtotal).toLocaleString('uz-UZ')} UZS</span>
           </div>
           ${
+            manualDiscount(receiptData) > 0
+              ? `<div class="totals-row">
+            <span class="info-label">${esc(discountLabel(receiptData))}</span>
+            <span class="info-value">−${money(manualDiscount(receiptData))} UZS</span>
+          </div>`
+              : ''
+          }
+          ${
             isDelivery
               ? `<div class="totals-row">
-            <span class="info-label">Yetkazib berish:</span>
+            <span class="info-label">${esc(t('rc.deliveryFee'))}</span>
             <span class="info-value">${Number(receiptData.delivery_fee || 0).toLocaleString('uz-UZ')} UZS</span>
           </div>`
               : ''
@@ -530,20 +559,20 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
           ${
             Number(receiptData.service_charge_amount || 0) > 0
               ? `<div class="totals-row">
-            <span class="info-label">Xizmat haqi${Number(receiptData.service_charge_percent || 0) > 0 ? ` (${receiptData.service_charge_percent}%)` : ''}:</span>
+            <span class="info-label">${esc(t('detail.serviceCharge'))}${Number(receiptData.service_charge_percent || 0) > 0 ? ` (${receiptData.service_charge_percent}%)` : ''}:</span>
             <span class="info-value">${Number(receiptData.service_charge_amount).toLocaleString('uz-UZ')} UZS</span>
           </div>`
               : ''
           }
 
           <div class="grand-total-row">
-            <span>JAMI:</span>
+            <span>${esc(t('rc.total'))}</span>
             <span>${Number(receiptData.total_price).toLocaleString('uz-UZ')} UZS</span>
           </div>
 
           <div class="info-row" style="margin-top: 4px;">
-            <span class="info-label">To'lov turi:</span>
-            <span class="info-value bold">${esc(receiptData.payment_breakdown?.length ? 'Aralash' : receiptData.payment_method_display || receiptData.payment_method)}</span>
+            <span class="info-label">${esc(t('rc.payMethod'))}</span>
+            <span class="info-value bold">${esc(receiptData.payment_breakdown?.length ? t('pay.mixed') : receiptData.payment_method_display || receiptData.payment_method)}</span>
           </div>
           ${(receiptData.payment_breakdown || []).map((part) => `
           <div class="info-row">
@@ -554,19 +583,19 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
           ${(receiptData.split_count ?? 1) > 1 ? `
           <div class="divider"></div>
           <div class="info-row">
-            <span class="info-label">Kishi boshiga (${receiptData.split_count} kishi):</span>
+            <span class="info-label">${esc(t('rc.perPerson', { n: receiptData.split_count! }))}</span>
             <span class="info-value bold">${splitEach(receiptData.total_price, receiptData.split_count!).toLocaleString('uz-UZ')} UZS</span>
           </div>` : ''}
 
           ${receiptData.description ? `
           <div class="info-row" style="margin-top: 3px;">
-            <span class="info-label">Izoh:</span>
+            <span class="info-label">${esc(t('rc.comment'))}</span>
             <span class="info-value">${esc(receiptData.description)}</span>
           </div>` : ''}
         </div>
 
         <div class="footer">
-          <p class="bold" style="font-size: 11px; margin-bottom: 2px;">XARIDINGIZ UCHUN RAHMAT!</p>
+          <p class="bold" style="font-size: 11px; margin-bottom: 2px;">${esc(t('rc.thanks'))}</p>
         </div>
       </body>
     </html>
@@ -602,6 +631,9 @@ export interface PreCheckOrderInput {
     price_at_time_of_order?: string | number;
     quantity: number;
   }>;
+  /** Qo'lda chegirma (A10): «Jami» (chegirmagacha) → «Chegirma: −X» → «Jami to'lov» (= total_price) */
+  manual_discount_amount?: number | string | null;
+  manual_discount_percent?: number | string | null;
 }
 
 // Hisobni teng bo'lganda bir kishiga to'g'ri keladigan summa (so'mgacha yaxlitlanadi).
@@ -614,18 +646,21 @@ export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> =>
     // Eski pre-chek (HTML) bilan bir xil: "Buyurtmalaringiz", vaqt, stol, mahsulotlar, Jami, Jami to'lov
     const total = Number(order.total_price || 0);
     const p = new EscPos(device.width, device.codepage);
-    p.bold().align('center').size(1, 2).line('Buyurtmalaringiz').size().align('left');
-    p.line(`Chek chiqarilgan vaqti: ${new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`);
-    if (order.table_number) p.line(`stol "${order.table_number}"`);
+    p.bold().align('center').size(1, 2).line(t('rc.preTitle')).size().align('left');
+    p.line(t('rc.printedAt', { time: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }));
+    if (order.table_number) p.line(t('rc.preTable', { n: order.table_number }));
     p.divider();
     for (const item of order.items || []) {
       const unit = Number(item.price_at_time_of_order || item.product?.price || 0);
       const qty = item.quantity || 1;
-      p.pair(itemName(item), String(qty)).pair(`Narxi: ${money(unit)}`, money(unit * qty));
+      p.pair(itemName(item), String(qty)).pair(t('rc.price', { n: money(unit) }), money(unit * qty));
     }
-    p.divider().pair('Jami:', `${money(total)} so'm`).pair("Jami to'lov:", `${money(total)} so'm`);
+    const disc = manualDiscount(order);
+    p.divider().pair(t('rc.preTotal'), `${money(total + disc)} ${t('shift.sum')}`);
+    if (disc > 0) p.pair(discountLabel(order), `-${money(disc)} ${t('shift.sum')}`);
+    p.pair(t('rc.preToPay'), `${money(total)} ${t('shift.sum')}`);
     if ((order.split_count ?? 1) > 1) {
-      p.divider().pair(`Kishi boshiga (${order.split_count} kishi):`, `${money(splitEach(total, order.split_count!))} so'm`);
+      p.divider().pair(t('rc.perPerson', { n: order.split_count! }), `${money(splitEach(total, order.split_count!))} ${t('shift.sum')}`);
     }
     p.bold(false);
     await sendToPrinter(device, p.cut().build());
@@ -635,7 +670,7 @@ export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> =>
   const timeStr = now.toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   const totalAmount = Number(order.total_price || 0);
-  const tableLabel = order.table_number ? `stol "${esc(order.table_number)}"` : '';
+  const tableLabel = order.table_number ? esc(t('rc.preTable', { n: order.table_number })) : '';
 
   const preCheckHtml = `
     <html>
@@ -665,12 +700,12 @@ export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> =>
         </style>
       </head>
       <body>
-        <div class="center" style="font-size: 15px; margin-bottom: 8px;">Buyurtmalaringiz</div>
-        <div style="margin-bottom: 2px;">Chek chiqarilgan vaqti: ${timeStr}</div>
+        <div class="center" style="font-size: 15px; margin-bottom: 8px;">${esc(t('rc.preTitle'))}</div>
+        <div style="margin-bottom: 2px;">${esc(t('rc.printedAt', { time: timeStr }))}</div>
         ${tableLabel ? `<div style="margin-bottom: 2px;">${tableLabel}</div>` : ''}
         <div class="divider"></div>
         ${(order.items || []).map((item) => {
-          const productName = item.product_name || item.name || item.product?.name || "Noma'lum taom";
+          const productName = item.product_name || item.name || item.product?.name || t('rc.unknownItem');
           const unitPrice = Number(item.price_at_time_of_order || item.product?.price || 0);
           const quantity = item.quantity || 1;
           const lineTotal = unitPrice * quantity;
@@ -681,18 +716,19 @@ export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> =>
                 <span style="font-size: 12px; margin-left: 6px; white-space: nowrap;">${quantity}</span>
               </div>
               <div class="row">
-                <span style="font-size: 11px;">Narxi: ${unitPrice.toLocaleString('uz-UZ')}</span>
+                <span style="font-size: 11px;">${esc(t('rc.price', { n: unitPrice.toLocaleString('uz-UZ') }))}</span>
                 <span style="font-size: 11px;">${lineTotal.toLocaleString('uz-UZ')}</span>
               </div>
             </div>
           `;
         }).join('')}
         <div class="divider"></div>
-        <div class="total-row"><span>Jami:</span><span>${totalAmount.toLocaleString('uz-UZ')} so'm</span></div>
-        <div class="total-row" style="margin-top: 4px;"><span>Jami to'lov:</span><span>${totalAmount.toLocaleString('uz-UZ')} so'm</span></div>
+        <div class="total-row"><span>${esc(t('rc.preTotal'))}</span><span>${(totalAmount + manualDiscount(order)).toLocaleString('uz-UZ')} ${esc(t('shift.sum'))}</span></div>
+        ${manualDiscount(order) > 0 ? `<div class="total-row"><span>${esc(discountLabel(order))}</span><span>−${manualDiscount(order).toLocaleString('uz-UZ')} ${esc(t('shift.sum'))}</span></div>` : ''}
+        <div class="total-row" style="margin-top: 4px;"><span>${esc(t('rc.preToPay'))}</span><span>${totalAmount.toLocaleString('uz-UZ')} ${esc(t('shift.sum'))}</span></div>
         ${(order.split_count ?? 1) > 1 ? `
         <div class="divider"></div>
-        <div class="row"><span>Kishi boshiga (${order.split_count} kishi):</span><span>${splitEach(totalAmount, order.split_count!).toLocaleString('uz-UZ')} so'm</span></div>` : ''}
+        <div class="row"><span>${esc(t('rc.perPerson', { n: order.split_count! }))}</span><span>${splitEach(totalAmount, order.split_count!).toLocaleString('uz-UZ')} ${esc(t('shift.sum'))}</span></div>` : ''}
       </body>
     </html>
   `;

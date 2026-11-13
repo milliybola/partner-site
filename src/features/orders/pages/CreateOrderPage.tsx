@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
+  ArrowLeftRight,
   CheckCircle,
   ChevronDown,
   ChevronUp,
@@ -24,10 +25,9 @@ import { tablesApi } from '../../tables/services/tablesApi';
 import type { TableModel } from '../../tables/services/tablesApi';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
 import { printKitchenTicket, printPreCheck as printPreCheckUtil, printReceipt as printReceiptUtil, printReceiptPreview as printReceiptPreviewUtil } from '../utils/printing';
-import { enqueueOrder, isNetworkError, newClientUuid, withCache, type QueuedKind } from '../../../core/lib/offline';
+import { currentFilial, enqueueOrder, isNetworkError, newClientUuid, withCache, type QueuedKind } from '../../../core/lib/offline';
 import { useToast } from '../../../core/components/ToastProvider';
 import {
-  ApiGap,
   Badge,
   Button,
   EmptyState,
@@ -40,7 +40,7 @@ import {
   Skeleton,
   Textarea,
 } from '../../../core/ui';
-import { getErrorMessage } from '../../../core/lib/errors';
+import { classifyError, getErrorMessage, isShiftClosed } from '../../../core/lib/errors';
 import { formatMoney, maskPhoneInput } from '../../../core/lib/format';
 import { getPartner, isOwner, isShop, wording } from '../../../core/lib/session';
 import { useOwnerFilials, useWorkingFilial } from '../../../core/lib/useWorkingFilial';
@@ -48,81 +48,32 @@ import { useTariff } from '../../../core/lib/tariff';
 import { shiftApi } from '../../shifts/services/shiftApi';
 import { callsApi } from '../../calls/callsApi';
 import { PhoneCustomerInput } from '../../customers/PhoneCustomerInput';
+import { t } from '../../../core/i18n';
 import { ProductConfigSheet, isConfigurable, lineKey, unitPrice } from '../components/ProductConfigSheet';
-import type { LineConfig, PosOptionGroup, PosPackaging, SelectedOption } from '../components/ProductConfigSheet';
+import type { LineConfig } from '../components/ProductConfigSheet';
+import { CartTotals } from '../components/CartTotals';
+import { flyToCart as flyToCartUtil } from '../utils/flyToCart';
+import {
+  buildPosItems,
+  cartSummary,
+  countItems,
+  dealNote,
+  deliveryFeeFor,
+  filterProducts,
+  giftOf,
+  keyOf,
+  lineName,
+  linePrice,
+  mapCategories,
+  mapPosProduct,
+  orderTotal,
+  qtyText,
+} from '../utils/posCart';
+import type { CartLine, CatalogCategory, CatalogProduct } from '../utils/posCart';
 
-interface Product {
-  uuid: string;
-  name: string;
-  description: string;
-  price: number;
-  original_price: number;
-  discount: number;
-  is_available: boolean;
-  image_url?: string | null;
-  /** Variantlar, qadoq va kg — kassada alohida sozlash oynasi bilan tanlanadi */
-  unit?: 'PIECE' | 'KG';
-  step?: number;
-  min_quantity?: number;
-  option_groups?: PosOptionGroup[];
-  packagings?: PosPackaging[];
-  /** Aksiya (1+1 / 2+1) va set tarkibi — kartada ko'rsatiladi; hisobni server qiladi */
-  promotion?: { label?: string; buy_quantity?: number; get_quantity?: number } | null;
-  kind?: 'SINGLE' | 'SET';
-  set_items?: { name: string; quantity: number }[];
-}
-
-interface Category {
-  id: number | string;
-  uuid: string;
-  name: string;
-  is_active: boolean;
-  products: Product[];
-}
-
-interface CartItem {
-  product: Product;
-  /** Dona/kg yoki (qadoq tanlangan bo'lsa) qadoqlar soni */
-  quantity: number;
-  /** Qator identifikatori (mahsulot + variantlar + qadoq). Eski saqlangan savatlarda yo'q — product.uuid */
-  key?: string;
-  options?: SelectedOption[];
-  packaging?: PosPackaging | null;
-}
-
-const keyOf = (i: CartItem) => i.key ?? i.product.uuid;
-const linePrice = (i: CartItem) => unitPrice(i.product, i.options, i.packaging) * i.quantity;
-const qtyText = (i: CartItem) =>
-  i.packaging ? `${i.quantity} × ${i.packaging.name}` : i.product.unit === 'KG' ? `${Number(i.quantity.toFixed(3))} kg` : String(i.quantity);
-/** Chekda ko'rinadigan nom: "Lavash (Achchiq, Katta)" */
-const lineName = (i: CartItem) => (i.options?.length ? `${i.product.name} (${i.options.map((o) => o.name).join(', ')})` : i.product.name);
-
-/**
- * Avtomatik sovg'a (1+1 / 2+1): har [buy_quantity] ta TO'LANGANga [get_quantity] ta sovg'a.
- * `quantity` — kassir tanlagan (to'langan) son P. Faqat dona mahsulot, qadoqsiz, faol aksiya.
- * Serverga P + sovg'a yuboriladi; server bepulni = floor(jami/(buy+get))*get = aynan shu sovg'a deb tasdiqlaydi.
- */
-const giftOf = (i: CartItem): number => {
-  const p = i.product.promotion;
-  if (!p || !p.buy_quantity || !p.get_quantity || p.buy_quantity <= 0 || p.get_quantity <= 0) return 0;
-  if (i.product.unit === 'KG' || i.packaging) return 0;
-  // Aksiya bir buyurtmada BIR MARTA: `buy` ta to'lansa `get` ta sovg'a (ko'pida ham shuncha)
-  return i.quantity >= p.buy_quantity ? p.get_quantity : 0;
-};
-
-/** Serverga yuboriladigan miqdor: dona promo qatorida to'langan + sovg'a, aks holda `quantity` */
-const sendQtyOf = (i: CartItem): number => Number((i.quantity + giftOf(i)).toFixed(3));
-
-/** Sovg'a hali yo'q bo'lsa undaydigan izoh: "1+1 aksiya · yana N ta oling — 1 ta sovg'a" */
-const dealNote = (i: CartItem): string | null => {
-  const p = i.product.promotion;
-  if (!p || !p.buy_quantity || !p.get_quantity || p.buy_quantity <= 0 || p.get_quantity <= 0) return null;
-  if (i.product.unit === 'KG' || i.packaging) return null;
-  if (i.quantity >= p.buy_quantity) return null; // sovg'a allaqachon qo'shilgan
-  const needPaid = Math.max(p.buy_quantity - i.quantity, 1);
-  const label = p.label || `${p.buy_quantity}+${p.get_quantity}`;
-  return `${label} aksiya · yana ${needPaid} ta oling — ${p.get_quantity} ta sovg'a`;
-};
+type Product = CatalogProduct;
+type Category = CatalogCategory;
+type CartItem = CartLine;
 
 type ServiceType = 'DELIVERY' | 'PICKUP' | 'DINE_IN';
 
@@ -148,12 +99,41 @@ const CARTS_KEY = 'milliygo_active_carts';
 const CART_ID_KEY = 'milliygo_active_cart_id';
 
 const SERVICE_LABEL: Record<ServiceType, string> = {
-  DELIVERY: 'Yetkazib berish',
-  PICKUP: 'Olib ketish',
-  DINE_IN: 'Stol buyurtmasi',
+  DELIVERY: t('type.delivery'),
+  PICKUP: t('type.pickup'),
+  DINE_IN: t('type.tableOrder'),
 };
 
-const newCartTab = (num: number, shop: boolean): CartTab => ({
+/** Oxirgi buyurtma turi — QURILMA bo'yicha eslab qolinadi (kassada bitta odam ishlaydi): keyingi savat shu turdan boshlanadi */
+const LAST_TYPE_KEY = 'milliygo_pos_last_type';
+interface LastType {
+  serviceType: ServiceType;
+  hallUuid?: string;
+  hallName?: string;
+  /** O'z-o'ziga xizmat zali qaysi filialniki — boshqa filialda zal eslab qolinmaydi */
+  filial?: string;
+}
+const readLastType = (): LastType | null => {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAST_TYPE_KEY) || 'null');
+    if (v && (v.serviceType === 'DELIVERY' || v.serviceType === 'PICKUP' || v.serviceType === 'DINE_IN')) return v as LastType;
+  } catch {
+    /* buzilgan yozuv — tanlov ekrani ko'rsatiladi */
+  }
+  return null;
+};
+const saveLastType = (t: LastType) => {
+  try {
+    localStorage.setItem(LAST_TYPE_KEY, JSON.stringify(t));
+  } catch {
+    /* localStorage ishlamasa — har safar tur so'raladi */
+  }
+};
+
+/** Savatning boshlang'ich turi va qadami (eslab qolingan turdan) */
+type CartStart = Pick<CartTab, 'serviceType' | 'hallUuid' | 'hallName' | 'step'>;
+
+const newCartTab = (num: number, shop: boolean, start?: CartStart): CartTab => ({
   id: `cart-${Date.now()}-${num}`,
   name: `Savat ${num}`,
   serviceType: 'DELIVERY',
@@ -165,6 +145,7 @@ const newCartTab = (num: number, shop: boolean): CartTab => ({
   cart: [],
   // Shops only deliver — there is nothing to choose, go straight to the menu.
   step: shop ? 'MENU' : 'SERVICE_TYPE',
+  ...(shop ? {} : start),
 });
 
 /** "+998 (90) 123-45-67" -> "901234567"; "" / "+998" -> ""; partial -> null (invalid) */
@@ -186,20 +167,22 @@ const CreateOrderPage: React.FC = () => {
   const allowedServices: ServiceType[] = shop ? ['DELIVERY'] : ['DELIVERY', 'PICKUP', 'DINE_IN'];
   // Tarifda yo'q xizmatlar qulf bilan ko'rinadi (bosilsa «Tarif» sahifasi); server ham baribir rad etadi
   // Restoran kassasi: smena ochiq bo'lishi shart (server ham tekshiradi). null — hali noma'lum.
+  // A3: qaysi filial smenasi tekshirilishi — pastda (buyurtma filiali aniqlangach)
   const [shiftOpen, setShiftOpen] = useState<boolean | null>(null);
-  useEffect(() => {
-    if (shop) return;
-    let alive = true;
-    shiftApi
-      .getCurrentShift()
-      .then((s) => alive && setShiftOpen(!!s))
-      .catch(() => alive && setShiftOpen(null));
-    return () => {
-      alive = false;
-    };
-  }, [shop]);
   const { tariff } = useTariff();
   const lockedService = (t: ServiceType) => (t === 'PICKUP' && !tariff.allow_pickup) || (t === 'DINE_IN' && !tariff.allow_dine_in);
+  /** Eslab qolingan tur: Olib ketish/Yetkazish/o'z-o'ziga xizmat zali → menyu; stol → stol tanlash; yo'q/qulflangan → tur tanlash */
+  const startOfCart = (): CartStart | undefined => {
+    if (shop) return undefined;
+    const last = readLastType();
+    if (!last || !allowedServices.includes(last.serviceType) || lockedService(last.serviceType)) return undefined;
+    if (last.serviceType !== 'DINE_IN') return { serviceType: last.serviceType, hallUuid: undefined, hallName: undefined, step: 'MENU' };
+    if (last.hallUuid) {
+      if (last.filial !== (currentFilial() || '')) return undefined;
+      return { serviceType: 'DINE_IN', hallUuid: last.hallUuid, hallName: last.hallName || 'Zal', step: 'MENU' };
+    }
+    return { serviceType: 'DINE_IN', hallUuid: undefined, hallName: undefined, step: 'TABLE_SELECT' };
+  };
 
   // Catalog
   const [categories, setCategories] = useState<Category[]>([]);
@@ -226,7 +209,7 @@ const CreateOrderPage: React.FC = () => {
     } catch {
       /* corrupt storage — start fresh */
     }
-    return [{ ...newCartTab(1, shop), id: 'cart-1' }];
+    return [{ ...newCartTab(1, shop, startOfCart()), id: 'cart-1' }];
   });
   const [activeCartId, setActiveCartId] = useState<string>(() => {
     try {
@@ -238,6 +221,10 @@ const CreateOrderPage: React.FC = () => {
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  /** Xato turi qayta urinishga arziydimi (server nosozligi, javob kelmadi) — «Qayta urinish» tugmasi */
+  const [submitRetryable, setSubmitRetryable] = useState(false);
+  /** Oxirgi yuborish urinishi: shu buyurtma qayta yuborilsa client_uuid o'zgarmaydi (ikki marta yaratilmasin) */
+  const retryAttempt = useRef<{ key: string; uuid: string } | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   /** Oxirgi buyurtma internet yo'qligi sababli navbatga yozildi */
   const [queuedOffline, setQueuedOffline] = useState(false);
@@ -248,7 +235,7 @@ const CreateOrderPage: React.FC = () => {
   // Rahbar (bir nechta filial): buyurtma qaysi filialga yozilishini tanlaydi. Tanlangan ishlayotgan filial yoki asosiy filial — boshlang'ich.
   const owner = isOwner();
   const { filials: ownerFilials } = useOwnerFilials();
-  const [workingFilial] = useWorkingFilial();
+  const [workingFilial, setWorkingFilial] = useWorkingFilial();
   const [filialChoice, setFilialChoice] = useState<string>('');
   const needFilialChoice = owner && ownerFilials.length > 1;
   const effectiveFilial = needFilialChoice
@@ -261,46 +248,7 @@ const CreateOrderPage: React.FC = () => {
   const [showExtra, setShowExtra] = useState(false);
 
   /** Mahsulot bosilganda rasmi savat tomon uchib boradi (savat ko'rinmasa — animatsiya yo'q) */
-  const flyToCart = (card: HTMLElement) => {
-    const target = document.getElementById('new-order-cart-panel')?.getBoundingClientRect();
-    const src = (card.querySelector('img') ?? card.firstElementChild) as HTMLElement | null;
-    if (!target || target.width === 0 || !src) return;
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-    const from = src.getBoundingClientRect();
-    const size = 56;
-    const ghost = document.createElement('div');
-    Object.assign(ghost.style, {
-      position: 'fixed',
-      left: from.left + from.width / 2 - size / 2 + 'px',
-      top: from.top + from.height / 2 - size / 2 + 'px',
-      width: size + 'px',
-      height: size + 'px',
-      borderRadius: '16px',
-      overflow: 'hidden',
-      zIndex: '200',
-      pointerEvents: 'none',
-      boxShadow: '0 8px 24px rgba(0,0,0,.25)',
-      background: 'rgb(var(--color-brand))',
-    });
-    if (src instanceof HTMLImageElement && src.src) {
-      const img = document.createElement('img');
-      img.src = src.src;
-      Object.assign(img.style, { width: '100%', height: '100%', objectFit: 'cover' });
-      ghost.appendChild(img);
-    }
-    document.body.appendChild(ghost);
-    const dx = target.left + target.width / 2 - (from.left + from.width / 2);
-    const dy = target.top + Math.min(90, target.height / 3) - (from.top + from.height / 2);
-    const anim = ghost.animate(
-      [
-        { transform: 'translate(0,0) scale(1)', opacity: 1 },
-        { transform: `translate(${dx * 0.55}px, ${dy * 0.55 - 40}px) scale(0.85)`, opacity: 1, offset: 0.55 },
-        { transform: `translate(${dx}px, ${dy}px) scale(0.25)`, opacity: 0.35 },
-      ],
-      { duration: 650, easing: 'cubic-bezier(.4,0,.2,1)' },
-    );
-    anim.onfinish = anim.oncancel = () => ghost.remove();
-  };
+  const flyToCart = (card: HTMLElement) => flyToCartUtil(card, document.getElementById('new-order-cart-panel'));
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
@@ -350,6 +298,7 @@ const CreateOrderPage: React.FC = () => {
     typeApplied.current = applyKey;
     const svc = typeParam as ServiceType;
     const hall = selfService ? { hallUuid: hallParam, hallName: hallNameParam || 'Zal' } : { hallUuid: undefined, hallName: undefined };
+    saveLastType({ serviceType: svc, ...hall, ...(selfService ? { filial: currentFilial() || '' } : {}) });
     const current = activeCarts.find((c) => c.id === activeCartId) || activeCarts[0];
     if (current && current.cart.length === 0 && normalizePhone(current.contactPhone) === '') {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- URL'dagi bir martalik tanlovni savatga ko'chirish
@@ -373,7 +322,7 @@ const CreateOrderPage: React.FC = () => {
     setLoadingTables(true);
     setTablesError(null);
     try {
-      const { data: response, fromCache: cached } = await withCache('tables', () => tablesApi.getTables());
+      const { data: response, fromCache: cached } = await withCache(`tables:${currentFilial() || getPartner()?.uuid || '-'}`, () => tablesApi.getTables());
       if (cached) setFromCache(true);
       const sorted = response
         .filter((t) => t.is_active !== false)
@@ -413,6 +362,35 @@ const CreateOrderPage: React.FC = () => {
   const selfHall = serviceType === 'DINE_IN' && activeCart.hallUuid ? { uuid: activeCart.hallUuid, name: activeCart.hallName || 'Zal' } : null;
   const currentId = activeCart.id;
 
+  // A3: restoran kassasi — buyurtma TUSHADIGAN filialda smena ochiq bo'lishi shart (server ham tekshiradi, SHIFT_CLOSED).
+  // Xodim: o'z filiali (server biladi). Rahbar (bir nechta filial): tanlangan filial; stol buyurtmasi — ishlayotgan filial.
+  // Rahbar «Barcha filiallar»da stol tanlasa — stol filiali oldindan noma'lum: oldindan bloklamaymiz, server hal qiladi.
+  const dineInAnyFilial = needFilialChoice && serviceType === 'DINE_IN' && !workingFilial;
+  const shiftFilial = needFilialChoice && !dineInAnyFilial ? (serviceType === 'DINE_IN' ? workingFilial || '' : effectiveFilial) : '';
+  const shiftFilialName = shiftFilial ? ownerFilials.find((f) => f.uuid === shiftFilial)?.filial_name : undefined;
+  useEffect(() => {
+    if (shop) return;
+    if (dineInAnyFilial) {
+      setShiftOpen(null);
+      return;
+    }
+    let alive = true;
+    shiftApi
+      // Ishlayotgan filialdan boshqa filial so'rovi kassa pastidagi smena holatiga tegmasin
+      .getCurrentShift(shiftFilial || undefined, { silent: !!shiftFilial && shiftFilial !== workingFilial })
+      .then((s) => alive && setShiftOpen(!!s))
+      .catch(() => alive && setShiftOpen(null));
+    return () => {
+      alive = false;
+    };
+  }, [shop, shiftFilial, dineInAnyFilial, workingFilial]);
+  const shiftClosedText = shiftFilialName ? t('cart.shiftClosedFilial', { name: shiftFilialName }) : t('cart.shiftClosed');
+  /** «Smenani ochish»: rahbar boshqa filial uchun ochsa — umumiy filtr o'sha filialga o'tadi, Smena sahifasi shu filialni ko'rsatadi */
+  const goOpenShift = () => {
+    if (shiftFilial && shiftFilial !== workingFilial) setWorkingFilial(shiftFilial);
+    navigate('/shift');
+  };
+
   const updateActiveCart = useCallback(
     (updates: Partial<CartTab>) => {
       setActiveCarts((prev) => prev.map((c) => (c.id === currentId ? { ...c, ...updates } : c)));
@@ -426,6 +404,10 @@ const CreateOrderPage: React.FC = () => {
   }, [shop, step, updateActiveCart]);
 
   const selectedTable = tables.find((t) => t.uuid === selectedTableUuid);
+  /** Savat sarlavhasi uchun: "Stol 4 · 1-qavat" (zal nomi bo'lsa) */
+  const tableLabel = selectedTable
+    ? `${t('cart.tableN', { n: selectedTable.table_number })}${selectedTable.hall_name ? ` · ${selectedTable.hall_name}` : ''}`
+    : '';
 
   // Auto-name the active tab after the table / customer.
   useEffect(() => {
@@ -457,64 +439,7 @@ const CreateOrderPage: React.FC = () => {
         return res.data?.data?.categories || res.data?.categories || res.data?.data || res.data || [];
       });
       setFromCache(cached);
-      const mapped: Category[] = Array.isArray(rawCats)
-        ? rawCats.map((c: any) => ({
-            id: c.id,
-            uuid: c.uuid,
-            name: c.category_details?.name || c.name || "Nomi yo'q",
-            is_active: !!c.is_active,
-            products: Array.isArray(c.products)
-              ? c.products.map((p: any) => {
-                  const raw = parseFloat(p.price || '0') || 0;
-                  const disc = p.discount ? parseFloat(p.discount) || 0 : 0;
-                  // Birlik narxi serverdan (`final_price`: aksiya narxi yoki chegirma hisobga olingan) — o'zimiz hisoblamaymiz
-                  const serverPrice = p.final_price !== undefined && p.final_price !== null ? parseFloat(p.final_price) : NaN;
-                  const price = Number.isFinite(serverPrice) ? serverPrice : disc > 0 ? raw * (1 - disc / 100) : raw;
-                  return {
-                    uuid: p.uuid,
-                    name: p.name,
-                    description: p.description || '',
-                    price,
-                    promotion:
-                      p.promotion && typeof p.promotion === 'object'
-                        ? {
-                            label: p.promotion.label,
-                            buy_quantity: Number(p.promotion.buy_quantity) || 0,
-                            get_quantity: Number(p.promotion.get_quantity) || 0,
-                          }
-                        : null,
-                    kind: p.kind === 'SET' ? 'SET' : 'SINGLE',
-                    set_items: (Array.isArray(p.set_items) ? p.set_items : []).map((s: any) => ({ name: s.name, quantity: Number(s.quantity) || 1 })),
-                    original_price: raw,
-                    discount: raw > 0 && price < raw ? Math.round((1 - price / raw) * 100) : 0,
-                    is_available: !!p.is_available && !!p.is_active,
-                    image_url: p.images?.find((img: any) => img.is_main)?.image || p.images?.[0]?.image || p.image_url || null,
-                    unit: p.unit === 'KG' ? 'KG' : 'PIECE',
-                    step: p.step !== undefined ? Number(p.step) : undefined,
-                    min_quantity: p.min_quantity !== undefined ? Number(p.min_quantity) : undefined,
-                    option_groups: (Array.isArray(p.option_groups) ? p.option_groups : []).map((g: any) => ({
-                      uuid: g.uuid,
-                      name: g.name,
-                      min_select: Number(g.min_select ?? 0),
-                      max_select: Number(g.max_select ?? 1),
-                      options: (Array.isArray(g.options) ? g.options : []).map((o: any) => ({
-                        uuid: o.uuid,
-                        name: o.name,
-                        price_delta: parseFloat(o.price_delta || '0') || 0,
-                        is_available: o.is_available !== false,
-                      })),
-                    })),
-                    packagings: (Array.isArray(p.packagings) ? p.packagings : []).map((k: any) => ({
-                      uuid: k.uuid,
-                      name: k.name,
-                      multiplier: Number(k.multiplier),
-                      price: parseFloat(k.price || '0') || 0,
-                    })),
-                  } as Product;
-                })
-              : [],
-          }))
-        : [];
+      const mapped: Category[] = mapCategories(rawCats, mapPosProduct, true);
       setCategories(mapped.filter((c) => c.is_active));
     } catch (err) {
       if (!silent) setErrorCatalog(getErrorMessage(err, "Menyuni yuklashda xatolik yuz berdi."));
@@ -613,11 +538,12 @@ const CreateOrderPage: React.FC = () => {
       selectedTableUuid: '',
       comment: '',
       step: shop ? 'MENU' : 'SERVICE_TYPE',
+      ...startOfCart(),
     });
   };
 
   const addNewCartTab = () => {
-    const tab = newCartTab(activeCarts.length + 1, shop);
+    const tab = newCartTab(activeCarts.length + 1, shop, startOfCart());
     setActiveCarts((prev) => [...prev, tab]);
     setActiveCartId(tab.id);
   };
@@ -642,36 +568,14 @@ const CreateOrderPage: React.FC = () => {
   };
 
   /* ---------------------------------------------------------- derived */
-  const filteredProducts = useMemo(() => {
-    let list: Product[] = [];
-    if (activeCategoryUuid === 'all') {
-      const seen = new Set<string>();
-      categories.forEach((c) =>
-        c.products.forEach((p) => {
-          if (!seen.has(p.uuid)) {
-            seen.add(p.uuid);
-            list.push(p);
-          }
-        }),
-      );
-    } else {
-      list = categories.find((c) => c.uuid === activeCategoryUuid)?.products || [];
-    }
-    return list;
-  }, [categories, activeCategoryUuid]);
+  const filteredProducts = useMemo(() => filterProducts(categories, activeCategoryUuid), [categories, activeCategoryUuid]);
 
   // Kg qatori "1 ta buyurtma pozitsiyasi" hisoblanadi, kasr son emas
-  const itemsCount = cart.reduce((s, i) => s + (Number.isInteger(i.quantity) ? i.quantity : 1), 0);
+  const itemsCount = countItems(cart);
 
   /** Savat qatorlari serverga yuboriladigan shaklda (quote va buyurtma yaratishda bir xil) */
-  const buildItems = (lines: CartItem[]): PosItemInput[] =>
-    lines.map((i) => ({
-      product_uuid: i.product.uuid,
-      // Promo qatorida to'langan + avto-sovg'a yuboriladi (quote ham, buyurtma ham); server bepulni tasdiqlaydi
-      quantity: sendQtyOf(i),
-      ...(i.packaging ? { packaging: i.packaging.uuid } : {}),
-      ...(i.options?.length ? { options: i.options.map((o) => o.uuid) } : {}),
-    }));
+  // Promo qatorida to'langan + avto-sovg'a yuboriladi (quote ham, buyurtma ham); server bepulni tasdiqlaydi (posCart.buildPosItems)
+  const buildItems = (lines: CartItem[]): PosItemInput[] => buildPosItems(lines);
 
   // Narxni SERVER hisoblaydi (1+1/2+1 aksiya, set variantlari, chegirma, kg/qadoq) — kassa o'zi taxmin qilmaydi.
   // Savat o'zgarsa 350 ms dan keyin qayta so'raladi; javob kelguncha taxminiy narx ko'rsatiladi.
@@ -693,13 +597,9 @@ const CreateOrderPage: React.FC = () => {
   }, [quoteKey]);
   const quote = cart.length > 0 && quoteState?.key === quoteKey ? quoteState.quote : null;
   const quoteError = cart.length > 0 && quoteState?.key === quoteKey ? quoteState.error : null;
-  const discountTotal = quote ? Number(quote.discount_amount) || 0 : 0;
-  // O'z-o'ziga xizmat zalida xizmat haqi yo'q (server ham qo'shmaydi)
-  const serviceCharge = quote && !selfHall ? Number(quote.service_charge_amount) || 0 : 0;
-  const serviceChargePercent = quote ? Number(quote.service_charge_percent) || 0 : 0;
+  // Jami — Stol oynasi bilan bitta formula (posCart.cartSummary). O'z-o'ziga xizmat zalida xizmat haqi yo'q (server ham qo'shmaydi)
+  const { subtotal, discount: discountTotal, serviceCharge, serviceChargePercent } = cartSummary(cart, quote, { noServiceCharge: !!selfHall });
   const quoteLine = (idx: number) => quote?.items[idx];
-
-  const subtotal = quote ? Number(quote.subtotal) : cart.reduce((s, i) => s + linePrice(i), 0);
 
   // BUGFIX: the old code invented an 8 000 so'm fee / 50 000 threshold when the partner
   // profile didn't carry them. Now we only show a fee we actually know; otherwise the
@@ -709,15 +609,8 @@ const CreateOrderPage: React.FC = () => {
     partnerDetails?.free_delivery_threshold != null && partnerDetails.free_delivery_threshold !== ''
       ? parseFloat(partnerDetails.free_delivery_threshold)
       : null;
-  const deliveryFee: number | null =
-    serviceType !== 'DELIVERY'
-      ? 0
-      : knownFee === null || Number.isNaN(knownFee)
-        ? null
-        : knownThreshold !== null && knownThreshold > 0 && subtotal >= knownThreshold
-          ? 0
-          : knownFee;
-  const total = subtotal + (deliveryFee || 0) + serviceCharge;
+  const deliveryFee = deliveryFeeFor(serviceType === 'DELIVERY', subtotal, knownFee, knownThreshold);
+  const total = orderTotal(subtotal, serviceCharge, deliveryFee);
 
   const unavailableInCart = cart.filter((i) => !i.product.is_available);
   const isFormValid =
@@ -730,6 +623,7 @@ const CreateOrderPage: React.FC = () => {
       navigate(`/plan?need=${type === 'PICKUP' ? 'pickup' : 'dine_in'}`);
       return;
     }
+    saveLastType({ serviceType: type });
     updateActiveCart({ serviceType: type, hallUuid: undefined, hallName: undefined, step: type === 'DINE_IN' ? 'TABLE_SELECT' : 'MENU' });
   };
 
@@ -820,8 +714,8 @@ const CreateOrderPage: React.FC = () => {
   const handleSubmitOrder = async (prepaid?: { method: string; payments?: PaymentPart[] }) => {
     if (!isFormValid || submitting) return;
     if (!shop && shiftOpen === false) {
-      toast.error('Smena ochilmagan. Buyurtma yaratish uchun avval smenani oching.');
-      navigate('/shift');
+      toast.error(shiftClosedText);
+      goOpenShift();
       return;
     }
     if (selfHall && !prepaid) {
@@ -849,9 +743,13 @@ const CreateOrderPage: React.FC = () => {
     // Mijoz koordinatalari yuborilmaydi: xaritadan tanlash yo'q va muassasa koordinatalarini mijozniki deb yuborish
     // kuryerni noto'g'ri yo'naltirardi. Faqat telefon majburiy; manzil matni ixtiyoriy.
     const items = buildItems(cart);
-    // Har buyurtmaga qurilma ID'si: internet uzilib qayta yuborilsa ham server bir marta yaratadi
-    const clientUuid = newClientUuid();
     const kind: QueuedKind = serviceType === 'DELIVERY' ? 'DELIVERY' : serviceType === 'PICKUP' ? 'PICKUP' : 'DINE_IN';
+    // Har buyurtmaga qurilma ID'si: internet uzilib qayta yuborilsa ham server bir marta yaratadi.
+    // Xatodan keyin AYNAN shu buyurtma qayta yuborilsa («Qayta urinish») — o'sha ID: server xato bergan bo'lsa-yu,
+    // aslida yaratgan bo'lsa ham ikkinchi buyurtma ochilmaydi.
+    const attemptKey = JSON.stringify([currentId, kind, items, selectedTableUuid, activeCart.hallUuid || '', phone, contactName, address, comment, prepaid || null]);
+    const clientUuid = retryAttempt.current?.key === attemptKey ? retryAttempt.current.uuid : newClientUuid();
+    retryAttempt.current = { key: attemptKey, uuid: clientUuid };
     const payload =
       kind === 'DELIVERY'
         ? {
@@ -886,6 +784,7 @@ const CreateOrderPage: React.FC = () => {
             };
 
     const finish = (orderUuid?: string) => {
+      retryAttempt.current = null;
       // Qo'ng'iroqdan ochilgan bo'lsa — shu call yozuvi yopiladi (xato bo'lsa buyurtmaga ta'sir qilmaydi)
       if (activeCart.callUuid && orderUuid) callsApi.resolve(activeCart.callUuid, orderUuid).catch(() => undefined);
       setCartSheetOpen(false);
@@ -912,7 +811,10 @@ const CreateOrderPage: React.FC = () => {
       finish(created?.data?.uuid);
     } catch (err) {
       if (!isNetworkError(err)) {
+        // Server: shu filialda smena yopiq — tepada «Smenani ochish» tugmali ogohlantirish chiqadi
+        if (isShiftClosed(err) && !dineInAnyFilial) setShiftOpen(false);
         setSubmitError(getErrorMessage(err, "Buyurtma yaratishda xatolik. Maydonlar va internetni tekshiring."));
+        setSubmitRetryable(classifyError(err).retryable);
         return;
       }
       // Internet yo'q: buyurtma navbatga yoziladi, oshxona cheki shu yerning o'zida chiqadi
@@ -922,7 +824,13 @@ const CreateOrderPage: React.FC = () => {
             ? selfHall.name
             : `${selectedTable?.table_number ?? ''}-stol`
           : `${kind === 'PICKUP' ? 'Olib ketish' : 'Yetkazish'}${contactName.trim() ? ` · ${contactName.trim()}` : ''}`;
-      enqueueOrder({ id: clientUuid, kind, payload, label, total: subtotal + serviceCharge });
+      try {
+        enqueueOrder({ id: clientUuid, kind, payload, label, total: subtotal + serviceCharge });
+      } catch (qErr) {
+        setSubmitError(getErrorMessage(qErr, "Buyurtmani navbatga yozib bo'lmadi. Qaytadan tizimga kiring."));
+        setSubmitRetryable(false);
+        return;
+      }
       printKitchenTicket({
         table_number: kind === 'DINE_IN' ? selfHall?.name || selectedTable?.table_number : null,
         delivery_type: kind,
@@ -990,13 +898,13 @@ const CreateOrderPage: React.FC = () => {
   /* ------------------------------------------------ step: service type */
   const renderServiceTypeStep = () => {
     const options: { type: ServiceType; title: string; desc: string; icon: React.ReactNode }[] = [
-      { type: 'DELIVERY', title: 'Yetkazib berish', desc: 'Mijoz manziliga kuryer orqali', icon: <Truck className="w-7 h-7" /> },
-      { type: 'PICKUP', title: 'Olib ketish', desc: "Mijoz o'zi kelib oladi", icon: <ShoppingBag className="w-7 h-7" /> },
-      { type: 'DINE_IN', title: 'Zalda', desc: 'Stolga xizmat ko‘rsatish', icon: <Utensils className="w-7 h-7" /> },
+      { type: 'DELIVERY', title: t('type.delivery'), desc: t('type.deliveryDesc'), icon: <Truck className="w-7 h-7" /> },
+      { type: 'PICKUP', title: t('type.pickup'), desc: t('type.pickupDesc'), icon: <ShoppingBag className="w-7 h-7" /> },
+      { type: 'DINE_IN', title: t('type.dineIn'), desc: t('type.dineInDesc'), icon: <Utensils className="w-7 h-7" /> },
     ];
     return (
       <div className="max-w-3xl mx-auto pt-4 md:pt-8 animate-fade-in">
-        <h2 className="text-[22px] md:text-[26px] font-black tracking-tightest">Buyurtma turi</h2>
+        <h2 className="text-[22px] md:text-[26px] font-black tracking-tightest">{t('type.pickTitle')}</h2>
         <p className="text-[14px] text-muted mt-1">Qanday xizmat ko'rsatiladi?</p>
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
           {options
@@ -1103,7 +1011,7 @@ const CreateOrderPage: React.FC = () => {
   // Stol buyurtmasidagi savat bilan bir xil tuzilma: ro'yxat → qo'shimcha ma'lumot → jami → tugmalar
   const cartLines =
     cart.length === 0 ? (
-      <EmptyState icon={<ShoppingBag className="w-7 h-7" />} title="Savat bo'sh" description={`Menyudan ${w.product.toLowerCase()} qo'shing`} className="py-8" />
+      <EmptyState icon={<ShoppingBag className="w-7 h-7" />} title={t('cart.empty')} description={`Menyudan ${w.product.toLowerCase()} qo'shing`} className="py-8" />
     ) : (
         <div className="space-y-2">
           {cart.map((i, idx) => {
@@ -1169,22 +1077,23 @@ const CreateOrderPage: React.FC = () => {
           <Utensils className="w-5 h-5 text-brand shrink-0" />
           <div className="min-w-0">
             <div className="text-[15px] font-extrabold truncate">{selfHall.name} · o'z-o'ziga xizmat</div>
-            <div className="text-[12px] text-muted">Stolsiz: taom tayyor bo'lganda buyurtma raqami bilan chaqiriladi, to'lov berishda</div>
+            <div className="text-[12px] text-muted">Stolsiz: taom tayyor bo'lganda buyurtma raqami bilan chaqiriladi, to'lov oldindan</div>
           </div>
         </div>
       )}
 
+      {/* Katta ekranda stol savat sarlavhasida ko'rinadi — bu blok faqat telefon/planshet oynasida */}
       {serviceType === 'DINE_IN' && !selfHall && (
-        <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-field">
+        <div className="lg:hidden flex items-center justify-between gap-3 p-3 rounded-2xl bg-field">
           <div className="flex items-center gap-2.5 min-w-0">
             <Utensils className="w-5 h-5 text-brand shrink-0" />
             <div className="min-w-0">
               <div className="text-[12px] text-muted">Tanlangan stol</div>
-              <div className="text-[15px] font-extrabold truncate">{selectedTable ? `Stol ${selectedTable.table_number}` : 'Tanlanmagan'}</div>
+              <div className="text-[15px] font-extrabold truncate">{tableLabel || 'Tanlanmagan'}</div>
             </div>
           </div>
           <Button size="sm" variant="outline" onClick={() => updateActiveCart({ step: 'TABLE_SELECT' })}>
-            O'zgartirish
+            {t('cart.change')}
           </Button>
         </div>
       )}
@@ -1273,34 +1182,18 @@ const CreateOrderPage: React.FC = () => {
   );
 
   const totalsBlock = (
-    <div className="space-y-0.5">
-      <div className="flex items-center justify-between text-[13px] text-muted font-semibold">
-        <span>Jami · {itemsCount} ta</span>
-        <span className="tabular-nums">{formatMoney(subtotal)}</span>
-      </div>
-      {discountTotal > 0 && (
-        <div className="flex items-center justify-between text-[13px] text-brand font-semibold">
-          <span>Aksiya / chegirma</span>
-          <span className="tabular-nums">−{formatMoney(discountTotal)}</span>
-        </div>
-      )}
-      {serviceType === 'DELIVERY' && (
-        <div className="flex items-center justify-between text-[13px] text-muted font-semibold">
-          <span>Yetkazib berish</span>
-          <span className="tabular-nums">{deliveryFee === null ? 'Server hisoblaydi' : deliveryFee === 0 ? 'Bepul' : formatMoney(deliveryFee)}</span>
-        </div>
-      )}
-      {serviceCharge > 0 && (
-        <div className="flex items-center justify-between text-[13px] text-muted font-semibold">
-          <span>Xizmat haqi{serviceChargePercent > 0 ? ` (${serviceChargePercent}%)` : ''}</span>
-          <span className="tabular-nums">{formatMoney(serviceCharge)}</span>
-        </div>
-      )}
-      <div className="flex items-center justify-between pt-0.5">
-        <span className="text-[14px] text-ink font-extrabold">{deliveryFee === null ? 'Umumiy summa (yetkazishsiz)' : 'Umumiy summa'}</span>
-        <span className="text-[20px] font-black text-ink tracking-tightest tabular-nums leading-tight">{formatMoney(total)}</span>
-      </div>
-    </div>
+    <CartTotals
+      countLabel={t('cart.totalCount', { n: itemsCount })}
+      subtotal={subtotal}
+      discount={discountTotal}
+      showDelivery={serviceType === 'DELIVERY'}
+      deliveryFee={deliveryFee}
+      serviceCharge={serviceCharge}
+      serviceChargePercent={serviceChargePercent}
+      showServiceCharge={serviceCharge > 0}
+      totalLabel={deliveryFee === null ? 'Umumiy summa (yetkazishsiz)' : 'Umumiy summa'}
+      total={total}
+    />
   );
 
   const goBack = () => updateActiveCart({ step: serviceType === 'DINE_IN' && !selfHall ? 'TABLE_SELECT' : 'SERVICE_TYPE' });
@@ -1335,13 +1228,17 @@ const CreateOrderPage: React.FC = () => {
       </div>
       {totalsBlock}
       {actionGrid}
-      {submitError && <InlineAlert tone="danger">{submitError}</InlineAlert>}
+      {submitError && (
+        <InlineAlert tone="danger" onRetry={submitRetryable && !submitting ? () => handleSubmitOrder() : undefined}>
+          {submitError}
+        </InlineAlert>
+      )}
     </div>
   );
 
   const submitButton = (
     <Button size="xl" block loading={submitting} disabled={!isFormValid} onClick={() => handleSubmitOrder()} icon={!submitting ? <CheckCircle className="w-5 h-5" /> : undefined}>
-      {submitting ? 'Yuborilmoqda...' : selfHall ? "To'lov va buyurtma berish" : 'Buyurtma yaratish'}
+      {submitting ? t('cart.sending') : selfHall ? t('cart.prepay') : t('cart.create')}
     </Button>
   );
 
@@ -1354,9 +1251,9 @@ const CreateOrderPage: React.FC = () => {
     <PaymentSheet
       order={prepayOrder}
       saving={submitting}
-      title="To'lov va buyurtma berish"
+      title={t('cart.prepay')}
       subtitle={selfHall ? `${selfHall.name} · o'z-o'ziga xizmat — to'lovdan keyin oshxonaga chiqadi` : undefined}
-      confirmLabel="To'lovni qabul qilish va buyurtma berish"
+      confirmLabel={t('cart.prepayConfirm')}
       onClose={() => !submitting && setPrepayOpen(false)}
       onSubmit={(method, _split, payments) => {
         setPrepayOpen(false);
@@ -1368,7 +1265,9 @@ const CreateOrderPage: React.FC = () => {
   /* ------------------------------------------------------- step: menu */
   const renderMenuStep = () => {
     const headerTitle =
-      selfHall ? selfHall.name : serviceType === 'DINE_IN' ? `Stol ${selectedTable?.table_number || ''}`.trim() : SERVICE_LABEL[serviceType];
+      selfHall ? selfHall.name : serviceType === 'DINE_IN' ? tableLabel || t('cart.tableNone') : SERVICE_LABEL[serviceType];
+    const tablePickNeeded = serviceType === 'DINE_IN' && !selfHall;
+    const categoryList = [{ uuid: 'all', name: `Barcha ${w.products.toLowerCase()}`, count: productIndex.size }, ...categories.map((c) => ({ uuid: c.uuid, name: c.name, count: c.products.length }))];
     return (
       <div className="pt-2 lg:grid lg:grid-cols-[minmax(0,1fr)_420px] lg:grid-rows-[minmax(0,1fr)] lg:gap-6 lg:flex-1 lg:min-h-0 items-start lg:items-stretch">
         <div className="min-w-0 lg:flex lg:flex-col lg:min-h-0 lg:h-full">
@@ -1388,14 +1287,28 @@ const CreateOrderPage: React.FC = () => {
               <div className="min-w-0 flex-1">
                 <div className="text-[18px] md:text-[20px] font-black tracking-tightest truncate">{headerTitle}</div>
               </div>
+              {!shop && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 min-h-[44px] lg:min-h-0"
+                  icon={<ArrowLeftRight className="w-4 h-4" />}
+                  onClick={() => updateActiveCart({ step: 'SERVICE_TYPE' })}
+                  title="Buyurtma turini almashtirish (savat saqlanadi)"
+                >
+                  <span className="sm:hidden">Turi</span>
+                  <span className="hidden sm:inline">Turni almashtirish</span>
+                </Button>
+              )}
               {cart.length > 0 && (
                 <Button size="sm" variant="ghost" className="lg:hidden text-danger-ink" onClick={clearCart}>
                   Tozalash
                 </Button>
               )}
             </div>
-            <div className="mt-2.5 flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0">
-              {[{ uuid: 'all', name: `Barcha ${w.products.toLowerCase()}` }, ...categories].map((c) => {
+            {/* Telefon/planshet: gorizontal chiplar; katta ekranda chapdagi ustun */}
+            <div className="mt-2.5 flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0 lg:hidden">
+              {categoryList.map((c) => {
                 const active = activeCategoryUuid === c.uuid;
                 return (
                   <button
@@ -1410,15 +1323,34 @@ const CreateOrderPage: React.FC = () => {
                   </button>
                 );
               })}
-              <span className="shrink-0 inline-flex items-center gap-1.5 h-10 px-3 rounded-xl border border-dashed border-edge-strong text-[13px] font-bold text-subtle">
-                Setlar
-                <ApiGap title="Setlarni kassadan buyurtma qilish: GET /partner/my/sets/ va buyurtma items[].set hali backendda yo'q (D:\\Milliy\\API_CONTRACT_SETS_PROMOS.md)" />
-              </span>
             </div>
           </div>
 
+          <div className="lg:flex-1 lg:min-h-0 lg:flex lg:gap-4">
+          {/* Monoblok/katta ekran: kategoriyalar chapda ustun — hammasi ko'rinadi, o'zi alohida aylanadi */}
+          {!loadingCatalog && !errorCatalog && categories.length > 0 && (
+            <nav aria-label={t('cart.categories')} className="hidden lg:flex flex-col gap-1 w-48 shrink-0 min-h-0 overflow-y-auto overscroll-contain no-scrollbar">
+              {categoryList.map((c) => {
+                const active = activeCategoryUuid === c.uuid;
+                return (
+                  <button
+                    key={c.uuid}
+                    type="button"
+                    aria-current={active ? 'true' : undefined}
+                    onClick={() => setActiveCategoryUuid(c.uuid)}
+                    className={`shrink-0 min-h-[48px] px-3 py-2 rounded-xl flex items-center justify-between gap-2 text-left text-[14px] font-bold transition cursor-pointer ${
+                      active ? 'bg-brand text-white' : 'bg-surface border border-edge text-ink hover:bg-field'
+                    }`}
+                  >
+                    <span className="min-w-0 line-clamp-2 leading-snug">{c.name}</span>
+                    <span className={`shrink-0 text-[12px] font-extrabold tabular-nums ${active ? 'text-white/80' : 'text-muted'}`}>{c.count}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          )}
           {/* Product grid: kompyuterda faqat shu qism aylanadi */}
-          <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
+          <div className="lg:flex-1 lg:min-w-0 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
           {loadingCatalog ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -1439,8 +1371,8 @@ const CreateOrderPage: React.FC = () => {
             <div className="ui-card">
               <EmptyState
                 icon={<FolderOpen className="w-7 h-7" />}
-                title={categories.length === 0 ? 'Menyu bo‘sh' : 'Hech narsa topilmadi'}
-                description={categories.length === 0 ? "«Menyu» bo'limida faol kategoriya va mahsulot qo'shing." : "Kategoriya yoki qidiruvni o'zgartiring."}
+                title={categories.length === 0 ? 'Menyu bo‘sh' : t('cart.categoryEmpty')}
+                description={categories.length === 0 ? "«Menyu» bo'limida faol kategoriya va mahsulot qo'shing." : t('cart.categoryEmptyHint')}
               />
             </div>
           ) : (
@@ -1504,11 +1436,25 @@ const CreateOrderPage: React.FC = () => {
           {/* space for floating cart bar */}
           {cart.length > 0 && <div className="lg:hidden h-20" aria-hidden />}
           </div>
+          </div>
         </div>
 
         {/* Desktop cart column: sarlavha qotib turadi, faqat ro'yxat aylanadi; jami va tugmalar pastda */}
         <aside className="hidden lg:flex flex-col h-full min-h-0 bg-surface border border-edge rounded-3xl overflow-hidden">
-          <div className="shrink-0 px-5 pt-4 pb-2 text-[13px] font-bold text-muted uppercase tracking-wide">Savat{itemsCount > 0 ? ` · ${itemsCount} ta` : ''}</div>
+          {/* Sarlavha: kimga (Stol 4 · 1-qavat / zal / xizmat turi) + savatdagi son */}
+          <div className="shrink-0 px-5 pt-4 pb-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[12px] font-bold text-muted uppercase tracking-wide">{t('cart.title')}{itemsCount > 0 ? ` · ${t('common.pcs', { n: itemsCount })}` : ''}</div>
+              <div className={`text-[18px] font-black tracking-tightest truncate ${tablePickNeeded && !selectedTable ? 'text-danger-ink' : 'text-ink'}`} title={headerTitle}>
+                {headerTitle}
+              </div>
+            </div>
+            {tablePickNeeded && (
+              <Button size="sm" variant="outline" className="shrink-0" onClick={() => updateActiveCart({ step: 'TABLE_SELECT' })}>
+                {selectedTable ? t('cart.change') : t('cart.pick')}
+              </Button>
+            )}
+          </div>
           <div id="new-order-cart-panel" className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 pb-3 space-y-3">
             {cartLines}
             {cartNotices}
@@ -1520,7 +1466,11 @@ const CreateOrderPage: React.FC = () => {
           </div>
           <div className="shrink-0 border-t border-edge px-5 py-3 space-y-2">
             {totalsBlock}
-            {submitError && <InlineAlert tone="danger">{submitError}</InlineAlert>}
+            {submitError && (
+              <InlineAlert tone="danger" onRetry={submitRetryable && !submitting ? () => handleSubmitOrder() : undefined}>
+                {submitError}
+              </InlineAlert>
+            )}
             {actionGrid}
             {submitButton}
           </div>
@@ -1537,7 +1487,7 @@ const CreateOrderPage: React.FC = () => {
           >
             <span className="flex items-center gap-2.5 min-w-0">
               <span className="min-w-[28px] h-7 px-2 rounded-lg bg-white/20 text-[14px] font-extrabold flex items-center justify-center">{itemsCount}</span>
-              <span className="text-[15px] font-extrabold truncate">Savat</span>
+              <span className="text-[15px] font-extrabold truncate">{t('cart.title')}</span>
             </span>
             <span className="flex items-center gap-1.5 text-[16px] font-black tracking-tightest">
               {formatMoney(total)}
@@ -1549,8 +1499,8 @@ const CreateOrderPage: React.FC = () => {
         <Sheet
           open={cartSheetOpen}
           onClose={() => setCartSheetOpen(false)}
-          title="Savat"
-          subtitle={`${headerTitle} · ${itemsCount} ta`}
+          title={t('cart.title')}
+          subtitle={`${headerTitle} · ${t('common.pcs', { n: itemsCount })}`}
           size="md"
           footer={submitButton}
         >
@@ -1561,12 +1511,12 @@ const CreateOrderPage: React.FC = () => {
   };
 
   return (
-    <div className="pt-3 animate-fade-in lg:flex lg:flex-col lg:h-[calc(100dvh-var(--appbar-h,56px)-24px)]">
+    <div className="pt-3 animate-fade-in lg:flex lg:flex-col lg:h-[calc(100dvh-var(--appbar-h,56px)-var(--statusbar-h,0px)-24px)]">
       {!shop && shiftOpen === false && (
         <InlineAlert tone="warning" className="mb-3 lg:shrink-0">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="font-semibold">Smena ochilmagan — smenani ochmaguncha buyurtma yaratib bo'lmaydi.</span>
-            <Button size="sm" onClick={() => navigate('/shift')}>Smenani ochish</Button>
+            <span className="font-semibold">{shiftClosedText}</span>
+            <Button size="sm" onClick={goOpenShift}>{t('shift.open')}</Button>
           </div>
         </InlineAlert>
       )}

@@ -442,9 +442,13 @@ const CreateOrderPage: React.FC = () => {
   }, [serviceType, selectedTable, contactName, step, activeCart.name, activeCart.hallUuid, activeCart.hallName, activeCarts, currentId, updateActiveCart]);
 
   /* ----------------------------------------------------------- catalog */
-  const fetchCatalog = useCallback(async () => {
-    setLoadingCatalog(true);
-    setErrorCatalog(null);
+  // silent: kassa ochiq turganda menyu jim yangilanadi (spinner/xato ko'rsatilmaydi) — hamkor panelida
+  // mahsulot tahrirlansa (masalan, «O'lcham» opsiyalari qo'shilsa) kassa eski menyuda qolib ketmasin.
+  const fetchCatalog = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoadingCatalog(true);
+      setErrorCatalog(null);
+    }
     try {
       const partnerUuid = getPartner()?.uuid;
       if (!partnerUuid) throw new Error("Muassasa ma'lumotlari topilmadi. Qaytadan tizimga kiring.");
@@ -513,14 +517,30 @@ const CreateOrderPage: React.FC = () => {
         : [];
       setCategories(mapped.filter((c) => c.is_active));
     } catch (err) {
-      setErrorCatalog(getErrorMessage(err, "Menyuni yuklashda xatolik yuz berdi."));
+      if (!silent) setErrorCatalog(getErrorMessage(err, "Menyuni yuklashda xatolik yuz berdi."));
     } finally {
-      setLoadingCatalog(false);
+      if (!silent) setLoadingCatalog(false);
     }
   }, []);
 
   useEffect(() => {
     fetchCatalog();
+  }, [fetchCatalog]);
+
+  // Kassa oynasiga qaytilganda (boshqa tab/panelda menyu tahrirlangan bo'lishi mumkin) menyu jim yangilanadi
+  useEffect(() => {
+    let last = Date.now();
+    const refresh = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - last < 5000) return;
+      last = Date.now();
+      fetchCatalog(true);
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, [fetchCatalog]);
 
   // BUGFIX: carts persisted in localStorage kept stale prices/availability forever.
@@ -1413,7 +1433,7 @@ const CreateOrderPage: React.FC = () => {
             </div>
           ) : errorCatalog ? (
             <div className="ui-card">
-              <ErrorState title="Menyuni yuklab bo'lmadi" message={errorCatalog} onRetry={fetchCatalog} />
+              <ErrorState title="Menyuni yuklab bo'lmadi" message={errorCatalog} onRetry={() => fetchCatalog()} />
             </div>
           ) : filteredProducts.length === 0 ? (
             <div className="ui-card">

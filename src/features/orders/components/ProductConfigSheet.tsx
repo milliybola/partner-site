@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { Check } from 'lucide-react';
 import { Button, QtyStepper, Sheet } from '../../../core/ui';
 import { formatMoney } from '../../../core/lib/format';
+// posCart ham bu fayldan import qiladi (aylana), lekin priceRange faqat render paytida chaqiriladi — xavfsiz
+import { priceRange } from '../utils/posCart';
 
 /** Kassa (POS) uchun mahsulot sozlamasi: variantlar (sous, o'lcham), qadoq (quti) va kg miqdori. */
 export interface PosOption {
@@ -119,7 +121,11 @@ const Inner: React.FC<{ product: PosProduct; onClose: () => void; onConfirm: (cf
       open
       onClose={onClose}
       title={product.name}
-      subtitle={formatMoney(product.price)}
+      subtitle={(() => {
+        // O'lchamli mahsulot: eng arzon – eng qimmat (kartadagi bilan bir xil)
+        const r = priceRange(product);
+        return r ? `${formatMoney(r.min, false)} – ${formatMoney(r.max)}` : formatMoney(product.price);
+      })()}
       footer={
         <Button size="lg" block disabled={!canAdd} onClick={() => onConfirm({ options, packaging: pack, quantity: q })}>
           Savatga qo'shish · {formatMoney(total)}

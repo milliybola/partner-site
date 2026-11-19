@@ -164,6 +164,11 @@ export const catalogApi = {
     await apiClient.post('partner/category/', { categories: [{ uuid, is_active: isActive }] });
   },
 
+  /** Menyudagi turkumlar tartibi (hamkor turkumi uuid'lari, birinchisi — birinchi). */
+  reorderCategories: async (uuids: string[]) => {
+    await apiClient.post('partner/category/reorder/', { order: uuids });
+  },
+
   /** Yaratilgan mahsulot uuid'sini qaytaradi (qadoq va qoldiqni keyin shu bilan saqlash uchun). */
   createProduct: async (data: FormData): Promise<string | undefined> => {
     const res = await apiClient.post('products/', data, multipart);

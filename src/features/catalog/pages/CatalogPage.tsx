@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FileSpreadsheet, FolderOpen, Pencil, Plus, Settings2, ShoppingBag, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileSpreadsheet, FolderOpen, Pencil, Plus, Settings2, ShoppingBag, Trash2 } from 'lucide-react';
 import ProductFormModal from '../components/ProductFormModal';
 import { MenuImportSheet } from '../components/MenuImportSheet';
 import type { ProductData, ProductExtras } from '../components/ProductFormModal';
@@ -127,6 +127,7 @@ const CatalogPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [busyUuids, setBusyUuids] = useState<Set<string>>(new Set());
   const [togglingCats, setTogglingCats] = useState<Set<string>>(new Set());
+  const [reordering, setReordering] = useState(false);
 
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -207,6 +208,26 @@ const CatalogPage: React.FC = () => {
         n.delete(categoryUuidOrBaseUuid);
         return n;
       });
+    }
+  };
+
+  /* ------------------------------------------------------- category order */
+  // Bitta bosish — bitta qadam yuqoriga/pastga; darhol saqlanadi (xato bo'lsa eski tartib qaytadi)
+  const moveCategory = async (index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (reordering || target < 0 || target >= categories.length) return;
+    const prev = categories;
+    const next = [...prev];
+    [next[index], next[target]] = [next[target], next[index]];
+    setCategories(next);
+    setReordering(true);
+    try {
+      await catalogApi.reorderCategories(next.map((c) => c.uuid));
+    } catch (err) {
+      setCategories(prev);
+      toast.error(getErrorMessage(err, "Tartibni saqlab bo'lmadi."));
+    } finally {
+      setReordering(false);
     }
   };
 
@@ -467,6 +488,41 @@ const CatalogPage: React.FC = () => {
       ) : (
         /* --------------------------------------------- Category settings */
         <div className="space-y-3">
+          {categories.length > 1 && (
+            <section className="bg-surface border border-edge rounded-2xl p-3 max-w-2xl">
+              <h3 className="text-[15px] font-extrabold text-ink">Menyudagi tartib</h3>
+              <p className="text-[13px] text-muted mb-2">
+                Mijozlar saytda, ilovada va QR-menyuda turkumlarni shu tartibda ko'radi. Strelkalar bilan joyini o'zgartiring.
+              </p>
+              <ol className="space-y-1.5">
+                {categories.map((cat, i) => (
+                  <li key={cat.uuid} className="flex items-center gap-2 h-12 pl-3 pr-1 rounded-xl bg-field">
+                    <span className="w-6 text-[13px] font-bold text-muted tabular-nums">{i + 1}</span>
+                    <span className="flex-1 min-w-0 truncate text-[14px] font-semibold text-ink">{cat.name}</span>
+                    <span className="text-[12px] text-muted tabular-nums mr-1">{cat.products.length}</span>
+                    <IconButton
+                      size="sm"
+                      label={`${cat.name} — yuqoriga`}
+                      disabled={reordering || i === 0}
+                      onClick={() => moveCategory(i, -1)}
+                      className="disabled:opacity-30"
+                    >
+                      <ChevronUp className="w-5 h-5" />
+                    </IconButton>
+                    <IconButton
+                      size="sm"
+                      label={`${cat.name} — pastga`}
+                      disabled={reordering || i === categories.length - 1}
+                      onClick={() => moveCategory(i, 1)}
+                      className="disabled:opacity-30"
+                    >
+                      <ChevronDown className="w-5 h-5" />
+                    </IconButton>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
           <p className="text-[14px] text-muted max-w-2xl">
             Menyuingizda ko'rinadigan turkumlarni yoqing. Ichida {w.products.toLowerCase()} bor turkumni o'chirishdan oldin ularni o'chiring.
           </p>

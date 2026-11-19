@@ -20,7 +20,8 @@ import {
   Switch,
   Tabs,
 } from '../../../core/ui';
-import { getPartner, isCashier, isManager as isManagerFn, isShop as isShopFn, wording } from '../../../core/lib/session';
+import { getPartner, isCashier, isManager as isManagerFn, isOwner as isOwnerFn, isShop as isShopFn, wording } from '../../../core/lib/session';
+import { useOwnerFilials, useWorkingFilial } from '../../../core/lib/useWorkingFilial';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { formatMoney } from '../../../core/lib/format';
 
@@ -42,7 +43,9 @@ const ProductCard: React.FC<{
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
-}> = ({ product, isShop, busy, onToggle, onEdit, onDelete }) => {
+  /** Filial rejimida: taom barcha filiallarda o'chirilgan (filialda yoqib bo'lmaydi) */
+  offEverywhere?: boolean;
+}> = ({ product, isShop, busy, onToggle, onEdit, onDelete, offEverywhere }) => {
   const promo = promoLabel(product);
   return (
     <div className={`bg-surface border border-edge rounded-2xl p-3 flex gap-3 ${!product.is_available ? 'bg-surface2' : ''}`}>
@@ -86,6 +89,7 @@ const ProductCard: React.FC<{
             </div>
             <div className="flex flex-wrap gap-1 mt-1">
               {!product.is_active && <Badge>Yashirin</Badge>}
+              {offEverywhere && <Badge tone="danger">Barcha filiallarda o'chiq</Badge>}
               {isShop && product.stock !== null && product.stock !== undefined && (
                 <Badge tone={product.stock > 0 ? 'neutral' : 'danger'}>
                   {product.stock > 0 ? `Qoldiq: ${product.stock} ${product.unit === 'KG' ? 'kg' : 'dona'}` : 'Tugagan'}
@@ -116,6 +120,20 @@ const CatalogPage: React.FC = () => {
   const isManager = isManagerFn(partner);
   const isShop = isShopFn(partner);
   const w = wording(partner);
+
+  // Filial rejimi: tugma taomni faqat shu filialda yoqadi/o'chiradi.
+  // Menejer — doim o'z filiali (backend aniqlaydi). Ega — yuqorida filial tanlansa (bir nechta faol filial bo'lsa).
+  const owner = isOwnerFn(partner);
+  const staffManager = partner?.role === 'manager';
+  const [workingFilial] = useWorkingFilial();
+  const { filials: ownerFilials } = useOwnerFilials();
+  const ownerScope =
+    owner && workingFilial && ownerFilials.filter((f) => f.filial_status === 'ACTIVE').some((f) => f.uuid === workingFilial)
+      ? workingFilial
+      : null;
+  const filialMode = staffManager || !!ownerScope;
+  const [filialAvail, setFilialAvail] = useState<Map<string, boolean> | null>(null);
+  const [scopeName, setScopeName] = useState('');
 
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [baseCategories, setBaseCategories] = useState<BaseCategory[]>([]);
@@ -172,6 +190,29 @@ const CatalogPage: React.FC = () => {
     if (!isManager) fetchBaseCategories();
   }, [fetchCatalogData, fetchBaseCategories, isManager]);
 
+  useEffect(() => {
+    if (!filialMode) return; // filial almashsa sahifa qayta o'rnatiladi (Layout: Outlet key)
+    let alive = true;
+    catalogApi
+      .getFilialAvailability(ownerScope || undefined)
+      .then(({ filial, map }) => {
+        if (!alive) return;
+        setFilialAvail(map);
+        setScopeName(filial.name);
+      })
+      .catch((err) => alive && toast.error(getErrorMessage(err, "Filial menyusini yuklab bo'lmadi.")));
+    return () => {
+      alive = false;
+    };
+  }, [filialMode, ownerScope, toast]);
+
+  /** Mijozga ko'rinadimi: umumiy holat + (filial rejimida) shu filialdagi holat */
+  const effectiveAvailable = useCallback(
+    (p: CatalogProduct) =>
+      p.is_available && (!filialMode || !filialAvail || !p.uuid || filialAvail.get(p.uuid) !== false),
+    [filialMode, filialAvail],
+  );
+
   const activeCategory = categories.find((c) => c.uuid === activeCategoryUuid) || categories[0] || null;
   const q = search.trim().toLowerCase();
 
@@ -186,7 +227,7 @@ const CatalogPage: React.FC = () => {
   }, [q, categories, activeCategory]);
 
   const totalProducts = categories.reduce((a, c) => a + c.products.length, 0);
-  const unavailableCount = categories.reduce((a, c) => a + c.products.filter((p) => !p.is_available).length, 0);
+  const unavailableCount = categories.reduce((a, c) => a + c.products.filter((p) => !effectiveAvailable(p)).length, 0);
 
   /* --------------------------------------------------------- category link */
   const handleToggleCategory = async (categoryUuidOrBaseUuid: string, isLinking: boolean) => {
@@ -274,6 +315,7 @@ const CatalogPage: React.FC = () => {
 
   const handleToggleAvailability = async (product: CatalogProduct) => {
     if (!product.uuid) return;
+    if (filialMode) return toggleInFilial(product);
     const next = !product.is_available;
     setBusy(product.uuid, true);
     patchProduct(product.uuid, { is_available: next }); // optimistic
@@ -284,6 +326,33 @@ const CatalogPage: React.FC = () => {
       toast.error(getErrorMessage(err, "Mavjudlik holatini o'zgartirib bo'lmadi."));
     } finally {
       setBusy(product.uuid, false);
+    }
+  };
+
+  const setFilialFlag = (uuid: string, value: boolean) =>
+    setFilialAvail((prev) => new Map(prev ?? []).set(uuid, value));
+
+  const toggleInFilial = async (product: CatalogProduct) => {
+    const uuid = product.uuid;
+    if (!uuid || !filialAvail) return;
+    if (!product.is_available) {
+      toast.error(
+        owner
+          ? "Bu taom barcha filiallarda o'chirilgan. Yuqoridan «Barcha filiallar»ni tanlab yoqing."
+          : "Bu taom barcha filiallarda o'chirilgan. Uni muassasa egasi yoqadi.",
+      );
+      return;
+    }
+    const next = filialAvail.get(uuid) === false;
+    setBusy(uuid, true);
+    setFilialFlag(uuid, next); // optimistic
+    try {
+      await catalogApi.setFilialAvailability(uuid, next, ownerScope || undefined);
+    } catch (err) {
+      setFilialFlag(uuid, !next);
+      toast.error(getErrorMessage(err, "Mavjudlik holatini o'zgartirib bo'lmadi."));
+    } finally {
+      setBusy(uuid, false);
     }
   };
 
@@ -427,6 +496,12 @@ const CatalogPage: React.FC = () => {
             </aside>
 
             <section className="min-w-0">
+              {filialMode && (
+                <div className="mb-3 rounded-2xl border border-brand/30 bg-brand-soft px-4 py-3 text-[13px] text-ink">
+                  <span className="font-bold">{scopeName || 'Filial'} menyusi.</span>{' '}
+                  O'chirilgan {w.products.toLowerCase()} faqat shu filialda mijozlarga ko'rinmaydi va buyurtma qilinmaydi.
+                </div>
+              )}
               <SearchInput value={search} onChange={setSearch} placeholder={`${w.product} qidirish...`} className="mb-3" />
 
               {/* Mobile category chips */}
@@ -475,9 +550,10 @@ const CatalogPage: React.FC = () => {
                   {visibleProducts.map((p) => (
                     <ProductCard
                       key={p.uuid}
-                      product={p}
+                      product={filialMode ? { ...p, is_available: effectiveAvailable(p) } : p}
+                      offEverywhere={filialMode && !p.is_available}
                       isShop={isShop}
-                      busy={!!p.uuid && busyUuids.has(p.uuid)}
+                      busy={!!p.uuid && (busyUuids.has(p.uuid) || (filialMode && !filialAvail))}
                       onToggle={() => handleToggleAvailability(p)}
                       onEdit={() => openEdit(p)}
                       onDelete={() => handleDeleteProduct(p)}

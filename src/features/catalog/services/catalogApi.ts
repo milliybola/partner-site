@@ -138,7 +138,8 @@ const multipart = { headers: { 'Content-Type': 'multipart/form-data' } };
 
 export const catalogApi = {
   getCategories: async (partnerUuid: string): Promise<CatalogCategory[]> => {
-    const res = await apiClient.get('partner/category/', { params: { partner: partnerUuid } });
+    // manage=1 — hamkorning o'z katalogi: barcha filiallarda o'chirilgan taomlar ham ko'rinadi
+    const res = await apiClient.get('partner/category/', { params: { partner: partnerUuid, manage: '1' } });
     const raw = res.data?.data?.categories || res.data?.categories || res.data?.data || res.data || [];
     return Array.isArray(raw)
       ? raw.map((c: any) => ({
@@ -205,6 +206,29 @@ export const catalogApi = {
       filial_name: r.filial_name,
       quantity: Number(r.quantity),
     }));
+  },
+
+  /**
+   * Filial menyusi: taom uuid → shu filialda sotuvdami. `filial` berilmasa — xodimning o'z filiali (backend aniqlaydi).
+   * Barcha sahifalar yig'iladi (bitta filialda 200 tadan ortiq taom bo'lishi mumkin).
+   */
+  getFilialAvailability: async (filial?: string): Promise<{ filial: { uuid: string; name: string }; map: Map<string, boolean> }> => {
+    const map = new Map<string, boolean>();
+    let page = 1;
+    let filialInfo = { uuid: filial || '', name: '' };
+    for (;;) {
+      const res = await apiClient.get('partner/inventory/', { params: { ...(filial ? { filial } : {}), page, page_size: 200, ordering: 'name' } });
+      const d = res.data?.data;
+      filialInfo = d?.filial || filialInfo;
+      for (const r of d?.results || []) map.set(r.uuid, !!r.is_available);
+      if (!d || map.size >= Number(d.count || 0) || !(d.results || []).length) break;
+      page += 1;
+    }
+    return { filial: filialInfo, map };
+  },
+
+  setFilialAvailability: async (productUuid: string, isAvailable: boolean, filial?: string) => {
+    await apiClient.patch(`partner/inventory/${productUuid}/`, { ...(filial ? { filial } : {}), is_available: isAvailable });
   },
 
   saveStock: async (uuid: string, stocks: Array<{ filial: string; quantity: number }>) => {

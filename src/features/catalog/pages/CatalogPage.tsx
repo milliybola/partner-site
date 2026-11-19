@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, FileSpreadsheet, FolderOpen, Pencil, Plus, Settings2, ShoppingBag, Trash2 } from 'lucide-react';
+import { ArrowUpDown, FileSpreadsheet, FolderOpen, Pencil, Plus, Settings2, ShoppingBag, Trash2 } from 'lucide-react';
+import { CategoryOrderList } from '../components/CategoryOrderList';
 import ProductFormModal from '../components/ProductFormModal';
 import { MenuImportSheet } from '../components/MenuImportSheet';
 import type { ProductData, ProductExtras } from '../components/ProductFormModal';
@@ -23,7 +24,7 @@ import { getPartner, isCashier, isManager as isManagerFn, isShop as isShopFn, wo
 import { getErrorMessage } from '../../../core/lib/errors';
 import { formatMoney } from '../../../core/lib/format';
 
-type View = 'menu' | 'categories';
+type View = 'menu' | 'order' | 'categories';
 
 const promoLabel = (p: CatalogProduct) => {
   const pr = p.promotion;
@@ -212,17 +213,18 @@ const CatalogPage: React.FC = () => {
   };
 
   /* ------------------------------------------------------- category order */
-  // Bitta bosish — bitta qadam yuqoriga/pastga; darhol saqlanadi (xato bo'lsa eski tartib qaytadi)
-  const moveCategory = async (index: number, dir: -1 | 1) => {
-    const target = index + dir;
-    if (reordering || target < 0 || target >= categories.length) return;
+  // Qo'yib yuborilganda darhol saqlanadi (xato bo'lsa eski tartib qaytadi)
+  const reorderCategories = async (uuids: string[]) => {
+    if (reordering) return;
     const prev = categories;
-    const next = [...prev];
-    [next[index], next[target]] = [next[target], next[index]];
+    const byUuid = new Map(prev.map((c) => [c.uuid, c]));
+    const next = uuids.map((u) => byUuid.get(u)).filter((c): c is CatalogCategory => !!c);
+    if (next.length !== prev.length) return;
     setCategories(next);
     setReordering(true);
     try {
-      await catalogApi.reorderCategories(next.map((c) => c.uuid));
+      await catalogApi.reorderCategories(uuids);
+      toast.success('Tartib saqlandi');
     } catch (err) {
       setCategories(prev);
       toast.error(getErrorMessage(err, "Tartibni saqlab bo'lmadi."));
@@ -345,6 +347,7 @@ const CatalogPage: React.FC = () => {
           onChange={setView}
           options={[
             { value: 'menu', label: w.menu, icon: <FolderOpen className="w-4 h-4" /> },
+            { value: 'order', label: 'Tartib', icon: <ArrowUpDown className="w-4 h-4" /> },
             { value: 'categories', label: 'Turkumlarni sozlash', icon: <Settings2 className="w-4 h-4" /> },
           ]}
         />
@@ -485,44 +488,33 @@ const CatalogPage: React.FC = () => {
             </section>
           </div>
         )
+      ) : view === 'order' ? (
+        /* ------------------------------------------------ Category order */
+        loading ? (
+          <SkeletonList rows={5} className="mt-2" />
+        ) : categories.length < 2 ? (
+          <EmptyState
+            icon={<ArrowUpDown className="w-7 h-7" />}
+            title="Tartiblash uchun kamida 2 ta turkum kerak"
+            description="Avval «Turkumlarni sozlash» bo'limida menyuga turkumlarni yoqing."
+            action={<Button variant="outline" onClick={() => setView('categories')}>Turkumlarni sozlash</Button>}
+          />
+        ) : (
+          <div className="max-w-2xl space-y-3">
+            <p className="text-[14px] text-muted">
+              Turkumni sichqoncha bilan ushlab, kerakli joyga torting. Mijozlar saytda, ilovada va QR-menyuda shu tartibni
+              ko'radi. O'zgarish qo'yib yuborilishi bilan saqlanadi.
+            </p>
+            <CategoryOrderList
+              items={categories.map((c) => ({ uuid: c.uuid, name: c.name, count: c.products.length }))}
+              disabled={reordering}
+              onChange={reorderCategories}
+            />
+          </div>
+        )
       ) : (
         /* --------------------------------------------- Category settings */
         <div className="space-y-3">
-          {categories.length > 1 && (
-            <section className="bg-surface border border-edge rounded-2xl p-3 max-w-2xl">
-              <h3 className="text-[15px] font-extrabold text-ink">Menyudagi tartib</h3>
-              <p className="text-[13px] text-muted mb-2">
-                Mijozlar saytda, ilovada va QR-menyuda turkumlarni shu tartibda ko'radi. Strelkalar bilan joyini o'zgartiring.
-              </p>
-              <ol className="space-y-1.5">
-                {categories.map((cat, i) => (
-                  <li key={cat.uuid} className="flex items-center gap-2 h-12 pl-3 pr-1 rounded-xl bg-field">
-                    <span className="w-6 text-[13px] font-bold text-muted tabular-nums">{i + 1}</span>
-                    <span className="flex-1 min-w-0 truncate text-[14px] font-semibold text-ink">{cat.name}</span>
-                    <span className="text-[12px] text-muted tabular-nums mr-1">{cat.products.length}</span>
-                    <IconButton
-                      size="sm"
-                      label={`${cat.name} — yuqoriga`}
-                      disabled={reordering || i === 0}
-                      onClick={() => moveCategory(i, -1)}
-                      className="disabled:opacity-30"
-                    >
-                      <ChevronUp className="w-5 h-5" />
-                    </IconButton>
-                    <IconButton
-                      size="sm"
-                      label={`${cat.name} — pastga`}
-                      disabled={reordering || i === categories.length - 1}
-                      onClick={() => moveCategory(i, 1)}
-                      className="disabled:opacity-30"
-                    >
-                      <ChevronDown className="w-5 h-5" />
-                    </IconButton>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          )}
           <p className="text-[14px] text-muted max-w-2xl">
             Menyuingizda ko'rinadigan turkumlarni yoqing. Ichida {w.products.toLowerCase()} bor turkumni o'chirishdan oldin ularni o'chiring.
           </p>

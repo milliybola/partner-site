@@ -35,7 +35,7 @@ const syncOnce = async (onError: (message: string) => void) => {
       .filter(({ key }) => !seen.has(key) && !!seen.add(key))
       .map(({ it, key }) => ({ it, diff: (now[key] || 0) - (before?.[key] || 0) }))
       .filter(({ diff }) => diff > 0)
-      .map(({ it, diff }) => ({ name: itemLabel(it), quantity: diff, options: (it.options || []).map((x) => x.name).join(', ') }));
+      .map(({ it, diff }) => ({ name: it.product?.name || itemLabel(it), quantity: diff, options: (it.options || []).map((x) => x.name).join(', ') }));
     if (!items.length) continue;
     try {
       await printKitchenTicket({

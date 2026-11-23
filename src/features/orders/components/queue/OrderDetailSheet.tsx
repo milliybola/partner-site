@@ -178,7 +178,8 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
                     </span>
                     <div className="min-w-0">
                       <p className="text-[15px] font-semibold text-ink">
-                        {itemName(it)}
+                        {/* Variantlar pastda alohida — nomni variantsiz ko'rsatamiz (product_name'da ular bor) */}
+                        {options.length > 0 && it.product?.name ? it.product.name : itemName(it)}
                         {it.packaging_name && <span className="text-muted font-medium"> · {it.packaging_name}</span>}
                       </p>
                       {options.length > 0 && (

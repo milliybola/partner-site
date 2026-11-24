@@ -281,7 +281,9 @@ export const FloorPlan: React.FC<{
   const wall = !!bg && fullBg;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div
+      className={`flex flex-col gap-2 ${wall ? 'h-full rounded-3xl border border-white/15 bg-slate-900/20 p-3 md:p-4 shadow-[0_10px_40px_rgba(0,0,0,.25)]' : ''}`}
+    >
       <div className="flex flex-wrap items-center justify-end gap-2">
         {!editing && title && (
           <h2 className={`mr-auto text-[18px] font-black tracking-tightest tabular-nums ${wall ? 'text-white [text-shadow:0_1px_3px_rgba(0,0,0,.6)]' : 'text-ink'}`}>{title}</h2>
@@ -329,9 +331,21 @@ export const FloorPlan: React.FC<{
                 {t('fp.edit')}
               </Button>
             )}
-            <Button variant="outline" icon={<LayoutGrid className="w-4 h-4" />} onClick={onGrid}>
-              {t('fp.grid')}
-            </Button>
+            {wall ? (
+              <button
+                type="button"
+                aria-label={t('fp.grid')}
+                title={t('fp.grid')}
+                onClick={onGrid}
+                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-white/25 bg-white/15 text-white backdrop-blur hover:bg-white/25"
+              >
+                <LayoutGrid className="h-5 w-5" />
+              </button>
+            ) : (
+              <Button variant="outline" icon={<LayoutGrid className="w-4 h-4" />} onClick={onGrid}>
+                {t('fp.grid')}
+              </Button>
+            )}
           </>
         )}
       </div>
@@ -343,7 +357,7 @@ export const FloorPlan: React.FC<{
           editing ? 'ring-2 ring-brand touch-none' : ''
         }`}
         style={{
-          height: 'max(440px, calc(100vh - var(--appbar-h, 56px) - 210px))',
+          height: wall ? 'max(420px, calc(100vh - var(--appbar-h, 56px) - 250px))' : 'max(440px, calc(100vh - var(--appbar-h, 56px) - 210px))',
           backgroundImage: bg && !wall ? `url("${bg}")` : undefined,
         }}
       >

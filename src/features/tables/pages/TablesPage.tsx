@@ -217,7 +217,9 @@ const HallRail: React.FC<{
   /** Tanlangan xizmat ko'rinishi (bo'lsa — zallar tanlanmagan ko'rinadi) */
   service?: string | null;
   onService?: (key: string) => void;
-}> = ({ halls, tables, value, onChange, hasUnassigned, onManage, selfCounts = {}, showAll = true, services = [], service = null, onService }) => {
+  /** Kassa fon rasmi ustida: «Zallar» sarlavhali shaffof panel (YesPOS uslubi) */
+  glass?: boolean;
+}> = ({ halls, tables, value, onChange, hasUnassigned, onManage, selfCounts = {}, showAll = true, services = [], service = null, onService, glass = false }) => {
   const active = tables.filter((t) => t.is_active !== false);
   const stat = (key: string | null) => {
     const list = key === null ? active : active.filter((t) => (t.hall || '') === key);
@@ -230,7 +232,14 @@ const HallRail: React.FC<{
     ...(hasUnassigned ? [{ key: '', label: t('tp.noHall'), s: stat('') }] : []),
   ];
   return (
-    <aside className="hidden lg:flex flex-col gap-1 w-48 shrink-0 self-start sticky top-[calc(var(--appbar-h,56px)+12px)]">
+    <aside
+      className={
+        glass
+          ? 'hidden lg:flex flex-col gap-2 w-56 shrink-0 rounded-3xl border border-white/15 bg-slate-900/45 p-4 backdrop-blur-md shadow-[0_10px_40px_rgba(0,0,0,.25)]'
+          : 'hidden lg:flex flex-col gap-1 w-48 shrink-0 self-start sticky top-[calc(var(--appbar-h,56px)+12px)]'
+      }
+    >
+      {glass && <div className="mb-2 px-1 text-[18px] font-black tracking-tightest text-white">{t('tp.halls')}</div>}
       {items.map((it) => {
         const on = !service && value === it.key;
         return (
@@ -238,8 +247,8 @@ const HallRail: React.FC<{
             key={it.key || 'none'}
             type="button"
             onClick={() => onChange(it.key)}
-            className={`w-full min-h-[48px] px-3 rounded-xl flex items-center justify-between gap-2 text-left text-[14px] font-extrabold transition cursor-pointer ${
-              on ? 'bg-brand text-white' : 'bg-surface border border-edge text-ink hover:border-brand/40'
+            className={`w-full ${glass ? 'min-h-[56px] rounded-2xl' : 'min-h-[48px] rounded-xl'} px-3 flex items-center justify-between gap-2 text-left text-[14px] font-extrabold transition cursor-pointer ${
+              on ? 'bg-brand text-white shadow-card' : glass ? 'bg-white/90 text-ink hover:bg-white' : 'bg-surface border border-edge text-ink hover:border-brand/40'
             }`}
           >
             <span className="truncate">{it.label}</span>
@@ -251,7 +260,7 @@ const HallRail: React.FC<{
           </button>
         );
       })}
-      {services.length > 0 && <span className="my-1 border-t border-edge" aria-hidden />}
+      {services.length > 0 && <span className={`my-1 border-t ${glass ? 'border-white/20' : 'border-edge'}`} aria-hidden />}
       {services.map((s) => {
         const on = service === s.key;
         return (
@@ -259,8 +268,8 @@ const HallRail: React.FC<{
             key={s.key}
             type="button"
             onClick={() => onService?.(s.key)}
-            className={`w-full min-h-[48px] px-3 rounded-xl flex items-center justify-between gap-2 text-left text-[14px] font-extrabold transition cursor-pointer ${
-              on ? 'bg-brand text-white' : 'bg-surface border border-edge text-ink hover:border-brand/40'
+            className={`w-full ${glass ? 'min-h-[56px] rounded-2xl' : 'min-h-[48px] rounded-xl'} px-3 flex items-center justify-between gap-2 text-left text-[14px] font-extrabold transition cursor-pointer ${
+              on ? 'bg-brand text-white shadow-card' : glass ? 'bg-white/90 text-ink hover:bg-white' : 'bg-surface border border-edge text-ink hover:border-brand/40'
             }`}
           >
             <span className="flex items-center gap-2 min-w-0">
@@ -837,6 +846,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             }
             service={view === 'TABLES' ? null : view}
             onService={(k) => setView(k as ViewKey)}
+            glass={isPos && !!wallpaper && mapMode && view === 'TABLES'}
           />
         )}
         <div className="flex-1 min-w-0">

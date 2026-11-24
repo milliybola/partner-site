@@ -47,8 +47,18 @@ export interface TableModel {
   current_order?: TableCurrentOrder | null;
   /** Stol QR havolasi (token bilan). Tarifda stol QR menyusi bo'lmasa — null */
   qr_url?: string | null;
+  /** Kassadagi zal xaritasida stol markazi (zal maydoniga nisbatan %, 0–100); null — hali joylashtirilmagan */
+  pos_x?: number | null;
+  pos_y?: number | null;
   created_at?: string;
   updated_at?: string;
+}
+
+/** Zal xaritasidagi bitta stol joyi (saqlash uchun) */
+export interface TablePosition {
+  uuid: string;
+  pos_x: number | null;
+  pos_y: number | null;
 }
 
 /** Zal: stollar guruhi (asosiy zal, terassa, VIP …) */
@@ -60,6 +70,8 @@ export interface Hall {
   self_service?: boolean;
   filial_uuid?: string | null;
   tables_count?: number;
+  /** Zal xaritasi orqasidagi fon rasmi (URL) */
+  background?: string | null;
 }
 
 export interface TableBillOrder {
@@ -218,6 +230,22 @@ export const tablesApi = {
 
   deleteHall: async (uuid: string): Promise<void> => {
     await apiClient.delete(`partner/halls/${uuid}/`);
+  },
+
+  /** Zal fon rasmini qo'yish (ega/menejer) */
+  uploadHallBackground: async (uuid: string, file: File): Promise<Hall> => {
+    const fd = new FormData();
+    fd.append('image', file);
+    return (await apiClient.post<Hall>(`partner/halls/${uuid}/background/`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })).data;
+  },
+
+  /** Zal fon rasmini olib tashlash */
+  removeHallBackground: async (uuid: string): Promise<Hall> =>
+    (await apiClient.delete<Hall>(`partner/halls/${uuid}/background/`)).data,
+
+  /** Zal xaritasida stollar joyini saqlash (ega/menejer) */
+  saveLayout: async (items: TablePosition[]): Promise<void> => {
+    await apiClient.post(`${ENDPOINTS.TABLES.BASE}layout/`, { items });
   },
 
   bulkImportTables: async (payload: BulkImportPayload): Promise<BulkImportResponse> => {

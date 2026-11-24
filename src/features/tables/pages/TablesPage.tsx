@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clock, FileSpreadsheet, Layers, MoreVertical, Plus, QrCode, RefreshCw, ScanLine, ShoppingBag, Store, Table2, Truck, Users } from 'lucide-react';
+import { Ban, Clock, FileSpreadsheet, Layers, Map as MapIcon, MoreVertical, Plus, QrCode, RefreshCw, ScanLine, ShoppingBag, Store, Table2, Truck, Users } from 'lucide-react';
+import { FloorPlan } from '../components/FloorPlan';
+import { StopListSheet } from '../components/StopListSheet';
 import { tablesApi } from '../services/tablesApi';
 import type { Hall, TableModel } from '../services/tablesApi';
 import { HallsSheet, TransferSheet } from '../components/HallSheets';
@@ -207,7 +209,14 @@ const HallRail: React.FC<{
   onManage?: () => void;
   /** O'z-o'ziga xizmat zali uuid → faol buyurtmalar soni */
   selfCounts?: Record<string, number>;
-}> = ({ halls, tables, value, onChange, hasUnassigned, onManage, selfCounts = {} }) => {
+  /** «Barcha zallar» bandi (zal xaritasida yo'q — xarita bitta zalni ko'rsatadi) */
+  showAll?: boolean;
+  /** Kassa: zallar ostida Olib ketish / Yetkazish (InOne uslubi) — bosilsa shu ko'rinishga o'tadi */
+  services?: Array<{ key: string; label: string; count: number; icon: React.ReactNode }>;
+  /** Tanlangan xizmat ko'rinishi (bo'lsa — zallar tanlanmagan ko'rinadi) */
+  service?: string | null;
+  onService?: (key: string) => void;
+}> = ({ halls, tables, value, onChange, hasUnassigned, onManage, selfCounts = {}, showAll = true, services = [], service = null, onService }) => {
   const active = tables.filter((t) => t.is_active !== false);
   const stat = (key: string | null) => {
     const list = key === null ? active : active.filter((t) => (t.hall || '') === key);
@@ -215,14 +224,14 @@ const HallRail: React.FC<{
     return { busy: list.filter((t) => t.current_order || t.status === 'OCCUPIED').length + selfBusy, all: list.length };
   };
   const items = [
-    { key: 'ALL', label: t('tp.allHalls'), s: stat(null) },
+    ...(showAll || halls.length === 0 ? [{ key: 'ALL', label: halls.length === 0 ? t('board.hall') : t('tp.allHalls'), s: stat(null) }] : []),
     ...halls.map((h) => ({ key: h.uuid, label: h.self_service ? `${h.name} · ${t('tp.selfShort')}` : h.name, s: stat(h.uuid) })),
     ...(hasUnassigned ? [{ key: '', label: t('tp.noHall'), s: stat('') }] : []),
   ];
   return (
     <aside className="hidden lg:flex flex-col gap-1 w-48 shrink-0 self-start sticky top-[calc(var(--appbar-h,56px)+12px)]">
       {items.map((it) => {
-        const on = value === it.key;
+        const on = !service && value === it.key;
         return (
           <button
             key={it.key || 'none'}
@@ -241,6 +250,30 @@ const HallRail: React.FC<{
           </button>
         );
       })}
+      {services.length > 0 && <span className="my-1 border-t border-edge" aria-hidden />}
+      {services.map((s) => {
+        const on = service === s.key;
+        return (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => onService?.(s.key)}
+            className={`w-full min-h-[48px] px-3 rounded-xl flex items-center justify-between gap-2 text-left text-[14px] font-extrabold transition cursor-pointer ${
+              on ? 'bg-brand text-white' : 'bg-surface border border-edge text-ink hover:border-brand/40'
+            }`}
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <span className={on ? 'text-white' : 'text-muted'}>{s.icon}</span>
+              <span className="truncate">{s.label}</span>
+            </span>
+            {s.count > 0 && (
+              <span className={`shrink-0 min-w-[22px] h-[22px] px-1 rounded-full flex items-center justify-center text-[12px] font-black tabular-nums ${on ? 'bg-white text-brand' : 'bg-danger text-white'}`}>
+                {s.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
       {onManage && (
         <button
           type="button"
@@ -251,6 +284,26 @@ const HallRail: React.FC<{
         </button>
       )}
     </aside>
+  );
+};
+
+const LAYOUT_KEY = 'milliy.tables.layout';
+
+/**
+ * Xaritadagi qisqa nom: zaldagi eng ko'p uchraydigan guruh («Stol | 14» → «14»), boshqasi to'liq («Divan | 3» → «Divan 3»).
+ */
+const mapLabels = (list: TableModel[]): Record<string, string> => {
+  const freq = new Map<string, number>();
+  for (const tb of list) {
+    const g = splitName(tb.table_number).group;
+    freq.set(g, (freq.get(g) || 0) + 1);
+  }
+  const main = [...freq.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+  return Object.fromEntries(
+    list.map((tb) => {
+      const { group, num } = splitName(tb.table_number);
+      return [tb.uuid, !group || group === main ? num : `${group} ${num}`];
+    }),
   );
 };
 
@@ -359,7 +412,28 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   const [halls, setHalls] = useState<Hall[]>([]);
   const [hallsOpen, setHallsOpen] = useState(false);
   /** 'ALL' — hammasi (zallar bo'yicha guruhlab), '' — zalsiz, aks holda zal uuid */
-  const [hallFilter, setHallFilter] = useState<string>('ALL');
+  const [hallSel, setHallFilter] = useState<string>('ALL');
+  // Kassa: zal xaritasi (standart) yoki oddiy to'r — qurilmada eslab qolinadi
+  const [layout, setLayoutState] = useState<'map' | 'grid'>(() => {
+    try {
+      return localStorage.getItem(LAYOUT_KEY) === 'grid' ? 'grid' : 'map';
+    } catch {
+      return 'map';
+    }
+  });
+  const setLayout = (v: 'map' | 'grid') => {
+    setLayoutState(v);
+    try {
+      localStorage.setItem(LAYOUT_KEY, v);
+    } catch {
+      /* saqlanmasa ham ishlaydi */
+    }
+  };
+  const mapMode = isPos && layout === 'map';
+  // Zal xaritasi bitta zalni ko'rsatadi: «Barcha zallar» tanlangan bo'lsa — birinchi stolli zal
+  const hallFilter =
+    mapMode && hallSel === 'ALL' && halls.length > 0 ? (halls.find((h) => !h.self_service) || halls[0]).uuid : hallSel;
+  const [stopListOpen, setStopListOpen] = useState(false);
 
   const fetchHalls = useCallback(() => {
     tablesApi
@@ -494,6 +568,26 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   );
   const selfCounts = useMemo(() => Object.fromEntries(selfHalls.map((h) => [h.uuid, selfOrders(h.uuid).length])), [selfHalls, selfOrders]);
   const selectedSelfHall = selfHalls.find((h) => h.uuid === hallFilter) || null;
+
+  const mapHall = halls.find((h) => h.uuid === hallFilter) || null;
+  const mapTables = useMemo(
+    () => (halls.length === 0 || hallFilter === 'ALL' ? tables : tables.filter((tb) => (tb.hall || '') === hallFilter)),
+    [tables, halls.length, hallFilter],
+  );
+  const mapLabelOf = useMemo(() => mapLabels(mapTables), [mapTables]);
+  // Sarlavhadagi «Stollar (389 000)»: ko'rinayotgan stollardagi ochiq hisoblar jami
+  const openTotal = useMemo(
+    () => (mapMode ? mapTables : visible).reduce((s, tb) => s + (tb.current_order ? Number(tb.current_order.total_price) || 0 : 0), 0),
+    [mapMode, mapTables, visible],
+  );
+  const openTable = (tb: TableModel) => {
+    if (tb.is_active === false) {
+      if (canManage) setMenuTable(tb);
+      else toast.info(t('tp.inactiveTable'));
+      return;
+    }
+    setOrderingTable(tb);
+  };
   // «Yangi buyurtma» — Sotuv sahifasining o'zida, stol kabi to'liq ekranli menyu (TableOrderModal, zal rejimi)
   const [selfOrder, setSelfOrder] = useState<{ hall: Hall; key: string } | null>(null);
   const newSelfOrder = (h: Hall) => setSelfOrder({ hall: h, key: heldCartKey(h.uuid) });
@@ -607,7 +701,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
         title={isPos ? undefined : t('nav.tables')}
         subtitle={isPos ? undefined : loading ? t('common.loading') : t('tp.summary', { all: counts.ALL, busy: counts.OCCUPIED, free: counts.AVAILABLE })}
         lead={!isPos ? undefined : (
-          <div className="grid grid-cols-3 gap-2.5 max-w-3xl" role="tablist" aria-label={t('type.pickTitle')}>
+          <div className="grid grid-cols-3 gap-2.5 max-w-3xl lg:hidden" role="tablist" aria-label={t('type.pickTitle')}>
             {(
               [
                 { value: 'TABLES', label: t('board.hall'), count: counts.OCCUPIED, icon: <Table2 className="w-6 h-6" /> },
@@ -645,6 +739,11 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
         )}
         actions={
           <>
+            {isPos && (
+              <Button variant="outline" icon={<Ban className="w-4 h-4" />} onClick={() => setStopListOpen(true)}>
+                {t('sl.title')}
+              </Button>
+            )}
             <IconButton label={t('common.refresh')} variant="outline" onClick={() => fetchTables(true)} disabled={refreshing}>
               <RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} />
             </IconButton>
@@ -687,7 +786,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
               value={hallFilter}
               onChange={setHallFilter}
               options={[
-                { value: 'ALL', label: t('tp.allHalls') },
+                ...(mapMode ? [] : [{ value: 'ALL', label: t('tp.allHalls') }]),
                 ...halls.map((h) => ({
                   value: h.uuid,
                   label: h.name,
@@ -701,6 +800,34 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
         </div>
       </PageHeader>
 
+      <div className="mt-2 flex gap-4">
+        {/* Chap ustun: zallar; kassada ostida Olib ketish / Yetkazish ham (InOne uslubi) */}
+        {(isPos || halls.length > 0) && !loading && !error && (
+          <HallRail
+            halls={halls}
+            tables={tables}
+            value={hallFilter}
+            onChange={(v) => {
+              setView('TABLES');
+              setHallFilter(v);
+            }}
+            hasUnassigned={hasUnassigned}
+            onManage={canManage ? () => setHallsOpen(true) : undefined}
+            selfCounts={selfCounts}
+            showAll={!mapMode}
+            services={
+              isPos
+                ? [
+                    { key: 'PICKUP', label: t('type.pickup'), count: svcCount('PICKUP'), icon: <ShoppingBag className="w-4 h-4" /> },
+                    { key: 'DELIVERY', label: t('type.delivery'), count: svcCount('DELIVERY'), icon: <Truck className="w-4 h-4" /> },
+                  ]
+                : []
+            }
+            service={view === 'TABLES' ? null : view}
+            onService={(k) => setView(k as ViewKey)}
+          />
+        )}
+        <div className="flex-1 min-w-0">
       {view === 'DELIVERY' ? (
         <DispatchBoard
           orders={svcOrders.filter((o) => o.delivery_type === 'DELIVERY')}
@@ -721,19 +848,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           onOpen={openSvcOrder}
         />
       ) : (
-      <div className="mt-2 flex gap-4">
-        {halls.length > 0 && !loading && !error && (
-          <HallRail
-            halls={halls}
-            tables={tables}
-            value={hallFilter}
-            onChange={setHallFilter}
-            hasUnassigned={hasUnassigned}
-            onManage={canManage ? () => setHallsOpen(true) : undefined}
-            selfCounts={selfCounts}
-          />
-        )}
-        <div className="flex-1 min-w-0">
+        <>
         {/* «Barcha zallar»: o'z-o'ziga xizmat zallarining faol buyurtmalari stollar ustida */}
         {hallFilter === 'ALL' && !selectedSelfHall &&
           selfHalls.map((h) => (
@@ -754,6 +869,33 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           </div>
         ) : error ? (
           <ErrorState message={error} onRetry={() => fetchTables()} />
+        ) : mapMode && mapTables.length > 0 ? (
+          <FloorPlan
+            key={mapHall?.uuid || hallFilter || 'none'}
+            title={t('tp.tablesTotal', { sum: formatMoney(openTotal) })}
+            tables={mapTables}
+            hall={mapHall}
+            drafts={drafts}
+            now={now}
+            canEdit={canManage}
+            labelOf={(tb) => mapLabelOf[tb.uuid] ?? tb.table_number}
+            onOpen={openTable}
+            onMenu={(tb) => setMenuTable(tb)}
+            onSaved={() => {
+              void fetchTables(true);
+              fetchHalls();
+            }}
+            quickAction={(tb) => {
+              const o = tb.current_order;
+              if (!o || tb.is_active === false) return null;
+              if (o.status === 'ACCEPTED' || o.status === 'PREPARING')
+                return { label: t('act.ready'), run: () => void markTableReady(tb), busy: quickReadyUuid === o.uuid };
+              if (o.status === 'READY_FOR_PICKUP' && o.waiter_role !== 'waiter')
+                return { label: t('role.waiter'), run: () => setTableWaiterPick({ table: tb, mode: 'assign' }) };
+              return null;
+            }}
+            onGrid={() => setLayout('grid')}
+          />
         ) : visible.length === 0 ? (
           tables.length === 0 && selfHalls.length > 0 ? null : tables.length === 0 ? (
             <EmptyState
@@ -781,6 +923,14 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           )
         ) : (
           <div className="space-y-5">
+            {isPos && (
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-[18px] font-black tracking-tightest text-ink tabular-nums">{t('tp.tablesTotal', { sum: formatMoney(openTotal) })}</h2>
+                <Button variant="outline" icon={<MapIcon className="w-4 h-4" />} onClick={() => setLayout('map')}>
+                  {t('fp.map')}
+                </Button>
+              </div>
+            )}
             {sections.map((sec) => (
               <section key={sec.key}>
                 {sec.title && (
@@ -816,9 +966,12 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             ))}
           </div>
         )}
+        </>
+      )}
         </div>
       </div>
-      )}
+
+      <StopListSheet open={stopListOpen} onClose={() => setStopListOpen(false)} />
 
       <TableActionsSheet
         table={menuTable}

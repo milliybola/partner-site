@@ -28,6 +28,8 @@ interface ProfileForm {
   name: string;
   description: string;
   phone: string; // masked
+  /** Mijozlar uchun bog'lanish telefoni — login raqamidan mustaqil; bo'sh — mijozga raqam ko'rsatilmaydi */
+  contactPhone: string; // masked
   email: string;
   address: string;
   lat: string;
@@ -45,6 +47,7 @@ const toForm = (p: any): ProfileForm => ({
   name: p?.name || '',
   description: p?.description || '',
   phone: p?.phone ? maskPhoneInput(p.phone) : '+998',
+  contactPhone: p?.contact_phone ? maskPhoneInput(p.contact_phone) : '+998',
   email: p?.email || '',
   address: p?.address || '',
   lat: p?.location_lat != null && p?.location_lat !== '' ? String(p.location_lat) : '',
@@ -206,6 +209,8 @@ const ProfilePage: React.FC = () => {
     if (!form.name.trim()) e.name = 'Nomini kiriting';
     const ph = cleanPhone(form.phone);
     if (ph.length > 4 && ph.length !== 13) e.phone = "Telefon raqami to'liq emas";
+    const cph = cleanPhone(form.contactPhone);
+    if (cph.length > 4 && cph.length !== 13) e.contactPhone = "Telefon raqami to'liq emas";
     if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) e.email = "Email noto'g'ri";
     if (form.hours.from_hour && form.hours.to_hour && form.hours.from_hour === form.hours.to_hour) {
       e.hours = 'Ochilish va yopilish vaqti bir xil bo‘lmasin';
@@ -232,6 +237,8 @@ const ProfilePage: React.FC = () => {
       fd.append('name', form.name.trim());
       fd.append('address', form.address);
       fd.append('phone', ph.length === 13 ? ph : '');
+      const cph = cleanPhone(form.contactPhone);
+      fd.append('contact_phone', cph.length === 13 ? cph : ''); // bo'sh — mijozga raqam ko'rsatilmaydi (login raqami ishlatilmaydi)
       fd.append('email', form.email);
       fd.append('description', form.description);
       fd.append('min_order_amount', form.minOrderAmount || '0');
@@ -378,7 +385,7 @@ const ProfilePage: React.FC = () => {
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
-                  label="Telefon"
+                  label="Login telefoni"
                   type="tel"
                   inputMode="tel"
                   leftIcon={<Phone className="w-4 h-4" />}
@@ -386,6 +393,18 @@ const ProfilePage: React.FC = () => {
                   disabled={ro}
                   error={errors.phone}
                   onChange={(e) => set('phone', maskPhoneInput(e.target.value))}
+                  placeholder="+998 (90) 123-45-67"
+                />
+                <Input
+                  label="Mijozlar uchun telefon"
+                  type="tel"
+                  inputMode="tel"
+                  leftIcon={<Phone className="w-4 h-4" />}
+                  value={form.contactPhone}
+                  disabled={ro}
+                  error={errors.contactPhone}
+                  hint="Mijozlarga shu raqam ko'rsatiladi. Login raqamidan alohida."
+                  onChange={(e) => set('contactPhone', maskPhoneInput(e.target.value))}
                   placeholder="+998 (90) 123-45-67"
                 />
                 <Input

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ban, Clock, FileSpreadsheet, Layers, Map as MapIcon, MoreVertical, Move, Plus, QrCode, RefreshCw, ScanLine, ShoppingBag, Store, Table2, Truck, Users } from 'lucide-react';
 import { FloorPlan } from '../components/FloorPlan';
-import { usePosWallpaper } from '../../../core/lib/posWallpaper';
+import { POS_HEADER_SLOT, usePosWallpaper } from '../../../core/lib/posWallpaper';
+import { createPortal } from 'react-dom';
 import { StopListSheet } from '../components/StopListSheet';
 import { tablesApi } from '../services/tablesApi';
 import type { Hall, TableModel } from '../services/tablesApi';
@@ -444,6 +445,12 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   // Boshqaruv: zal rejasini tahrirlash (stollarni joylash, fon) — kassada faqat ko'rish
   const [planOpen, setPlanOpen] = useState(false);
   const wallpaper = usePosWallpaper();
+  // Kassa: Stop-list va yangilash yuqori menyuda (Layout'dagi joyga portal)
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM tugunini bir marta olish
+    setHeaderSlot(isPos ? document.getElementById(POS_HEADER_SLOT) : null);
+  }, [isPos]);
   const mapMode = isPos ? layout === 'map' : planOpen;
   // Zal xaritasi bitta zalni ko'rsatadi: «Barcha zallar» tanlangan bo'lsa — birinchi stolli zal
   const hallFilter =
@@ -712,7 +719,20 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
 
   return (
     <div className="pb-4">
+      {headerSlot &&
+        createPortal(
+          <>
+            <Button variant="outline" icon={<Ban className="w-4 h-4" />} onClick={() => setStopListOpen(true)}>
+              {t('sl.title')}
+            </Button>
+            <IconButton label={t('common.refresh')} variant="outline" onClick={() => fetchTables(true)} disabled={refreshing}>
+              <RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} />
+            </IconButton>
+          </>,
+          headerSlot,
+        )}
       <PageHeader
+        className={isPos ? 'lg:hidden' : undefined}
         transparent={isPos && !!wallpaper}
         title={isPos ? undefined : t('nav.tables')}
         subtitle={isPos ? undefined : loading ? t('common.loading') : t('tp.summary', { all: counts.ALL, busy: counts.OCCUPIED, free: counts.AVAILABLE })}
@@ -755,14 +775,16 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
         )}
         actions={
           <>
-            {isPos && (
+            {!headerSlot && isPos && (
               <Button variant="outline" icon={<Ban className="w-4 h-4" />} onClick={() => setStopListOpen(true)}>
                 {t('sl.title')}
               </Button>
             )}
-            <IconButton label={t('common.refresh')} variant="outline" onClick={() => fetchTables(true)} disabled={refreshing}>
-              <RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} />
-            </IconButton>
+            {!headerSlot && (
+              <IconButton label={t('common.refresh')} variant="outline" onClick={() => fetchTables(true)} disabled={refreshing}>
+                <RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} />
+              </IconButton>
+            )}
             {showSetup && (
               <IconButton label={t('tp.halls')} variant="outline" onClick={() => setHallsOpen(true)}>
                 <Layers className="w-[18px] h-[18px]" />

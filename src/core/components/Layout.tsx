@@ -32,7 +32,7 @@ import { TableCallAlerts } from '../../features/tables/TableCallAlerts';
 import { KitchenPrintAgent } from '../../features/orders/KitchenPrintAgent';
 import { OfflineSync } from './OfflineSync';
 import { PosStatusBar, PosStatusList } from './PosStatusBar';
-import { usePosWallpaper } from '../lib/posWallpaper';
+import { POS_HEADER_SLOT, usePosWallpaper } from '../lib/posWallpaper';
 import { usePosStatus } from '../lib/usePosStatus';
 import { useConfirm } from './ConfirmProvider';
 import { clearOfflineCache, pendingCount } from '../lib/offline';
@@ -466,7 +466,7 @@ const Shell: React.FC = () => {
               <div className="hidden md:flex items-center gap-3 min-w-0 flex-1">
                 <Logo partner={partner} size={34} />
                 <nav className="flex items-center gap-1 min-w-0 overflow-x-auto no-scrollbar" aria-label={t('lay.posSections')}>
-                  {groups.slice(0, 1).flatMap((g) => g.items).map((item) => {
+                  {groups.slice(0, 1).flatMap((g) => g.items).filter((item) => item.to !== '/kitchen').map((item) => {
                     const Icon = item.icon;
                     const badge = item.to === '/orders' && unseenNewOrders > 0;
                     return (
@@ -500,6 +500,7 @@ const Shell: React.FC = () => {
               </div>
             )}
             <div className="flex items-center gap-1.5 shrink-0">
+              {pos && <div id={POS_HEADER_SLOT} className="flex items-center gap-1.5 mr-1" />}
               {filialSwitch && <div className="hidden md:block mr-1">{filialSwitch}</div>}
               {pos && !cashier && (
                 <div className="hidden lg:block mr-1">
@@ -524,7 +525,7 @@ const Shell: React.FC = () => {
                     </NavLink>
                   );
                 })}
-              <ConnectionDot />
+              {!pos && <ConnectionDot />}
               {pos && staffName && (
                 <span className="hidden min-[1500px]:inline-flex items-center h-9 px-3 rounded-full bg-field text-[13px] font-bold text-ink max-w-[160px] truncate">
                   {staffName}

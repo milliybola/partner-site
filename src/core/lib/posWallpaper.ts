@@ -20,3 +20,6 @@ const subscribe = (l: () => void) => {
 };
 
 export const usePosWallpaper = () => useSyncExternalStore(subscribe, () => current, () => null);
+
+/** Kassa yuqori menyusidagi sahifa tugmalari joyi (Stop-list, yangilash) — sahifa portal orqali qo'yadi */
+export const POS_HEADER_SLOT = 'pos-header-slot';

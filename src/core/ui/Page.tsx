@@ -18,11 +18,12 @@ export const PageHeader: React.FC<{
   sticky?: boolean;
   /** Fon rasmi ustida (kassa): oq yo'lak bo'lmasin */
   transparent?: boolean;
-}> = ({ title, lead, subtitle, actions, back, badge, children, sticky = true, transparent = false }) => {
+  className?: string;
+}> = ({ title, lead, subtitle, actions, back, badge, children, sticky = true, transparent = false, className = '' }) => {
   const navigate = useNavigate();
   return (
     <div
-      className={`${sticky ? 'sticky top-[var(--appbar-h,0px)] z-20' : ''} -mx-4 md:-mx-8 px-4 md:px-8 pt-3 md:pt-6 pb-3 ${transparent ? 'bg-transparent' : 'bg-canvas/95 backdrop-blur supports-[backdrop-filter]:bg-canvas/80'}`}
+      className={`${sticky ? 'sticky top-[var(--appbar-h,0px)] z-20' : ''} -mx-4 md:-mx-8 px-4 md:px-8 pt-3 md:pt-6 pb-3 ${transparent ? 'bg-transparent' : 'bg-canvas/95 backdrop-blur supports-[backdrop-filter]:bg-canvas/80'} ${className}`}
     >
       <div className="flex items-center justify-between gap-3">
         <div className={`flex items-center gap-2 min-w-0 ${lead ? 'flex-1' : ''}`}>

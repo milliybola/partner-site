@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Ban, Clock, FileSpreadsheet, Layers, Map as MapIcon, MoreVertical, Plus, QrCode, RefreshCw, ScanLine, ShoppingBag, Store, Table2, Truck, Users } from 'lucide-react';
+import { Ban, Clock, FileSpreadsheet, Layers, Map as MapIcon, MoreVertical, Move, Plus, QrCode, RefreshCw, ScanLine, ShoppingBag, Store, Table2, Truck, Users } from 'lucide-react';
 import { FloorPlan } from '../components/FloorPlan';
+import { usePosWallpaper } from '../../../core/lib/posWallpaper';
 import { StopListSheet } from '../components/StopListSheet';
 import { tablesApi } from '../services/tablesApi';
 import type { Hall, TableModel } from '../services/tablesApi';
@@ -336,6 +337,8 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   // Ko'rinish: Zal (stollar) / Saboy (olib ketish) / Dostavka (yetkazish) — ?view=PICKUP|DELIVERY
   const [sp, setSp] = useSearchParams();
   const isPos = useWorkMode() === 'pos'; // katta rejim kartalari va Saboy/Dostavka — faqat kassa rejimida
+  // Sozlash (stol/zal qo'shish, QR, joylashtirish) — faqat Boshqaruv rejimida; kassa ekrani faqat ish uchun
+  const showSetup = canManage && !isPos;
   type ViewKey = 'TABLES' | 'PICKUP' | 'DELIVERY';
   const viewParam = sp.get('view');
   const view: ViewKey = !isPos ? 'TABLES' : viewParam === 'PICKUP' || viewParam === 'DELIVERY' ? viewParam : 'TABLES';
@@ -429,7 +432,10 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
       /* saqlanmasa ham ishlaydi */
     }
   };
-  const mapMode = isPos && layout === 'map';
+  // Boshqaruv: zal rejasini tahrirlash (stollarni joylash, fon) — kassada faqat ko'rish
+  const [planOpen, setPlanOpen] = useState(false);
+  const wallpaper = usePosWallpaper();
+  const mapMode = isPos ? layout === 'map' : planOpen;
   // Zal xaritasi bitta zalni ko'rsatadi: «Barcha zallar» tanlangan bo'lsa — birinchi stolli zal
   const hallFilter =
     mapMode && hallSel === 'ALL' && halls.length > 0 ? (halls.find((h) => !h.self_service) || halls[0]).uuid : hallSel;
@@ -698,6 +704,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   return (
     <div className="pb-4">
       <PageHeader
+        transparent={isPos && !!wallpaper}
         title={isPos ? undefined : t('nav.tables')}
         subtitle={isPos ? undefined : loading ? t('common.loading') : t('tp.summary', { all: counts.ALL, busy: counts.OCCUPIED, free: counts.AVAILABLE })}
         lead={!isPos ? undefined : (
@@ -747,12 +754,12 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             <IconButton label={t('common.refresh')} variant="outline" onClick={() => fetchTables(true)} disabled={refreshing}>
               <RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} />
             </IconButton>
-            {canManage && (
+            {showSetup && (
               <IconButton label={t('tp.halls')} variant="outline" onClick={() => setHallsOpen(true)}>
                 <Layers className="w-[18px] h-[18px]" />
               </IconButton>
             )}
-            {canManage && (
+            {showSetup && (
               <IconButton label={t('tp.tableQrs')} variant="outline" onClick={() => setTableQrOpen(true)}>
                 <ScanLine className="w-[18px] h-[18px]" />
               </IconButton>
@@ -762,7 +769,12 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
                 <QrCode className="w-[18px] h-[18px]" />
               </IconButton>
             )}
-            {canManage && (
+            {showSetup && !planOpen && tables.length > 0 && (
+              <Button variant="outline" icon={<Move className="w-4 h-4" />} onClick={() => setPlanOpen(true)}>
+                {t('fp.plan')}
+              </Button>
+            )}
+            {showSetup && (
               <>
                 <Button variant="outline" className="hidden sm:inline-flex" icon={<FileSpreadsheet className="w-4 h-4" />} onClick={openBulk}>
                   {t('tp.bulkAdd')}
@@ -812,7 +824,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
               setHallFilter(v);
             }}
             hasUnassigned={hasUnassigned}
-            onManage={canManage ? () => setHallsOpen(true) : undefined}
+            onManage={showSetup ? () => setHallsOpen(true) : undefined}
             selfCounts={selfCounts}
             showAll={!mapMode}
             services={
@@ -877,8 +889,9 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             hall={mapHall}
             drafts={drafts}
             now={now}
-            canEdit={canManage}
-            onManageHalls={() => setHallsOpen(true)}
+            canEdit={showSetup}
+            fullBg={isPos}
+            onManageHalls={showSetup ? () => setHallsOpen(true) : undefined}
             labelOf={(tb) => mapLabelOf[tb.uuid] ?? tb.table_number}
             onOpen={openTable}
             onMenu={(tb) => setMenuTable(tb)}
@@ -895,7 +908,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
                 return { label: t('role.waiter'), run: () => setTableWaiterPick({ table: tb, mode: 'assign' }) };
               return null;
             }}
-            onGrid={() => setLayout('grid')}
+            onGrid={() => (isPos ? setLayout('grid') : setPlanOpen(false))}
           />
         ) : visible.length === 0 ? (
           tables.length === 0 && selfHalls.length > 0 ? null : tables.length === 0 ? (

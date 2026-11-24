@@ -160,6 +160,8 @@ export const FloorPlan: React.FC<{
   canEdit: boolean;
   /** Zal yo'q bo'lsa fon rasmi qo'yib bo'lmaydi — «Zallarni sozlash» oynasini ochadi */
   onManageHalls?: () => void;
+  /** Kassa: fon butun ekranga yoyiladi (Layout); boshqaruvda — xarita maydoni ichida */
+  fullBg?: boolean;
   labelOf: (tb: TableModel) => string;
   onOpen: (tb: TableModel) => void;
   onMenu: (tb: TableModel) => void;
@@ -169,7 +171,7 @@ export const FloorPlan: React.FC<{
   quickAction?: (tb: TableModel) => { label: string; run: () => void; busy?: boolean } | null;
   /** Ro'yxat (to'r) ko'rinishiga o'tish */
   onGrid: () => void;
-}> = ({ title, tables, hall, drafts, now, canEdit, onManageHalls, labelOf, onOpen, onMenu, onSaved, quickAction, onGrid }) => {
+}> = ({ title, tables, hall, drafts, now, canEdit, onManageHalls, fullBg = false, labelOf, onOpen, onMenu, onSaved, quickAction, onGrid }) => {
   const toast = useToast();
   const boxRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -271,19 +273,22 @@ export const FloorPlan: React.FC<{
   const bg = hall?.background || null;
   // Fon rasmi butun kassa ekraniga yoyiladi (Layout), xarita maydoni esa shaffof
   useEffect(() => {
+    if (!fullBg) return;
     setPosWallpaper(bg);
     return () => setPosWallpaper(null);
-  }, [bg]);
+  }, [bg, fullBg]);
+  // Ekran foni bo'lsa maydon shaffof; boshqaruvda rasm maydon ichida ko'rinadi
+  const wall = !!bg && fullBg;
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-end gap-2">
         {!editing && title && (
-          <h2 className={`mr-auto text-[18px] font-black tracking-tightest tabular-nums ${bg ? 'text-white [text-shadow:0_1px_3px_rgba(0,0,0,.6)]' : 'text-ink'}`}>{title}</h2>
+          <h2 className={`mr-auto text-[18px] font-black tracking-tightest tabular-nums ${wall ? 'text-white [text-shadow:0_1px_3px_rgba(0,0,0,.6)]' : 'text-ink'}`}>{title}</h2>
         )}
         {editing ? (
           <>
-            <span className={`mr-auto text-[13px] font-bold ${bg ? 'rounded-lg bg-surface/90 px-2.5 py-1 text-ink' : 'text-muted'}`}>{t('fp.editHint')}</span>
+            <span className={`mr-auto text-[13px] font-bold ${wall ? 'rounded-lg bg-surface/90 px-2.5 py-1 text-ink' : 'text-muted'}`}>{t('fp.editHint')}</span>
             <Button variant="outline" onClick={() => setLocal(autoPositions(tables))} disabled={saving}>
               {t('fp.autoArrange')}
             </Button>
@@ -334,11 +339,12 @@ export const FloorPlan: React.FC<{
       <div
         ref={boxRef}
         onPointerMove={onPointerMove}
-        className={`relative w-full rounded-2xl overflow-hidden select-none ${bg ? 'border border-white/25 bg-black/10' : 'border border-edge bg-[#1E293B]'} ${
+        className={`relative w-full rounded-2xl overflow-hidden select-none ${wall ? '' : 'border border-edge bg-[#1E293B] bg-cover bg-center'} ${
           editing ? 'ring-2 ring-brand touch-none' : ''
         }`}
         style={{
           height: 'max(440px, calc(100vh - var(--appbar-h, 56px) - 210px))',
+          backgroundImage: bg && !wall ? `url("${bg}")` : undefined,
         }}
       >
         {editing && (

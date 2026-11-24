@@ -10,6 +10,7 @@ import { isShop } from './session';
 import { SHIFT_EVENT, shiftApi } from '../../features/shifts/services/shiftApi';
 import type { Shift } from '../../features/shifts/services/shiftApi';
 import { t } from '../i18n';
+import { parseDate } from './format';
 
 /**
  * Kassa pastidagi holat qatori: internet (oflayn navbat), smena, printer.
@@ -29,6 +30,12 @@ export interface StatusItem {
   /** Yo'q bo'lsa — bosilmaydi */
   action?: () => void;
 }
+
+/** Smena ochilgan vaqt: backend «dd-mm-YYYY HH:MM:SS» beradi — new Date() o'qimaydi, parseDate o'qiydi */
+const shiftTime = (v: string | null | undefined) => {
+  const d = parseDate(v);
+  return d ? hhmm(d.getTime()) : '—';
+};
 
 const hhmm = (ms: number) => {
   const d = new Date(ms);
@@ -147,7 +154,7 @@ export const usePosStatus = (enabled: boolean): StatusItem[] => {
             id: 'shift',
             tone: 'ok',
             icon: Clock,
-            text: t('bar.shiftOpen', { name: shift.opened_by_name || '—', time: hhmm(new Date(shift.opened_at).getTime()) }),
+            text: t('bar.shiftOpen', { name: shift.opened_by_name || '—', time: shiftTime(shift.opened_at) }),
             hint: shift.filial_name || undefined, // A3: qaysi filial smenasi
             action: goShift,
           }

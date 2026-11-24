@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ImagePlus, LayoutGrid, Move, QrCode, Trash2, Users } from 'lucide-react';
 import { tablesApi } from '../services/tablesApi';
 import type { Hall, TableModel, TablePosition } from '../services/tablesApi';
@@ -8,6 +8,7 @@ import { getErrorMessage } from '../../../core/lib/errors';
 import { formatMoney, minutesSince } from '../../../core/lib/format';
 import { Button } from '../../../core/ui';
 import { t } from '../../../core/i18n';
+import { setPosWallpaper } from '../../../core/lib/posWallpaper';
 
 /**
  * Kassadagi zal xaritasi (InOne/YesPOS uslubida): stollar atrofida stullar bilan, zal rejasidagi joyida.
@@ -157,6 +158,8 @@ export const FloorPlan: React.FC<{
   now: number;
   /** Ega/menejer: joylashtirish va fon rasmi */
   canEdit: boolean;
+  /** Zal yo'q bo'lsa fon rasmi qo'yib bo'lmaydi — «Zallarni sozlash» oynasini ochadi */
+  onManageHalls?: () => void;
   labelOf: (tb: TableModel) => string;
   onOpen: (tb: TableModel) => void;
   onMenu: (tb: TableModel) => void;
@@ -166,7 +169,7 @@ export const FloorPlan: React.FC<{
   quickAction?: (tb: TableModel) => { label: string; run: () => void; busy?: boolean } | null;
   /** Ro'yxat (to'r) ko'rinishiga o'tish */
   onGrid: () => void;
-}> = ({ title, tables, hall, drafts, now, canEdit, labelOf, onOpen, onMenu, onSaved, quickAction, onGrid }) => {
+}> = ({ title, tables, hall, drafts, now, canEdit, onManageHalls, labelOf, onOpen, onMenu, onSaved, quickAction, onGrid }) => {
   const toast = useToast();
   const boxRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -266,17 +269,34 @@ export const FloorPlan: React.FC<{
   };
 
   const bg = hall?.background || null;
+  // Fon rasmi butun kassa ekraniga yoyiladi (Layout), xarita maydoni esa shaffof
+  useEffect(() => {
+    setPosWallpaper(bg);
+    return () => setPosWallpaper(null);
+  }, [bg]);
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {!editing && title && <h2 className="mr-auto text-[18px] font-black tracking-tightest text-ink tabular-nums">{title}</h2>}
+        {!editing && title && (
+          <h2 className={`mr-auto text-[18px] font-black tracking-tightest tabular-nums ${bg ? 'text-white [text-shadow:0_1px_3px_rgba(0,0,0,.6)]' : 'text-ink'}`}>{title}</h2>
+        )}
         {editing ? (
           <>
-            <span className="mr-auto text-[13px] font-bold text-muted">{t('fp.editHint')}</span>
+            <span className={`mr-auto text-[13px] font-bold ${bg ? 'rounded-lg bg-surface/90 px-2.5 py-1 text-ink' : 'text-muted'}`}>{t('fp.editHint')}</span>
             <Button variant="outline" onClick={() => setLocal(autoPositions(tables))} disabled={saving}>
               {t('fp.autoArrange')}
             </Button>
+            {!hall && (
+              <span className="flex items-center gap-2 rounded-lg bg-amber-50 px-2.5 py-1 text-[13px] font-bold text-amber-800">
+                {t('fp.noHallBg')}
+                {onManageHalls && (
+                  <button type="button" className="underline" onClick={onManageHalls}>
+                    {t('tp.manageHalls')}
+                  </button>
+                )}
+              </span>
+            )}
             {hall && (
               <>
                 <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => void pickBackground(e.target.files?.[0])} />
@@ -314,12 +334,11 @@ export const FloorPlan: React.FC<{
       <div
         ref={boxRef}
         onPointerMove={onPointerMove}
-        className={`relative w-full rounded-2xl overflow-hidden border border-edge bg-[#1E293B] bg-cover bg-center select-none ${
+        className={`relative w-full rounded-2xl overflow-hidden select-none ${bg ? 'border border-white/25 bg-black/10' : 'border border-edge bg-[#1E293B]'} ${
           editing ? 'ring-2 ring-brand touch-none' : ''
         }`}
         style={{
           height: 'max(440px, calc(100vh - var(--appbar-h, 56px) - 210px))',
-          backgroundImage: bg ? `url("${bg}")` : undefined,
         }}
       >
         {editing && (

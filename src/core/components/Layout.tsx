@@ -32,6 +32,7 @@ import { TableCallAlerts } from '../../features/tables/TableCallAlerts';
 import { KitchenPrintAgent } from '../../features/orders/KitchenPrintAgent';
 import { OfflineSync } from './OfflineSync';
 import { PosStatusBar, PosStatusList } from './PosStatusBar';
+import { usePosWallpaper } from '../lib/posWallpaper';
 import { usePosStatus } from '../lib/usePosStatus';
 import { useConfirm } from './ConfirmProvider';
 import { clearOfflineCache, pendingCount } from '../lib/offline';
@@ -292,6 +293,7 @@ const Shell: React.FC = () => {
   );
   const manager = isManager(partner);
   const pos = mode === 'pos';
+  const wallpaper = usePosWallpaper();
   const locked = usePosLocked();
   const statusItems = usePosStatus(pos);
   const hasPins = usePosHasPins(pos, locked);
@@ -346,8 +348,18 @@ const Shell: React.FC = () => {
     />
   ) : null;
 
+  // Kassa foni: zal rasmi butun ekran bo'ylab (stollar maydoni ichida emas), ustida panellar
+  const wall = pos ? wallpaper : null;
+
   return (
-    <div className={`min-h-screen bg-canvas text-ink md:flex ${pos ? 'md:[--statusbar-h:28px]' : ''}`} style={{ ['--appbar-h' as any]: '56px' }}>
+    <div
+      className={`min-h-screen ${wall ? 'bg-[#0F172A] bg-cover bg-center bg-fixed' : 'bg-canvas'} text-ink md:flex ${pos ? 'md:[--statusbar-h:28px]' : ''}`}
+      style={{
+        ['--appbar-h' as any]: '56px',
+        // Yengil qoraytirish — oq tugmalar va yozuvlar har qanday rasmda o'qiladi
+        ...(wall ? { backgroundImage: `linear-gradient(rgba(15,23,42,.18), rgba(15,23,42,.18)), url("${wall}")` } : {}),
+      }}
+    >
       {/* Kiruvchi qo'ng'iroq (telefon buyurtma) va stol chaqiruvi — 2-bosqich */}
       {posStage && <CallAlerts />}
       {posStage && <TableCallAlerts />}
@@ -436,7 +448,7 @@ const Shell: React.FC = () => {
       {/* ---------------- Main column ---------------- */}
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Top bar (mobile + desktop) */}
-        <header className="sticky top-0 z-30 h-14 bg-surface/95 backdrop-blur border-b border-edge pt-[var(--safe-top)] box-content">
+        <header className={`sticky top-0 z-30 h-14 ${wall ? 'bg-surface/80' : 'bg-surface/95'} backdrop-blur border-b border-edge pt-[var(--safe-top)] box-content`}>
           <div className="h-14 flex items-center justify-between gap-2 px-4 md:px-8">
             <div className="flex items-center gap-2.5 min-w-0 md:hidden">
               <Logo partner={partner} size={32} />

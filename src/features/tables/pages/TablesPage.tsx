@@ -878,6 +878,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             drafts={drafts}
             now={now}
             canEdit={canManage}
+            onManageHalls={() => setHallsOpen(true)}
             labelOf={(tb) => mapLabelOf[tb.uuid] ?? tb.table_number}
             onOpen={openTable}
             onMenu={(tb) => setMenuTable(tb)}

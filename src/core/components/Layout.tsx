@@ -131,6 +131,21 @@ const ModeSwitch: React.FC<{ mode: WorkMode; onChange: (m: WorkMode) => void; wi
   </div>
 );
 
+/** Yuqori menyuda bitta tugma: kassadan Boshqaruvga yoki Boshqaruvdan kassaga o'tadi */
+const ModeButton: React.FC<{ mode: WorkMode; onChange: (m: WorkMode) => void }> = ({ mode, onChange }) => {
+  const toManage = mode === 'pos';
+  const Icon = toManage ? Settings2 : Store;
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(toManage ? 'manage' : 'pos')}
+      className="inline-flex items-center gap-1.5 h-10 px-3.5 rounded-xl bg-field text-[14px] font-bold text-ink cursor-pointer transition-colors hover:bg-edge/60"
+    >
+      <Icon className="w-4 h-4" /> {toManage ? t('lay.manage') : t('nav.pos')}
+    </button>
+  );
+};
+
 const ConnectionDot: React.FC = () => {
   const { isConnected } = useRealtime();
   return (
@@ -504,7 +519,7 @@ const Shell: React.FC = () => {
               </div>
             ) : (
               <div className="hidden md:flex items-center gap-3 text-[13px] text-muted min-w-0">
-                {!cashier && posStage && <ModeSwitch mode={mode} onChange={changeMode} />}
+                {!cashier && posStage && <ModeButton mode={mode} onChange={changeMode} />}
                 <span className="truncate">{`${w.venue} boshqaruv paneli`}</span>
               </div>
             )}
@@ -513,7 +528,7 @@ const Shell: React.FC = () => {
               {filialSwitch && <div className="hidden md:block mr-1">{filialSwitch}</div>}
               {pos && !cashier && (
                 <div className="hidden lg:block mr-1">
-                  <ModeSwitch mode={mode} onChange={changeMode} />
+                  <ModeButton mode={mode} onChange={changeMode} />
                 </div>
               )}
               {pos &&
@@ -567,7 +582,7 @@ const Shell: React.FC = () => {
         </header>
         <OfflineSync receipts={posStage} />
 
-        <main className="flex-1 px-4 md:px-8 pb-[calc(var(--tabbar-h)+var(--safe-bottom)+16px)] md:pb-10">
+        <main className={`flex-1 px-4 md:px-8 pb-[calc(var(--tabbar-h)+var(--safe-bottom)+16px)] ${wall ? 'md:pb-2' : 'md:pb-10'}`}>
           {/* Rahbar ishlayotgan filialni almashtirsa sahifa qayta yuklanadi (ma'lumotlar shu filial bo'yicha) */}
           <Outlet key={workingFilial ?? 'all'} />
         </main>

@@ -725,9 +725,6 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             <Button variant="outline" icon={<Ban className="w-4 h-4" />} onClick={() => setStopListOpen(true)}>
               {t('sl.title')}
             </Button>
-            <IconButton label={t('common.refresh')} variant="outline" onClick={() => fetchTables(true)} disabled={refreshing}>
-              <RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} />
-            </IconButton>
           </>,
           headerSlot,
         )}
@@ -941,6 +938,8 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
               return null;
             }}
             onGrid={() => (isPos ? setLayout('grid') : setPlanOpen(false))}
+            onRefresh={() => fetchTables(true)}
+            refreshing={refreshing}
           />
         ) : visible.length === 0 ? (
           tables.length === 0 && selfHalls.length > 0 ? null : tables.length === 0 ? (
@@ -972,9 +971,16 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             {isPos && (
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-[18px] font-black tracking-tightest text-ink tabular-nums">{t('tp.tablesTotal', { sum: formatMoney(openTotal) })}</h2>
-                <Button variant="outline" icon={<MapIcon className="w-4 h-4" />} onClick={() => setLayout('map')}>
-                  {t('fp.map')}
-                </Button>
+                <div className="flex items-center gap-2">
+                  {headerSlot && (
+                    <IconButton label={t('common.refresh')} variant="outline" onClick={() => fetchTables(true)} disabled={refreshing}>
+                      <RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} />
+                    </IconButton>
+                  )}
+                  <Button variant="outline" icon={<MapIcon className="w-4 h-4" />} onClick={() => setLayout('map')}>
+                    {t('fp.map')}
+                  </Button>
+                </div>
               </div>
             )}
             {sections.map((sec) => (

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ImagePlus, LayoutGrid, Move, QrCode, Trash2, Users } from 'lucide-react';
+import { ImagePlus, LayoutGrid, Move, QrCode, RefreshCw, Trash2, Users } from 'lucide-react';
 import { tablesApi } from '../services/tablesApi';
 import type { Hall, TableModel, TablePosition } from '../services/tablesApi';
 import type { TableDraft } from '../lib/tableDrafts';
@@ -171,7 +171,10 @@ export const FloorPlan: React.FC<{
   quickAction?: (tb: TableModel) => { label: string; run: () => void; busy?: boolean } | null;
   /** Ro'yxat (to'r) ko'rinishiga o'tish */
   onGrid: () => void;
-}> = ({ title, tables, hall, drafts, now, canEdit, onManageHalls, fullBg = false, labelOf, onOpen, onMenu, onSaved, quickAction, onGrid }) => {
+  /** Yangilash (kassa: sarlavha qatorida, Ro'yxat ikonkasi yonida) */
+  onRefresh?: () => void;
+  refreshing?: boolean;
+}> = ({ title, tables, hall, drafts, now, canEdit, onManageHalls, fullBg = false, labelOf, onOpen, onMenu, onSaved, quickAction, onGrid, onRefresh, refreshing = false }) => {
   const toast = useToast();
   const boxRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -331,6 +334,23 @@ export const FloorPlan: React.FC<{
                 {t('fp.edit')}
               </Button>
             )}
+            {onRefresh &&
+              (wall ? (
+                <button
+                  type="button"
+                  aria-label={t('common.refresh')}
+                  title={t('common.refresh')}
+                  onClick={onRefresh}
+                  disabled={refreshing}
+                  className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-white/25 bg-white/15 text-white backdrop-blur hover:bg-white/25 disabled:opacity-60"
+                >
+                  <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+                </button>
+              ) : (
+                <Button variant="outline" aria-label={t('common.refresh')} onClick={onRefresh} disabled={refreshing}>
+                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                </Button>
+              ))}
             {wall ? (
               <button
                 type="button"
@@ -357,7 +377,7 @@ export const FloorPlan: React.FC<{
           editing ? 'ring-2 ring-brand touch-none' : ''
         }`}
         style={{
-          height: wall ? 'max(420px, calc(100vh - var(--appbar-h, 56px) - 250px))' : 'max(440px, calc(100vh - var(--appbar-h, 56px) - 210px))',
+          height: wall ? 'max(420px, calc(100vh - var(--appbar-h, 56px) - var(--statusbar-h, 0px) - 100px))' : 'max(440px, calc(100vh - var(--appbar-h, 56px) - 210px))',
           backgroundImage: bg && !wall ? `url("${bg}")` : undefined,
         }}
       >

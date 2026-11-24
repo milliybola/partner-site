@@ -448,8 +448,13 @@ const Shell: React.FC = () => {
       {/* ---------------- Main column ---------------- */}
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Top bar (mobile + desktop) */}
-        <header className={`sticky top-0 z-30 h-14 ${wall ? 'bg-surface/80' : 'bg-surface/95'} backdrop-blur border-b border-edge pt-[var(--safe-top)] box-content`}>
-          <div className="h-14 flex items-center justify-between gap-2 px-4 md:px-8">
+        <header
+          className={`sticky top-0 z-30 h-14 pt-[var(--safe-top)] box-content ${
+            // Kassa fon rasmi ustida: oq yo'lak yo'q — har bir tugma alohida oq (YesPOS uslubi)
+            wall ? 'pos-glass-header bg-gradient-to-b from-black/30 to-transparent' : 'bg-surface/95 backdrop-blur border-b border-edge'
+          }`}
+        >
+          <div className={`h-14 flex items-center justify-between gap-2 px-4 md:px-8`}>
             <div className="flex items-center gap-2.5 min-w-0 md:hidden">
               <Logo partner={partner} size={32} />
               {filialSwitch ? (
@@ -477,7 +482,11 @@ const Shell: React.FC = () => {
                         title={item.label}
                         className={({ isActive }) =>
                           `relative shrink-0 inline-flex items-center gap-2 h-11 px-3.5 rounded-xl text-[15px] font-bold transition-colors ${
-                            isActive ? 'bg-brand text-white' : 'text-muted hover:bg-field hover:text-ink'
+                            isActive
+                              ? 'bg-brand text-white'
+                              : wall
+                                ? 'bg-white/90 text-ink shadow-sm hover:bg-white'
+                                : 'text-muted hover:bg-field hover:text-ink'
                           }`
                         }
                       >
@@ -518,7 +527,9 @@ const Shell: React.FC = () => {
                       title={item.label}
                       aria-label={item.label}
                       className={({ isActive }) =>
-                        `shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${isActive ? 'bg-brand text-white' : 'text-muted hover:bg-field hover:text-ink'}`
+                        `shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${
+                          isActive ? 'bg-brand text-white' : wall ? 'bg-white/90 text-ink shadow-sm hover:bg-white' : 'text-muted hover:bg-field hover:text-ink'
+                        }`
                       }
                     >
                       <Icon className="w-[19px] h-[19px]" />

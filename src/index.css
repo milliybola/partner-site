@@ -233,3 +233,13 @@ input[type='number'] { -moz-appearance: textfield; }
     border-radius: 0 !important;
   }
 }
+
+/* Kassa: fon rasmi ustidagi yuqori menyu — oq yo'lak o'rniga alohida oq tugmalar (YesPOS uslubi).
+   Filial, Kassa/Boshqaruv, til tanlash, xodim nomi — bg-field o'rniga oq, soya bilan. */
+.pos-glass-header .bg-field {
+  background-color: rgb(255 255 255 / 0.92);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+}
+.pos-glass-header .bg-field:hover {
+  background-color: rgb(255 255 255);
+}

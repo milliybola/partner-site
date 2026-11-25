@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { getLang, setLang, t } from './index';
 import type { Lang } from './index';
 
@@ -68,7 +68,6 @@ export const LangSwitch: React.FC<{ className?: string }> = ({ className = '' })
       >
         <current.Flag />
         {current.short}
-        <ChevronDown className={`h-4 w-4 text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <ul

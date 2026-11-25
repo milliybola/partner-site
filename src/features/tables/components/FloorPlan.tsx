@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ImagePlus, LayoutGrid, Move, QrCode, RefreshCw, Trash2, Users } from 'lucide-react';
+import { ImagePlus, LayoutGrid, Move, QrCode, RefreshCw, Trash2 } from 'lucide-react';
 import { tablesApi } from '../services/tablesApi';
 import type { Hall, TableModel, TablePosition } from '../services/tablesApi';
 import type { TableDraft } from '../lib/tableDrafts';
@@ -8,7 +8,6 @@ import { getErrorMessage } from '../../../core/lib/errors';
 import { formatMoney, minutesSince } from '../../../core/lib/format';
 import { Button } from '../../../core/ui';
 import { t } from '../../../core/i18n';
-import { setPosWallpaper } from '../../../core/lib/posWallpaper';
 
 /**
  * Kassadagi zal xaritasi (InOne/YesPOS uslubida): stollar atrofida stullar bilan, zal rejasidagi joyida.
@@ -21,17 +20,24 @@ type Pos = { x: number; y: number };
 
 /** Stol kartasining o'lchami (px) — joy (0–100%) kartaning chap-yuqori burchagi uchun «maydon − karta» ichida */
 const TILE = 92;
+/** Xarita ichki chekkasi (px): stullar maydon chetida kesilmasin; sudrash hisobi ham shuni hisobga oladi */
+const INSET = 24;
+/** Bitta stol egallaydigan joy (px): stol + ikki tomondagi stullar + kichik oraliq — stollar bir-biriga tegmasligi uchun */
+const FOOT = TILE + 2 * 18 + 8;
 
-/** Joylashtirilmagan stollar uchun avtomatik to'r: ustunlar soni ekran nisbatiga yaqin */
-const autoPositions = (tables: TableModel[]): Record<string, Pos> => {
+/**
+ * Avtomatik to'r. `rowsWanted` berilmasa — ustunlar soni ekran nisbatiga yaqin (joylashtirilmagan stollar uchun).
+ * `byColumn` — stollar ustun bo'yicha to'ldiriladi (1–6 birinchi ustun, 7–12 ikkinchi …), aks holda qator bo'yicha.
+ */
+const autoPositions = (tables: TableModel[], rowsWanted?: number, byColumn = false): Record<string, Pos> => {
   const n = tables.length;
   if (!n) return {};
-  const cols = Math.max(1, Math.ceil(Math.sqrt(n * 1.6)));
-  const rows = Math.max(1, Math.ceil(n / cols));
+  const rows = rowsWanted ? Math.min(n, Math.max(1, rowsWanted)) : Math.max(1, Math.ceil(n / Math.max(1, Math.ceil(Math.sqrt(n * 1.6)))));
+  const cols = Math.max(1, Math.ceil(n / rows));
   const out: Record<string, Pos> = {};
   tables.forEach((tb, i) => {
-    const c = i % cols;
-    const r = Math.floor(i / cols);
+    const c = byColumn ? Math.floor(i / rows) : i % cols;
+    const r = byColumn ? i % rows : Math.floor(i / cols);
     out[tb.uuid] = {
       x: cols === 1 ? 50 : (c / (cols - 1)) * 100,
       y: rows === 1 ? 50 : (r / (rows - 1)) * 100,
@@ -82,16 +88,22 @@ const chairsOf = (capacity: number) => {
 const Chairs: React.FC<{ count: number; dir: 'top' | 'bottom' | 'left' | 'right'; cls: string }> = ({ count, dir, cls }) => {
   if (!count) return null;
   const horizontal = dir === 'top' || dir === 'bottom';
+  // Stul: qalinligi 14px, stoldan 4px uzoqda; eni tomondagi soniga qarab (1 — keng, 3 — tor), stol eniga sig'adi
   const place = {
-    top: 'left-0 right-0 -top-[9px] flex-row',
-    bottom: 'left-0 right-0 -bottom-[9px] flex-row',
-    left: 'top-0 bottom-0 -left-[9px] flex-col',
-    right: 'top-0 bottom-0 -right-[9px] flex-col',
+    top: 'left-0 right-0 -top-[18px] flex-row',
+    bottom: 'left-0 right-0 -bottom-[18px] flex-row',
+    left: 'top-0 bottom-0 -left-[18px] flex-col',
+    right: 'top-0 bottom-0 -right-[18px] flex-col',
   }[dir];
+  const len = count === 1 ? 48 : count === 2 ? 38 : 26;
   return (
     <span className={`absolute ${place} flex items-center justify-center gap-1.5 pointer-events-none`} aria-hidden>
       {Array.from({ length: count }).map((_, i) => (
-        <span key={i} className={`${cls} rounded-[3px] opacity-90 ${horizontal ? 'w-5 h-[7px]' : 'w-[7px] h-5'}`} />
+        <span
+          key={i}
+          className={`${cls} rounded-[4px] opacity-95 shadow-sm`}
+          style={horizontal ? { width: len, height: 14 } : { width: 14, height: len }}
+        />
       ))}
     </span>
   );
@@ -123,27 +135,20 @@ const PlanTile: React.FC<{
       <Chairs count={ch.side} dir="left" cls={tone.chair} />
       <Chairs count={ch.side} dir="right" cls={tone.chair} />
       <span className={`absolute inset-0 flex flex-col items-center justify-center gap-0.5 px-1 text-center ${tone.text}`}>
-        <span className="text-[19px] font-black leading-none tracking-tightest max-w-full truncate">{label}</span>
+        <span className={`${o || draft ? 'text-[28px]' : 'text-[32px]'} font-black leading-none tracking-tightest max-w-full truncate`}>{label}</span>
         {o ? (
-          <>
-            <span className="text-[12px] font-black tabular-nums leading-tight">{formatMoney(o.total_price)}</span>
-            <span className="text-[10px] font-bold opacity-90 leading-tight max-w-full truncate inline-flex items-center gap-0.5">
-              {o.order_source === 'QR' && <QrCode className="w-3 h-3 shrink-0" />}
-              {who}
-              {mins !== null && <span className={mins >= 60 ? 'underline' : ''}>· {mins >= 60 ? `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}` : `${mins}′`}</span>}
-            </span>
-          </>
+          // Band stol (YesPOS kabi): raqam va kim ochgani; summa sarlavhada, tafsilot stol bosilganda
+          <span className="mt-0.5 text-[12px] font-extrabold opacity-95 leading-tight max-w-full truncate inline-flex items-center gap-0.5" title={mins !== null ? `${mins}′` : undefined}>
+            {o.order_source === 'QR' && <QrCode className="w-3 h-3 shrink-0" />}
+            {who}
+          </span>
         ) : draft ? (
           <span className="text-[12px] font-black tabular-nums leading-tight">{formatMoney(draft.subtotal)}</span>
         ) : kind === 'reserved' ? (
           <span className="text-[10px] font-bold opacity-90">{t('tp.reserved')}</span>
         ) : kind === 'inactive' ? (
           <span className="text-[10px] font-bold">{t('tp.inactive')}</span>
-        ) : (
-          <span className="text-[10px] font-bold opacity-85 inline-flex items-center gap-0.5">
-            <Users className="w-3 h-3" /> {table.capacity}
-          </span>
-        )}
+        ) : null /* bo'sh stol: faqat raqam — sig'imni stullar ko'rsatadi */}
       </span>
     </span>
   );
@@ -160,7 +165,7 @@ export const FloorPlan: React.FC<{
   canEdit: boolean;
   /** Zal yo'q bo'lsa fon rasmi qo'yib bo'lmaydi — «Zallarni sozlash» oynasini ochadi */
   onManageHalls?: () => void;
-  /** Kassa: fon butun ekranga yoyiladi (Layout); boshqaruvda — xarita maydoni ichida */
+  /** Kassa: ekranda fon rasmi bor — shaffof panel uslubi; boshqaruvda rasm xarita maydoni ichida */
   fullBg?: boolean;
   labelOf: (tb: TableModel) => string;
   onOpen: (tb: TableModel) => void;
@@ -181,21 +186,59 @@ export const FloorPlan: React.FC<{
   const saved = useMemo(() => positionsOf(tables), [tables]);
   const [editing, setEditing] = useState(false);
   const [local, setLocal] = useState<Record<string, Pos>>(saved);
+  // Tartiblash: qatorlar soni va to'ldirish yo'nalishi (o'zgarishi bilan stollar qayta joylanadi)
+  const [rowsWanted, setRowsWanted] = useState(() => Math.max(1, Math.round(Math.sqrt(Math.max(1, tables.length) / 1.6))));
+  const [byColumn, setByColumn] = useState(false);
+  const arrange = (rows: number, col: boolean) => {
+    const r = Math.min(Math.max(1, tables.length), Math.max(1, rows));
+    setRowsWanted(r);
+    setByColumn(col);
+    setLocal(autoPositions(tables, r, col));
+  };
   const [drag, setDrag] = useState<{ uuid: string; dx: number; dy: number; moved: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [bgBusy, setBgBusy] = useState(false);
 
   // Tahrirda — qo'lda surilgan joylar (server yangilanishi ularni bosib ketmaydi; yangi kelgan stol — saqlangan joyida).
   // Boshqa zalga o'tilsa komponent qayta yaratiladi (key = zal), tahrir o'z-o'zidan bekor bo'ladi.
-  const pos: Record<string, Pos> = editing ? { ...saved, ...local } : saved;
+  const pos: Record<string, Pos> = useMemo(() => (editing ? { ...saved, ...local } : saved), [editing, saved, local]);
+
+  // Xarita o'lchami: stollar sig'masa (ko'p qator, past ekran) — hammasi bir xil kichrayadi, ustma-ust tushmaydi
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setBox({ w: e.contentRect.width, h: e.contentRect.height }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scale = useMemo(() => {
+    if (!box.w || !box.h) return 1;
+    const spanX = Math.max(1, box.w - INSET * 2 - TILE);
+    const spanY = Math.max(1, box.h - INSET * 2 - TILE);
+    const list = tables.map((tb) => pos[tb.uuid]).filter(Boolean) as Pos[];
+    let s = 1;
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const d = Math.max((Math.abs(list[i].x - list[j].x) / 100) * spanX, (Math.abs(list[i].y - list[j].y) / 100) * spanY);
+        if (d < 4) continue; // ataylab ustma-ust qo'yilgan — hisobga olinmaydi
+        s = Math.min(s, d / FOOT);
+      }
+    }
+    return Math.max(0.45, Math.min(1, s));
+  }, [box.w, box.h, tables, pos]);
+  const size = Math.round(TILE * scale);
 
   const toPct = (clientX: number, clientY: number, dx: number, dy: number): Pos | null => {
-    const box = boxRef.current?.getBoundingClientRect();
-    if (!box) return null;
-    const w = Math.max(1, box.width - TILE);
-    const h = Math.max(1, box.height - TILE);
+    const rect = boxRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    const w = Math.max(1, rect.width - INSET * 2 - size);
+    const h = Math.max(1, rect.height - INSET * 2 - size);
     const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)) * 100) / 100;
-    return { x: clamp(((clientX - box.left - dx) / w) * 100), y: clamp(((clientY - box.top - dy) / h) * 100) };
+    return {
+      x: clamp(((clientX - rect.left - INSET - dx) / w) * 100),
+      y: clamp(((clientY - rect.top - INSET - dy) / h) * 100),
+    };
   };
 
   const onPointerDown = (e: React.PointerEvent, tb: TableModel) => {
@@ -274,14 +317,8 @@ export const FloorPlan: React.FC<{
   };
 
   const bg = hall?.background || null;
-  // Fon rasmi butun kassa ekraniga yoyiladi (Layout), xarita maydoni esa shaffof
-  useEffect(() => {
-    if (!fullBg) return;
-    setPosWallpaper(bg);
-    return () => setPosWallpaper(null);
-  }, [bg, fullBg]);
-  // Ekran foni bo'lsa maydon shaffof; boshqaruvda rasm maydon ichida ko'rinadi
-  const wall = !!bg && fullBg;
+  // Kassada fon butun ekranda (Sotuv sahifasi qo'yadi) — xarita maydoni shaffof; boshqaruvda rasm maydon ichida
+  const wall = fullBg;
 
   return (
     <div
@@ -294,9 +331,40 @@ export const FloorPlan: React.FC<{
         {editing ? (
           <>
             <span className={`mr-auto text-[13px] font-bold ${wall ? 'rounded-lg bg-surface/90 px-2.5 py-1 text-ink' : 'text-muted'}`}>{t('fp.editHint')}</span>
-            <Button variant="outline" onClick={() => setLocal(autoPositions(tables))} disabled={saving}>
-              {t('fp.autoArrange')}
-            </Button>
+            <div className="flex items-center gap-1 rounded-xl border border-edge bg-surface p-1" aria-label={t('fp.autoArrange')}>
+              <span className="px-2 text-[13px] font-bold text-muted">{t('fp.rows')}</span>
+              <button
+                type="button"
+                aria-label="−"
+                onClick={() => arrange(rowsWanted - 1, byColumn)}
+                disabled={saving || rowsWanted <= 1}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-field text-[18px] font-black text-ink cursor-pointer disabled:opacity-40"
+              >
+                −
+              </button>
+              <span className="min-w-[28px] text-center text-[15px] font-black tabular-nums text-ink">{rowsWanted}</span>
+              <button
+                type="button"
+                aria-label="+"
+                onClick={() => arrange(rowsWanted + 1, byColumn)}
+                disabled={saving || rowsWanted >= tables.length}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-field text-[18px] font-black text-ink cursor-pointer disabled:opacity-40"
+              >
+                +
+              </button>
+              <span className="mx-1 h-6 w-px bg-edge" aria-hidden />
+              {([false, true] as const).map((col) => (
+                <button
+                  key={String(col)}
+                  type="button"
+                  onClick={() => arrange(rowsWanted, col)}
+                  disabled={saving}
+                  className={`h-8 rounded-lg px-2.5 text-[13px] font-bold cursor-pointer ${byColumn === col ? 'bg-brand text-white' : 'text-muted hover:bg-field hover:text-ink'}`}
+                >
+                  {col ? t('fp.byColumn') : t('fp.byRow')}
+                </button>
+              ))}
+            </div>
             {!hall && (
               <span className="flex items-center gap-2 rounded-lg bg-amber-50 px-2.5 py-1 text-[13px] font-bold text-amber-800">
                 {t('fp.noHallBg')}
@@ -377,7 +445,7 @@ export const FloorPlan: React.FC<{
           editing ? 'ring-2 ring-brand touch-none' : ''
         }`}
         style={{
-          height: wall ? 'max(420px, calc(100vh - var(--appbar-h, 56px) - var(--statusbar-h, 0px) - 100px))' : 'max(440px, calc(100vh - var(--appbar-h, 56px) - 210px))',
+          height: wall ? 'max(420px, calc(100vh - var(--appbar-h, 56px) - var(--statusbar-h, 0px) - 100px))' : 'max(380px, calc(100vh - var(--appbar-h, 56px) - 290px))',
           backgroundImage: bg && !wall ? `url("${bg}")` : undefined,
         }}
       >
@@ -389,7 +457,7 @@ export const FloorPlan: React.FC<{
           />
         )}
         {/* Stullar karta chetidan chiqadi — maydon ichida qolishi uchun ichki chekka */}
-        <div className="absolute inset-3">
+        <div className="absolute" style={{ inset: INSET }}>
           {tables.map((tb) => {
             const p = pos[tb.uuid] || { x: 0, y: 0 };
             const q = editing ? null : quickAction?.(tb) || null;
@@ -398,8 +466,8 @@ export const FloorPlan: React.FC<{
                 key={tb.uuid}
                 className="absolute"
                 style={{
-                  left: `calc((100% - ${TILE}px) * ${p.x / 100})`,
-                  top: `calc((100% - ${TILE}px) * ${p.y / 100})`,
+                  left: `calc((100% - ${size}px) * ${p.x / 100})`,
+                  top: `calc((100% - ${size}px) * ${p.y / 100})`,
                   zIndex: drag?.uuid === tb.uuid ? 20 : 1,
                 }}
               >
@@ -421,8 +489,11 @@ export const FloorPlan: React.FC<{
                     onMenu(tb);
                   }}
                   className="block focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white rounded-xl"
+                  style={{ width: size, height: size }}
                 >
-                  <PlanTile table={tb} label={labelOf(tb)} draft={drafts[tb.uuid]} now={now} editing={editing} dragging={drag?.uuid === tb.uuid} />
+                  <span className="block origin-top-left" style={{ width: TILE, height: TILE, transform: scale < 1 ? `scale(${scale})` : undefined }}>
+                    <PlanTile table={tb} label={labelOf(tb)} draft={drafts[tb.uuid]} now={now} editing={editing} dragging={drag?.uuid === tb.uuid} />
+                  </span>
                 </button>
                 {q && (
                   <button

@@ -47,6 +47,7 @@ import { formatDateTime, formatMoney } from '../../../core/lib/format';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { getQueue, othersQueuedCount, queueWhat, summarizeQueue } from '../../../core/lib/offline';
 import { clearSession, isManager as isManagerFn, isOwner } from '../../../core/lib/session';
+import { useWorkMode } from '../../../core/lib/workMode';
 import { useOwnerFilials, useWorkingFilial } from '../../../core/lib/useWorkingFilial';
 import { FilialSwitch } from '../../../core/components/FilialSwitch';
 import { saveBlob } from '../../../core/platform';
@@ -107,10 +108,13 @@ const ShiftPage: React.FC = () => {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const manager = isManagerFn();
+  // Smena tarixi — faqat ega va faqat Boshqaruvda; kassa ekranida (ega kirgan bo'lsa ham) faqat joriy smena
+  const isPos = useWorkMode() === 'pos';
+  const noHistory = manager || isPos;
 
   // Tab va davr URL'da: rahbar filialni almashtirsa sahifa qayta yuklanadi (Layout), tanlov saqlanib qoladi
   const [params, setParams] = useSearchParams();
-  const tab: 'active' | 'history' = !manager && params.get('tab') === 'history' ? 'history' : 'active';
+  const tab: 'active' | 'history' = !noHistory && params.get('tab') === 'history' ? 'history' : 'active';
   const period: Period = PERIODS.find((p) => p === params.get('period')) ?? 'day';
   const setParam = (key: string, value: string, fallback: string) =>
     setParams(
@@ -196,8 +200,8 @@ const ShiftPage: React.FC = () => {
   }, [fetchCurrent]);
 
   useEffect(() => {
-    if (tab === 'history' && !manager) fetchHistory(period);
-  }, [tab, period, manager, fetchHistory]);
+    if (tab === 'history' && !noHistory) fetchHistory(period);
+  }, [tab, period, noHistory, fetchHistory]);
 
   // BUGFIX: forced logout after a manager closes a shift used to only clear
   // storage + navigate; we now also reload so the realtime socket and every
@@ -371,7 +375,7 @@ const ShiftPage: React.FC = () => {
         subtitle={t('shift.subtitle')}
         actions={<IconButton label={t('common.refresh')} variant="outline" onClick={refresh}><RefreshCw className="w-4 h-4" /></IconButton>}
       >
-        {!manager && (
+        {!noHistory && (
           <Tabs
             value={tab}
             onChange={setTab}
@@ -440,7 +444,7 @@ const ShiftPage: React.FC = () => {
         </div>
       )}
 
-      {tab === 'history' && !manager && (
+      {tab === 'history' && !noHistory && (
         <div className="space-y-4 mt-1">
           {ownerMulti && (
             <FilialSwitch

@@ -19,12 +19,14 @@ import { getErrorMessage } from '../../../../core/lib/errors';
 import { formatMoney } from '../../../../core/lib/format';
 import { OFFLINE_SHEET_EVENT, enqueuePayment, isNetworkError, isPaymentQueued } from '../../../../core/lib/offline';
 import { OrderDetailSheet } from './OrderDetailSheet';
+import { deliveryReceiptEnabled, markDeliveryReceiptPrinted } from '../../deliveryReceipts';
+import { escposPrinter } from '../../../../core/lib/printerConfig';
 import { PaymentSheet } from './PaymentSheet';
 import type { PaymentMethod } from './PaymentSheet';
 import { CourierPickerSheet } from './CourierPickerSheet';
 import { WaiterPickSheet } from './WaiterPickSheet';
 import type { WaiterPickMode } from './WaiterPickSheet';
-import { needsWaiter, opensNewBill } from '../../services/ordersApi';
+import { opensNewBill } from '../../services/ordersApi';
 import { usePlatformConfig } from '../../../../core/lib/platformStage';
 import { HANDED_NOTE, orderNo } from './actions';
 import type { ActionContext, QueueAction } from './actions';
@@ -134,13 +136,6 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
     }
   };
 
-  const autoPrintEnabled = () => {
-    try {
-      return localStorage.getItem('milliygo_auto_print') === 'true';
-    } catch {
-      return false;
-    }
-  };
 
   // 409 HANDED_TO_COURIER: kuryer buyurtmani olgan — xabar ko'rsatib, ro'yxatni yangilaymiz.
   const reportActionError = (err: unknown, fallback: string) => {
@@ -165,7 +160,10 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
     try {
       await ordersApi.updateOrderStatus(order.uuid, nextStatus, reason);
       if (successMsg) toast.success(successMsg);
-      if (nextStatus === 'READY_FOR_PICKUP' && order.delivery_type === 'DELIVERY' && autoPrintEnabled()) {
+      // Yetkazish: kassa cheki qabul qilinganda chiqadi (oshxona cheki bilan birga), «Tayyor»da emas.
+      // ESC/POS kassa printeri bo'lsa — DeliveryReceiptAgent chiqaradi; bo'lmasa (brauzer orqali) — shu yerda.
+      if (nextStatus === 'ACCEPTED' && order.delivery_type === 'DELIVERY' && deliveryReceiptEnabled() && !escposPrinter('receipt')) {
+        markDeliveryReceiptPrinted(order.uuid);
         handlePrintReceipt(order.uuid, true);
       }
       refresh();
@@ -278,7 +276,8 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
       freeTableForOrder(order);
       setSelectedUuid(null);
       toast.success(order.call_number ? t('msg.handedToCustomer', { n: order.call_number }) : t('msg.completed', { n: orderNo(order) }));
-      if (!order.hall_uuid) handlePrintReceipt(order.uuid, true); // o'z-o'ziga xizmat: chek to'lovda (yaratishda) chiqqan
+      // O'z-o'ziga xizmat — chek to'lovda (yaratishda) chiqqan; yetkazish — qabul qilinganda chiqqan
+      if (!order.hall_uuid && order.delivery_type !== 'DELIVERY') handlePrintReceipt(order.uuid, true);
       refresh();
     } catch (err) {
       if (isNetworkError(err)) queueOffline(order, { collect: false, method: order.payment_method || 'CASH' });
@@ -300,7 +299,8 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
       await ordersApi.completeWithPayment(paymentOrder.uuid, method, splitCount, payments);
       freeTableForOrder(paymentOrder);
       toast.success(t('msg.paidCompleted', { n: orderNo(paymentOrder) }));
-      handlePrintReceipt(paymentOrder.uuid, true);
+      // Yetkazish cheki qabul qilinganda chiqqan — qayta chiqmaydi (kerak bo'lsa «Chek» tugmasi)
+      if (paymentOrder.delivery_type !== 'DELIVERY') handlePrintReceipt(paymentOrder.uuid, true);
       if (selectedUuid === paymentOrder.uuid) setSelectedUuid(null);
       setPaymentOrder(null);
       refresh();
@@ -372,11 +372,7 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
           openCourierPicker(order, true);
           return;
         }
-        // Stol: ovqatni kim olib boradi — ofitsiant tanlanadi (o'zi ochgan ofitsiant bo'lsa — darhol, unga push boradi)
-        if (needsWaiter(order)) {
-          pickWaiter(order, 'ready');
-          return;
-        }
+        // Tayyor taom ofitsiantga majburan biriktirilmaydi (kerak bo'lsa — buyurtma oynasidagi «Ofitsiant» bilan)
         updateStatus(order, 'READY_FOR_PICKUP', order.call_number ? t('msg.readyCall', { n: order.call_number }) : t('msg.ready', { n: orderNo(order) }));
         return;
       case 'back_to_accepted':

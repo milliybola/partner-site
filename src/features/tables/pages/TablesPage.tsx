@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ban, Clock, FileSpreadsheet, Layers, Map as MapIcon, MoreVertical, Move, Plus, QrCode, RefreshCw, ScanLine, ShoppingBag, Store, Table2, Truck, Users } from 'lucide-react';
 import { FloorPlan } from '../components/FloorPlan';
-import { POS_HEADER_SLOT, usePosWallpaper } from '../../../core/lib/posWallpaper';
+import { POS_HEADER_SLOT, setPosWallpaper } from '../../../core/lib/posWallpaper';
 import { createPortal } from 'react-dom';
 import { StopListSheet } from '../components/StopListSheet';
 import { tablesApi } from '../services/tablesApi';
@@ -236,11 +236,11 @@ const HallRail: React.FC<{
     <aside
       className={
         glass
-          ? 'hidden lg:flex flex-col gap-2 w-56 shrink-0 rounded-3xl border border-white/15 bg-slate-900/45 p-4 backdrop-blur-md shadow-[0_10px_40px_rgba(0,0,0,.25)]'
+          ? 'hidden lg:flex flex-col gap-2 w-56 shrink-0 rounded-3xl border border-white/15 bg-slate-900/20 p-4 shadow-[0_10px_40px_rgba(0,0,0,.25)]'
           : 'hidden lg:flex flex-col gap-1 w-48 shrink-0 self-start sticky top-[calc(var(--appbar-h,56px)+12px)]'
       }
     >
-      {glass && <div className="mb-2 px-1 text-[18px] font-black tracking-tightest text-white">{t('tp.halls')}</div>}
+      {glass && <div className="px-1 pb-1 text-[18px] font-black tracking-tightest text-white">{t('tp.halls')}</div>}
       {items.map((it) => {
         const on = !service && value === it.key;
         return (
@@ -261,7 +261,7 @@ const HallRail: React.FC<{
           </button>
         );
       })}
-      {services.length > 0 && <span className={`my-1 border-t ${glass ? 'border-white/20' : 'border-edge'}`} aria-hidden />}
+      {services.length > 0 && !glass && <span className="my-1 border-t border-edge" aria-hidden />}
       {services.map((s) => {
         const on = service === s.key;
         return (
@@ -444,7 +444,6 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   };
   // Boshqaruv: zal rejasini tahrirlash (stollarni joylash, fon) — kassada faqat ko'rish
   const [planOpen, setPlanOpen] = useState(false);
-  const wallpaper = usePosWallpaper();
   // Kassa: Stop-list va yangilash yuqori menyuda (Layout'dagi joyga portal)
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
   useEffect(() => {
@@ -592,6 +591,12 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   const selectedSelfHall = selfHalls.find((h) => h.uuid === hallFilter) || null;
 
   const mapHall = halls.find((h) => h.uuid === hallFilter) || null;
+  // Kassa foni: ochiq zal rasmi (yo'q bo'lsa — rasmi bor birinchi zal). Zal, Olib ketish, Yetkazib berish — hammasida
+  const wallpaper = isPos ? mapHall?.background || halls.find((h) => h.background)?.background || null : null;
+  useEffect(() => {
+    setPosWallpaper(wallpaper);
+    return () => setPosWallpaper(null);
+  }, [wallpaper]);
   const mapTables = useMemo(
     () => (halls.length === 0 || hallFilter === 'ALL' ? tables : tables.filter((tb) => (tb.hall || '') === hallFilter)),
     [tables, halls.length, hallFilter],
@@ -629,10 +634,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
   const markTableReady = async (tb: TableModel) => {
     const o = tb.current_order;
     if (!o) return;
-    if (o.waiter_role !== 'waiter') {
-      setTableWaiterPick({ table: tb, mode: 'ready' });
-      return;
-    }
+    // Tayyor taom ofitsiantga majburan biriktirilmaydi — darhol «Tayyor» (ochgan ofitsiant bo'lsa, unga push boradi)
     setQuickReadyUuid(o.uuid);
     try {
       await ordersApi.markReady(o.uuid, null);
@@ -729,6 +731,8 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           headerSlot,
         )}
       <PageHeader
+        // Zal rejasini tahrirlashda sarlavha yopishmasin — tahrir tugmalari uning ostida qolmasin
+        sticky={!planOpen}
         className={isPos ? 'lg:hidden' : undefined}
         transparent={isPos && !!wallpaper}
         title={isPos ? undefined : t('nav.tables')}
@@ -772,8 +776,9 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
         )}
         actions={
           <>
-            {!headerSlot && isPos && (
-              <Button variant="outline" icon={<Ban className="w-4 h-4" />} onClick={() => setStopListOpen(true)}>
+            {isPos && (
+              // Katta ekranda yuqori menyuda; telefonda (menyu yashirin) shu yerda
+              <Button variant="outline" className={headerSlot ? 'md:hidden' : undefined} icon={<Ban className="w-4 h-4" />} onClick={() => setStopListOpen(true)}>
                 {t('sl.title')}
               </Button>
             )}
@@ -865,7 +870,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             }
             service={view === 'TABLES' ? null : view}
             onService={(k) => setView(k as ViewKey)}
-            glass={isPos && !!wallpaper && mapMode && view === 'TABLES'}
+            glass={isPos && !!wallpaper}
           />
         )}
         <div className="flex-1 min-w-0">
@@ -887,6 +892,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
           loading={svcLoading}
           onNew={() => navigate(`/new-order?type=${view}`)}
           onOpen={openSvcOrder}
+          glass={isPos && !!wallpaper}
         />
       ) : (
         <>
@@ -919,7 +925,7 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
             drafts={drafts}
             now={now}
             canEdit={showSetup}
-            fullBg={isPos}
+            fullBg={isPos && !!wallpaper}
             onManageHalls={showSetup ? () => setHallsOpen(true) : undefined}
             labelOf={(tb) => mapLabelOf[tb.uuid] ?? tb.table_number}
             onOpen={openTable}
@@ -933,8 +939,6 @@ const TablesPage: React.FC<{ openQr?: boolean }> = ({ openQr = false }) => {
               if (!o || tb.is_active === false) return null;
               if (o.status === 'ACCEPTED' || o.status === 'PREPARING')
                 return { label: t('act.ready'), run: () => void markTableReady(tb), busy: quickReadyUuid === o.uuid };
-              if (o.status === 'READY_FOR_PICKUP' && o.waiter_role !== 'waiter')
-                return { label: t('role.waiter'), run: () => setTableWaiterPick({ table: tb, mode: 'assign' }) };
               return null;
             }}
             onGrid={() => (isPos ? setLayout('grid') : setPlanOpen(false))}

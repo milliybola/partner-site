@@ -23,6 +23,8 @@ export interface SheetProps {
   headerAction?: React.ReactNode;
   /** pastki panel (footer) uchun qo'shimcha klass, masalan `md:hidden` */
   footerClassName?: string;
+  /** Butun ekranli oyna (size=screen) orqasidagi fon rasmi — kassa foni bilan bir xil */
+  backdrop?: string | null;
 }
 
 const SIZES = {
@@ -37,7 +39,7 @@ const SIZES = {
 
 let openCount = 0;
 
-export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, subtitle, children, footer, size = 'md', persistent, flush, headerAction, footerClassName = '' }) => {
+export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, subtitle, children, footer, size = 'md', persistent, flush, headerAction, footerClassName = '', backdrop = null }) => {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -59,20 +61,22 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, subtitle, ch
   if (!open) return null;
 
   const screen = size === 'screen';
+  const wall = screen && !!backdrop;
 
   return createPortal(
     <div className={`fixed inset-0 z-[120] flex items-end md:items-center justify-center ${screen ? '' : 'md:p-6'}`} role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={() => !persistent && onClose()} />
       <div
-        className={`relative w-full ${SIZES[size]} bg-surface flex flex-col animate-sheet-up md:animate-slide-up ${
+        className={`relative w-full ${SIZES[size]} ${wall ? 'bg-[#0F172A] bg-cover bg-center' : 'bg-surface'} flex flex-col animate-sheet-up md:animate-slide-up ${
           screen ? 'h-full' : 'max-h-[92vh] md:max-h-[88vh] rounded-t-3xl md:rounded-3xl shadow-sheet md:shadow-pop'
         }`}
+        style={wall ? { backgroundImage: `linear-gradient(rgba(15,23,42,.18), rgba(15,23,42,.18)), url("${backdrop}")` } : undefined}
       >
         <div className={`${screen ? 'hidden' : 'md:hidden flex'} justify-center pt-2.5 pb-1`}>
           <span className="w-10 h-1.5 rounded-full bg-edge-strong" />
         </div>
         {(title || headerAction) && (
-          <div className="flex items-start justify-between gap-3 px-5 pt-2 md:pt-5 pb-3 border-b border-edge">
+          <div className={`flex items-start justify-between gap-3 px-5 pt-2 md:pt-5 pb-3 border-b border-edge ${wall ? 'bg-surface/90 backdrop-blur' : ''}`}>
             <div className="min-w-0">
               {title && <h2 className="text-[18px] font-extrabold text-ink tracking-tightest leading-tight">{title}</h2>}
               {subtitle && <p className="text-[13px] text-muted mt-0.5">{subtitle}</p>}

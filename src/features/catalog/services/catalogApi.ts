@@ -72,6 +72,8 @@ export interface CatalogCategory {
   baseCategoryUuid?: string;
   name: string;
   is_active: boolean;
+  /** Oshxonada tayyorlanadi: oshxona chekiga chiqadi, oshxonaga ketgach kassir kamaytira olmaydi (ichimliklar — false) */
+  is_kitchen: boolean;
   products: CatalogProduct[];
 }
 
@@ -148,6 +150,7 @@ export const catalogApi = {
           baseCategoryUuid: c.category_details?.uuid || '',
           name: c.category_details?.name || c.name || "Nomi yo'q",
           is_active: !!c.is_active,
+          is_kitchen: c.is_kitchen !== false,
           products: Array.isArray(c.products) ? c.products.map(mapProduct) : [],
         }))
       : [];
@@ -163,6 +166,11 @@ export const catalogApi = {
 
   setCategoryActive: async (uuid: string, isActive: boolean) => {
     await apiClient.post('partner/category/', { categories: [{ uuid, is_active: isActive }] });
+  },
+
+  /** «Oshxonada tayyorlanadi» belgisi (ega/menejer) */
+  setCategoryKitchen: async (uuid: string, isKitchen: boolean) => {
+    await apiClient.post('partner/category-kitchen/', { uuid, is_kitchen: isKitchen });
   },
 
   /** Menyudagi turkumlar tartibi (hamkor turkumi uuid'lari, birinchisi — birinchi). */

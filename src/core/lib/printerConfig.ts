@@ -13,7 +13,15 @@ export interface PrinterDevice {
   width: 58 | 80;
   /** ESC t n — kirill uchun CP866 (ko'p printerlarda 17) */
   codepage: number;
+  /** Chap/o'ng chekka (belgi soni, 0–8): chek chetidagi matn qirqilsa */
+  marginLeft?: number;
+  marginRight?: number;
+  /** Shrift: oddiy yoki baland (ikki barobar baland, o'qish oson) */
+  fontSize?: 'normal' | 'tall';
 }
+
+/** Printer sozlamasidan ESC/POS joylashuvi */
+export const layoutOf = (d: PrinterDevice) => ({ marginLeft: d.marginLeft ?? 0, marginRight: d.marginRight ?? 0, tall: d.fontSize === 'tall' });
 
 export interface PrinterSettings {
   /** Kassa cheki printeri; null — brauzer usulida (window.print) */

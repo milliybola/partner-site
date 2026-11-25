@@ -4,7 +4,7 @@ import { ordersApi } from '../services/ordersApi';
 import apiClient from '../../../core/api/client';
 import { useToast } from '../../../core/components/ToastProvider';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
-import { getPartner, wording } from '../../../core/lib/session';
+import { getPartner, isCashier, wording } from '../../../core/lib/session';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { formatMoney } from '../../../core/lib/format';
 import { t } from '../../../core/i18n';
@@ -220,6 +220,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
             const price = Number(item.price_at_time_of_order || item.product?.price || 0);
             const qty = Number(item.quantity) || 0;
             const busy = actionLoading === itemUuid;
+            // Oshxonaga ketgan taomni kassir kamaytira olmaydi (server ham tekshiradi); ega/menejer va ichimlik — mumkin
+            const kitchenLocked = isCashier() && item.is_kitchen !== false;
             return (
               <div key={itemUuid || idx} className="py-3 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
@@ -228,8 +230,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
                     {formatMoney(price)} × {qty} = <span className="text-ink font-semibold">{formatMoney(price * qty)}</span>
                   </p>
                 </div>
-                {paidLock ? (
-                  <span className="shrink-0 text-[15px] font-bold text-ink tabular-nums">×{qty}</span>
+                {paidLock || (kitchenLocked && removeOnly) ? (
+                  <span className="shrink-0 text-[15px] font-bold text-ink tabular-nums">{kitchenLocked && !paidLock ? `🔒 ×${qty}` : `×${qty}`}</span>
                 ) : (
                 <div className="flex items-center gap-1 shrink-0">
                   {busy ? (
@@ -240,12 +242,13 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
                     <QtyStepper
                       size="sm"
                       value={qty}
-                      min={1}
+                      min={kitchenLocked ? qty : 1}
                       disabled={!!actionLoading}
                       max={removeOnly ? qty : undefined}
                       onChange={(v) => (removeOnly ? handleDecrease(itemUuid, qty - v) : handleUpdateQuantity(itemUuid, v))}
                     />
                   )}
+                  {!kitchenLocked && (
                   <button
                     type="button"
                     aria-label="O'chirish"
@@ -255,6 +258,7 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({ orderUuid, order
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
+                  )}
                 </div>
                 )}
               </div>

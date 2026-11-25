@@ -65,14 +65,44 @@ export const wrap = (text: string, width: number): string[] => {
   return out;
 };
 
+/** Printer sozlamasidagi chek joylashuvi: chekkalar (belgi soni) va baland shrift */
+export interface EscPosLayout {
+  marginLeft?: number;
+  marginRight?: number;
+  /** Barcha matn ikki barobar baland (eni o'zgarmaydi — qatorga sig'im kamaymaydi) */
+  tall?: boolean;
+}
+
+/** Bitta belgining eni (nuqta): 80 mm — 576/48, 58 mm — 384/32; ikkalasida 12 */
+const DOT_PER_COL = 12;
+
 export class EscPos {
   private bytes: number[] = [];
   readonly cols: number;
+  private readonly baseH: 1 | 2;
 
-  constructor(widthMm: 58 | 80 = 80, codepage = 17) {
-    this.cols = columnsFor(widthMm);
+  constructor(widthMm: 58 | 80 = 80, codepage = 17, layout: EscPosLayout = {}) {
+    const full = columnsFor(widthMm);
+    const ml = Math.min(8, Math.max(0, Math.round(layout.marginLeft ?? 0)));
+    const mr = Math.min(8, Math.max(0, Math.round(layout.marginRight ?? 0)));
+    this.cols = full - ml - mr;
+    this.baseH = layout.tall ? 2 : 1;
     this.raw(ESC, 0x40); // init
     this.raw(ESC, 0x74, codepage); // kod sahifasi (CP866)
+    if (ml || mr) {
+      // GS L — chap chekka, GS W — chop etish eni (nuqtada); markazlash ham shu oraliqda bo'ladi
+      const left = ml * DOT_PER_COL;
+      const width = (full - ml - mr) * DOT_PER_COL;
+      this.raw(GS, 0x4c, left & 0xff, left >> 8).raw(GS, 0x57, width & 0xff, width >> 8);
+    }
+    if (this.baseH === 2) this.size();
+  }
+
+  /** Oq-qora rasm (logotip): GS v 0; `data` — har qatorda `bytesPerRow` bayt, 1 bit = qora nuqta */
+  raster(bytesPerRow: number, height: number, data: Uint8Array) {
+    this.raw(GS, 0x76, 0x30, 0x00, bytesPerRow & 0xff, bytesPerRow >> 8, height & 0xff, height >> 8);
+    for (let i = 0; i < data.length; i++) this.bytes.push(data[i]); // katta massiv — spread o'rniga sikl
+    return this;
   }
 
   raw(...b: number[]) {
@@ -90,7 +120,8 @@ export class EscPos {
 
   /** Shrift kattaligi: 1 — oddiy, 2 — ikki barobar */
   size(w: 1 | 2 = 1, h: 1 | 2 = 1) {
-    return this.raw(GS, 0x21, ((w - 1) << 4) | (h - 1));
+    // Baland shrift rejimida "oddiy" o'lcham ham ikki barobar baland qoladi
+    return this.raw(GS, 0x21, ((w - 1) << 4) | (Math.max(h, this.baseH) - 1));
   }
 
   text(s: string) {

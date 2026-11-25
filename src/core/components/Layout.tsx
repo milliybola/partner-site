@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, LayoutGrid, Lock, LogOut, PlusCircle, Receipt, Settings2, Store, Wifi, WifiOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutGrid, Lock, LogOut, User, PlusCircle, Receipt, Settings2, Store, Wifi, WifiOff } from 'lucide-react';
 import { filialApi } from '../../features/orders/services/filialApi';
 import type { PartnerFilial } from '../../features/orders/services/filialApi';
 import apiClient from '../api/client';
@@ -30,9 +30,12 @@ import { clearPaymentMethodsCache } from '../lib/payments';
 import { CallAlerts } from '../../features/calls/CallAlerts';
 import { TableCallAlerts } from '../../features/tables/TableCallAlerts';
 import { KitchenPrintAgent } from '../../features/orders/KitchenPrintAgent';
+import { DeliveryReceiptAgent } from '../../features/orders/DeliveryReceiptAgent';
 import { OfflineSync } from './OfflineSync';
 import { PosStatusBar, PosStatusList } from './PosStatusBar';
 import { POS_HEADER_SLOT, usePosWallpaper } from '../lib/posWallpaper';
+import { tablesApi } from '../../features/tables/services/tablesApi';
+import { refreshReceiptLook } from '../lib/receiptLook';
 import { usePosStatus } from '../lib/usePosStatus';
 import { useConfirm } from './ConfirmProvider';
 import { clearOfflineCache, pendingCount } from '../lib/offline';
@@ -143,6 +146,92 @@ const ModeButton: React.FC<{ mode: WorkMode; onChange: (m: WorkMode) => void }> 
     >
       <Icon className="w-4 h-4" /> {toManage ? t('lay.manage') : t('nav.pos')}
     </button>
+  );
+};
+
+/** Kassa: o'ng chetda yumaloq akkaunt tugmasi — ichida cheklar tarixi, sozlamalar va chiqish */
+const AccountMenu: React.FC<{
+  name: string;
+  subtitle?: string;
+  items: { to: string; label: string; icon: React.ComponentType<{ className?: string }> }[];
+  onLogout: () => void;
+}> = ({ name, subtitle, items, onLogout }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+  const initial = name.trim().charAt(0).toUpperCase();
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={name}
+        title={name}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-field text-[15px] font-black text-ink cursor-pointer hover:bg-edge/60"
+      >
+        {initial || <User className="h-5 w-5" />}
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 top-[calc(100%+8px)] z-50 w-64 rounded-2xl border border-edge bg-surface p-1.5 shadow-card">
+          <div className="flex items-center gap-3 px-2.5 py-2.5">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand text-[15px] font-black text-white">
+              {initial || <User className="h-5 w-5" />}
+            </span>
+            <span className="min-w-0 leading-tight">
+              <span className="block truncate text-[14px] font-extrabold text-ink">{name}</span>
+              {subtitle && <span className="block truncate text-[12px] text-muted">{subtitle}</span>}
+            </span>
+          </div>
+          <div className="my-1 border-t border-edge" />
+          {items.map((it) => {
+            const Icon = it.icon;
+            return (
+              <button
+                key={it.to}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  navigate(it.to);
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[14px] font-bold text-ink cursor-pointer hover:bg-field"
+              >
+                <Icon className="h-[18px] w-[18px] text-muted" />
+                {it.label}
+              </button>
+            );
+          })}
+          <div className="my-1 border-t border-edge" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onLogout();
+            }}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[14px] font-bold text-danger cursor-pointer hover:bg-field"
+          >
+            <LogOut className="h-[18px] w-[18px]" />
+            {t('lay.logout')}
+          </button>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -309,6 +398,23 @@ const Shell: React.FC = () => {
   const manager = isManager(partner);
   const pos = mode === 'pos';
   const wallpaper = usePosWallpaper();
+  // Kassa foni barcha kassa sahifalarida: rasmi bor birinchi zal (Sotuv sahifasi ochiq zal rasmini o'zi qo'yadi)
+  const [defaultWall, setDefaultWall] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pos) return;
+    let alive = true;
+    tablesApi
+      .getHalls()
+      .then((hs) => alive && setDefaultWall(hs.find((h) => h.background)?.background || null))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [pos]);
+  // Chek ko'rinishi (logotip, rahmat matni) — kassa ochilganda keshlanadi, oflayn ham chek shu ko'rinishda chiqadi
+  useEffect(() => {
+    if (pos) void refreshReceiptLook();
+  }, [pos]);
   const locked = usePosLocked();
   const statusItems = usePosStatus(pos);
   const hasPins = usePosHasPins(pos, locked);
@@ -364,7 +470,9 @@ const Shell: React.FC = () => {
   ) : null;
 
   // Kassa foni: zal rasmi butun ekran bo'ylab (stollar maydoni ichida emas), ustida panellar
-  const wall = pos ? wallpaper : null;
+  const wall = pos ? wallpaper || defaultWall : null;
+  // Sotuv sahifasining o'z shaffof panellari bor; boshqa kassa sahifalari rasm ustida och panel ichida (matn o'qilsin)
+  const wallPanel = !!wall && location.pathname !== '/tables';
 
   return (
     <div
@@ -379,6 +487,7 @@ const Shell: React.FC = () => {
       {posStage && <CallAlerts />}
       {posStage && <TableCallAlerts />}
       <KitchenPrintAgent />
+      <DeliveryReceiptAgent />
       {pos && <PosStatusBar items={statusItems} />}
       {pos && locked && <PosLockScreen onLogout={() => void logout(true)} hasPins={hasPins} />}
       {/* ---------------- Desktop sidebar (kassa rejimida yo'q — butun ekran) ---------------- */}
@@ -486,7 +595,10 @@ const Shell: React.FC = () => {
               <div className="hidden md:flex items-center gap-3 min-w-0 flex-1">
                 <Logo partner={partner} size={34} />
                 <nav className="flex items-center gap-1 min-w-0 overflow-x-auto no-scrollbar" aria-label={t('lay.posSections')}>
-                  {groups.slice(0, 1).flatMap((g) => g.items).filter((item) => item.to !== '/kitchen').map((item) => {
+                  {[
+                    ...groups.slice(0, 1).flatMap((g) => g.items).filter((item) => item.to !== '/kitchen'),
+                    ...groups.slice(1).flatMap((g) => g.items).filter((item) => item.to === '/shift'),
+                  ].map((item) => {
                     const Icon = item.icon;
                     const badge = item.to === '/orders' && unseenNewOrders > 0;
                     return (
@@ -516,6 +628,8 @@ const Shell: React.FC = () => {
                     );
                   })}
                 </nav>
+                {/* Sahifa tugmalari (Stop-list) — Buyurtmalar/Smena yonida */}
+                <div id={POS_HEADER_SLOT} className="flex items-center gap-1.5 shrink-0" />
               </div>
             ) : (
               <div className="hidden md:flex items-center gap-3 text-[13px] text-muted min-w-0">
@@ -524,39 +638,13 @@ const Shell: React.FC = () => {
               </div>
             )}
             <div className="flex items-center gap-1.5 shrink-0">
-              {pos && <div id={POS_HEADER_SLOT} className="flex items-center gap-1.5 mr-1" />}
               {filialSwitch && <div className="hidden md:block mr-1">{filialSwitch}</div>}
               {pos && !cashier && (
                 <div className="hidden lg:block mr-1">
                   <ModeButton mode={mode} onChange={changeMode} />
                 </div>
               )}
-              {pos &&
-                groups.slice(1).flatMap((g) => g.items).map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      end={item.end}
-                      title={item.label}
-                      aria-label={item.label}
-                      className={({ isActive }) =>
-                        `shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${
-                          isActive ? 'bg-brand text-white' : wall ? 'bg-white/90 text-ink shadow-sm hover:bg-white' : 'text-muted hover:bg-field hover:text-ink'
-                        }`
-                      }
-                    >
-                      <Icon className="w-[19px] h-[19px]" />
-                    </NavLink>
-                  );
-                })}
               {!pos && <ConnectionDot />}
-              {pos && staffName && (
-                <span className="hidden min-[1500px]:inline-flex items-center h-9 px-3 rounded-full bg-field text-[13px] font-bold text-ink max-w-[160px] truncate">
-                  {staffName}
-                </span>
-              )}
               {pos && <LangSwitch className="hidden md:inline-flex" />}
               {pos && (
                 <button
@@ -568,6 +656,14 @@ const Shell: React.FC = () => {
                   <Lock className="w-4 h-4" />
                   <span className="hidden md:inline">{t('lay.lock')}</span>
                 </button>
+              )}
+              {pos && (
+                <AccountMenu
+                  name={staffName || getDisplayName(partner) || '—'}
+                  subtitle={staffName ? getDisplayName(partner) : filialName || undefined}
+                  items={groups.slice(1).flatMap((g) => g.items).filter((item) => item.to !== '/shift')}
+                  onLogout={() => void logout()}
+                />
               )}
               {!pos && posStage && location.pathname !== '/new-order' && (
                 <NavLink
@@ -584,7 +680,10 @@ const Shell: React.FC = () => {
 
         <main className={`flex-1 px-4 md:px-8 pb-[calc(var(--tabbar-h)+var(--safe-bottom)+16px)] ${wall ? 'md:pb-2' : 'md:pb-10'}`}>
           {/* Rahbar ishlayotgan filialni almashtirsa sahifa qayta yuklanadi (ma'lumotlar shu filial bo'yicha) */}
-          <Outlet key={workingFilial ?? 'all'} />
+          {/* O'ram doim bor (faqat uslubi o'zgaradi) — fon yuklanganda sahifa qayta yaratilmasin */}
+          <div className={wallPanel ? 'mt-3 rounded-3xl bg-canvas/90 px-4 pb-6 shadow-[0_10px_40px_rgba(0,0,0,.25)] backdrop-blur-sm md:px-8' : undefined}>
+            <Outlet key={workingFilial ?? 'all'} />
+          </div>
         </main>
       </div>
 

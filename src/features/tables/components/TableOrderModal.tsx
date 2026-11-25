@@ -12,7 +12,7 @@ import apiClient from '../../../core/api/client';
 import { useToast } from '../../../core/components/ToastProvider';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
 import { useShiftNotOpenPrompt } from '../../../core/components/useShiftNotOpenPrompt';
-import { getFilialUuid, getPartner, isManager, isShop } from '../../../core/lib/session';
+import { getFilialUuid, getPartner, isCashier, isManager, isShop } from '../../../core/lib/session';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { t } from '../../../core/i18n';
 import { OFFLINE_SHEET_EVENT, enqueuePayment, isNetworkError, isPaymentQueued } from '../../../core/lib/offline';
@@ -61,6 +61,7 @@ import type { LineConfig, SelectedOption } from '../../orders/components/Product
 import { quotePosCart } from '../../orders/services/ordersApi';
 import type { PosQuote } from '../../orders/services/ordersApi';
 import type { Hall, TableModel } from '../services/tablesApi';
+import { usePosWallpaper } from '../../../core/lib/posWallpaper';
 
 type Product = CatalogProduct;
 type Category = CatalogCategory;
@@ -103,6 +104,10 @@ const PaymentPicker: React.FC<{ value: PaymentMethod; onChange: (v: PaymentMetho
 
 export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose, selfHall = null }) => {
   const toast = useToast();
+  // Kassir oshxonaga ketgan taomni kamaytira olmaydi (server ham tekshiradi); ega va menejer — mumkin
+  const cashierRole = isCashier();
+  // Kassa foni (Sotuv sahifasi qo'ygan zal rasmi) — oyna orqasida ham
+  const wallpaper = usePosWallpaper();
   const toastRef = useRef(toast);
   useEffect(() => {
     toastRef.current = toast;
@@ -623,7 +628,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
 
   /* --------------------------------------------------------------- panes */
   const menuPane = (
-    <div className={`${mobilePane === 'menu' ? 'flex' : 'hidden'} md:flex md:col-span-8 flex-col min-h-0 md:border-r border-edge`}>
+    <div className={`${mobilePane === 'menu' ? 'flex' : 'hidden'} md:flex md:col-span-8 flex-col min-h-0 ${wallpaper ? '' : 'md:border-r border-edge'}`}>
       <div className="px-4 md:px-5 pt-3 space-y-2.5 shrink-0">
         {categories.length > 0 && (
           <Tabs
@@ -815,7 +820,12 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
   );
 
   const orderPane = (
-    <div className={`${mobilePane === 'order' ? 'flex' : 'hidden'} md:flex md:col-span-4 flex-col min-h-0`}>
+    <div
+      className={`${mobilePane === 'order' ? 'flex' : 'hidden'} md:flex md:col-span-4 flex-col min-h-0 ${
+        // Kassa foni ustida savat alohida oq panelda (o'qilsin)
+        wallpaper ? 'bg-surface/95 md:m-3 md:rounded-2xl md:overflow-hidden md:shadow-[0_10px_40px_rgba(0,0,0,.25)]' : ''
+      }`}
+    >
       <div className="shrink-0 px-4 md:px-5 pt-3 text-[13px] font-bold text-muted uppercase tracking-wide">{isEditMode ? t('tom.orderItems') : t('cart.title')}</div>
       {awaitingQr && (
         <div className="md:hidden shrink-0 mx-4 mt-2 rounded-2xl bg-warning-soft text-warning-ink px-3.5 py-2.5 text-[13px] font-semibold">
@@ -844,6 +854,8 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                 const free = Number(item.free_quantity) || 0;
                 const lineTotal = item.line_total !== undefined && item.line_total !== null ? Number(item.line_total) || 0 : price * item.quantity;
                 const modifying = actionLoading === item.uuid;
+                // Oshxonaga ketgan taomni kassir kamaytira olmaydi (ega/menejer — mumkin; ichimlik — hamma)
+                const kitchenLocked = cashierRole && item.is_kitchen !== false;
                 return (
                   <div key={item.uuid || idx} className="rounded-2xl border border-edge bg-surface p-3 flex items-center gap-3">
                     <div className="min-w-0 flex-1">
@@ -860,7 +872,10 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
                     {modifying ? (
                       <Spinner />
                     ) : (
-                      <QtyStepper size="sm" value={item.quantity} min={0} disabled={!!actionLoading || !item.uuid} onChange={(v) => handleChangeItemQty(item, v)} />
+                      <div className="flex flex-col items-end gap-0.5">
+                        <QtyStepper size="sm" value={item.quantity} min={kitchenLocked ? item.quantity : 0} disabled={!!actionLoading || !item.uuid} onChange={(v) => handleChangeItemQty(item, v)} />
+                        {kitchenLocked && <span className="text-[11px] font-bold text-muted">🔒 {t('tom.kitchenLocked')}</span>}
+                      </div>
                     )}
                   </div>
                 );
@@ -965,6 +980,7 @@ export const TableOrderModal: React.FC<TableOrderModalProps> = ({ table, onClose
         open
         size="screen"
         flush
+        backdrop={wallpaper}
         persistent={submitting || paymentSaving}
         onClose={() => (isEditMode ? onClose(itemsChanged) : void handleBack())}
         title={

@@ -3,6 +3,8 @@ import { ENDPOINTS } from '../../../core/config/constants';
 
 export interface OrderItem {
   uuid?: string;
+  /** Oshxonada tayyorlanadi (kategoriya belgisi); false — ichimlik kabi: oshxona chekiga chiqmaydi, kamaytirish mumkin */
+  is_kitchen?: boolean;
   product?: {
     id?: number;
     uuid?: string;

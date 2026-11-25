@@ -15,11 +15,13 @@ import { useToast } from '../../core/components/ToastProvider';
  * saqlanadi, shuning uchun ilova qayta ochilganda takror chiqmaydi.
  */
 const COOKING = new Set(['ACCEPTED', 'PREPARING']);
+// «Tayyor» buyurtma ham kuzatiladi: unga taom qo'shilsa — faqat qo'shilgani «QO'SHIMCHA» bo'lib chiqadi
+const TRACKED = new Set([...COOKING, 'READY_FOR_PICKUP']);
 const POLL_MS = 30_000;
 
 /** Oshxonadagi buyurtmalarni oxirgi chop etilgan holat bilan solishtirib, yangi taomlarni chiqaradi */
 const syncOnce = async (onError: (message: string) => void) => {
-  const orders = (await ordersApi.getOrders()).filter((o) => COOKING.has(o.status));
+  const orders = (await ordersApi.getOrders()).filter((o) => TRACKED.has(o.status));
   const prev = load();
   const next: Printed = {};
   for (const o of orders) {
@@ -28,9 +30,13 @@ const syncOnce = async (onError: (message: string) => void) => {
     // Birinchi yoqilganda mavjud buyurtmalar chop etilmaydi — faqat bundan keyin kelganlari
     if (prev === null) continue;
     const before = prev[o.uuid];
+    // Oshxona cheki chiqmay turib «Tayyor» bo'lib qolgan buyurtma (masalan, agent o'chiq paytda) — butun chek qayta chiqmaydi
+    if (!before && !COOKING.has(o.status)) continue;
     // Bir xil mahsulot ikki qatorda bo'lsa — farq bir marta chiqadi
     const seen = new Set<string>();
     const items = (o.items || [])
+      // Oshxonasiz mahsulotlar (ichimliklar) oshxona chekiga chiqmaydi
+      .filter((it) => it.is_kitchen !== false)
       .map((it) => ({ it, key: lineKey(it) }))
       .filter(({ key }) => !seen.has(key) && !!seen.add(key))
       .map(({ it, key }) => ({ it, diff: (now[key] || 0) - (before?.[key] || 0) }))

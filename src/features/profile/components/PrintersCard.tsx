@@ -91,6 +91,22 @@ const DeviceForm: React.FC<{
             value={String(d.codepage)}
             onChange={(e) => set({ codepage: Math.min(255, parseInt(e.target.value.replace(/\D/g, ''), 10) || 0) })}
           />
+          <Select label="Shrift" value={d.fontSize ?? 'normal'} onChange={(e) => set({ fontSize: e.target.value === 'tall' ? 'tall' : 'normal' })}>
+            <option value="normal">Oddiy</option>
+            <option value="tall">Baland (o'qish oson)</option>
+          </Select>
+          <div className="grid grid-cols-2 gap-2">
+            {(['marginLeft', 'marginRight'] as const).map((k) => (
+              <Input
+                key={k}
+                label={k === 'marginLeft' ? 'Chap chekka' : "O'ng chekka"}
+                hint="belgi, 0–8"
+                inputMode="numeric"
+                value={String(d[k] ?? 0)}
+                onChange={(e) => set({ [k]: Math.min(8, parseInt(e.target.value.replace(/\D/g, ''), 10) || 0) })}
+              />
+            ))}
+          </div>
           <div className="sm:col-span-2">
             <Button variant="outline" size="sm" icon={<Printer className="w-4 h-4" />} loading={testing} disabled={!deviceReady(d)} onClick={test}>
               Sinov cheki

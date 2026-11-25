@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
-import { Bell, BellOff, ChevronDown, Lock, Monitor, Printer, Volume2 } from 'lucide-react';
+import { useLocation, useSearchParams } from 'react-router-dom';
+import { Bell, BellOff, ChevronDown, Tv, Lock, Monitor, Printer, ReceiptText, Send, Store, Volume2, Wallet } from 'lucide-react';
 import { useToast } from '../../../core/components/ToastProvider';
 import { Badge, Button, Card, CardHeader, Divider, InlineAlert, PageHeader, QtyStepper, Select, SettingRow, Switch } from '../../../core/ui';
 import { getAutoLockMinutes, setAutoLockMinutes } from '../../../core/lib/posLock';
@@ -8,14 +8,18 @@ import { ensureNotificationPermission, isTauri, notify } from '../../../core/pla
 import { getDisplayName, getPartner, isCashier, isManager } from '../../../core/lib/session';
 import { PaymentMethodsCard } from '../components/PaymentMethodsCard';
 import { PrintersCard } from '../components/PrintersCard';
+import { ReceiptLookCard } from '../components/ReceiptLookCard';
+import { TvScreensCard } from '../../screens/components/TvScreensCard';
 import { WorkModeCard } from '../components/WorkModeCard';
 import { TelegramReportCard } from '../components/TelegramReportCard';
 import { TelegramOrdersGroupCard } from '../components/TelegramOrdersGroupCard';
 import { getErrorMessage } from '../../../core/lib/errors';
 import { printReceiptPreview } from '../../orders/utils/printing';
 import { usePlatformConfig } from '../../../core/lib/platformStage';
+import { DELIVERY_RECEIPT_KEY } from '../../orders/deliveryReceipts';
 
-const AUTO_PRINT_KEY = 'milliygo_auto_print';
+// Yetkazish buyurtmasi qabul qilinganda kassa cheki (standart — yoqilgan)
+const AUTO_PRINT_KEY = DELIVERY_RECEIPT_KEY;
 const COPIES_KEY = 'milliygo_print_copies';
 
 const readLS = (k: string) => {
@@ -98,22 +102,24 @@ const PosLockCard: React.FC = () => {
   );
 };
 
+type SectionKey = 'printers' | 'receipt' | 'tv' | 'notify' | 'pos' | 'payments' | 'telegram';
+
 const SettingsPage: React.FC = () => {
   // 1-bosqich: mijoz cheki va kassa qulfi yo'q (Q48, Q51) — oshxona printeri qoladi
   const { pos: posStage } = usePlatformConfig();
   const toast = useToast();
   const desktop = isTauri();
-  const [autoPrint, setAutoPrint] = useState(() => readLS(AUTO_PRINT_KEY) === 'true');
+  const [autoPrint, setAutoPrint] = useState(() => readLS(AUTO_PRINT_KEY) !== 'false');
   const [copies, setCopies] = useState(() => Math.min(5, Math.max(1, parseInt(readLS(COPIES_KEY) || '1', 10) || 1)));
   const [perm, setPerm] = useState<Perm>(browserPermission);
   const [printing, setPrinting] = useState(false);
   const [showKiosk, setShowKiosk] = useState(false);
 
-  // Kassa pastidagi holat qatoridan «Printer» bosilsa — to'g'ridan-to'g'ri Printerlar bo'limiga
+  // Bo'lim URL'da (?s=printers); kassa pastidagi holat qatoridan «Printer» bosilsa — Printerlar bo'limi
   const focus = (useLocation().state as { focus?: string } | null)?.focus;
-  useEffect(() => {
-    if (focus === 'printers') document.getElementById('printers')?.scrollIntoView({ block: 'start' });
-  }, [focus]);
+  const [params, setParams] = useSearchParams();
+  const section = (params.get('s') as SectionKey | null) ?? (focus === 'printers' ? 'printers' : null);
+  const setSection = (key: SectionKey) => setParams({ s: key }, { replace: true });
 
   useEffect(() => writeLS(AUTO_PRINT_KEY, autoPrint ? 'true' : 'false'), [autoPrint]);
   useEffect(() => writeLS(COPIES_KEY, String(copies)), [copies]);
@@ -175,18 +181,22 @@ const SettingsPage: React.FC = () => {
       </Badge>
     );
 
-  return (
-    <div className="space-y-4 max-w-3xl">
-      <PageHeader title="Sozlamalar" subtitle={posStage ? 'Chop etish va bildirishnomalar (shu qurilma uchun)' : 'Ish tartibi, bildirishnomalar va oshxona printeri'} />
-
+  // Bo'limlar: chapda ro'yxat (telefonda — yuqorida tablar), o'ngda faqat tanlangan bo'lim
+  const sections: Array<{ key: SectionKey; label: string; icon: React.ReactNode; content: React.ReactNode }> = [
+    {
+      key: 'printers',
+      label: 'Printerlar',
+      icon: <Printer className="w-[18px] h-[18px]" />,
+      content: (
+        <>
       {posStage && (
       <Card>
         <CardHeader title="Chek chop etish" icon={<Printer className="w-[18px] h-[18px]" />} />
         <div className="divide-y divide-edge">
           <SettingRow
-            title="Avtomatik chop etish"
-            description="Yetkazib berish buyurtmasi “Tayyor” bo'lganda chek printerga avtomatik yuboriladi"
-            control={<Switch checked={autoPrint} onChange={setAutoPrint} label="Avtomatik chop etish" />}
+            title="Yetkazish: qabul qilinganda chek"
+            description="Yetkazib berish buyurtmasi qabul qilinishi bilan oshxona cheki bilan birga kassa cheki ham chiqadi («Tayyor»da qayta chiqmaydi)"
+            control={<Switch checked={autoPrint} onChange={setAutoPrint} label="Yetkazish: qabul qilinganda chek" />}
           />
           <SettingRow
             title="Nusxalar soni"
@@ -203,62 +213,7 @@ const SettingsPage: React.FC = () => {
         </div>
       </Card>
       )}
-
-      {/* Rahbar va manager: barcha qurilmalar uchun ish tartibi */}
-      {!isCashier() && <WorkModeCard />}
-
-      {/* Faqat egasi: kunlik tushum hisoboti Telegram'ga */}
-      {!isManager() && <TelegramOrdersGroupCard />}
-      {!isManager() && <TelegramReportCard />}
-
-      {/* Faqat egasi: qaysi to'lov usullari qabul qilinadi (menejer ko'rmaydi) */}
-      {!isManager() && <PaymentMethodsCard />}
-
-      <Card>
-        <CardHeader title="Bildirishnomalar va ovoz" icon={<Bell className="w-[18px] h-[18px]" />} />
-        <div className="divide-y divide-edge">
-          <SettingRow
-            title={
-              <span className="inline-flex items-center gap-2">
-                Tizim bildirishnomalari {!desktop && permBadge}
-              </span>
-            }
-            description="Yangi buyurtma kelganda, oyna yopiq bo'lsa ham xabar chiqadi"
-            control={
-              perm === 'granted' ? (
-                <Button variant="secondary" size="sm" onClick={() => notify('MilliyGo Hamkor', 'Sinov bildirishnomasi')}>
-                  Sinash
-                </Button>
-              ) : (
-                <Button variant="outline" size="sm" icon={perm === 'denied' ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />} onClick={requestPermission}>
-                  Yoqish
-                </Button>
-              )
-            }
-          />
-          <SettingRow
-            title="Yangi buyurtma ovozi"
-            description="Ovoz eshitilishi uchun sahifada kamida bir marta bosgan bo'lishingiz kerak"
-            control={
-              <Button variant="secondary" size="sm" icon={<Volume2 className="w-4 h-4" />} onClick={testSound}>
-                Eshitish
-              </Button>
-            }
-          />
-        </div>
-        {perm === 'denied' && !desktop && (
-          <InlineAlert tone="warning" className="mt-3">
-            Brauzer bildirishnomalarni bloklagan. Manzil satridagi qulf belgisini bosib, “Bildirishnomalar”ni yoqing.
-          </InlineAlert>
-        )}
-      </Card>
-
-      {posStage && <PosLockCard />}
-
-      <div id="printers" className="scroll-mt-[calc(var(--appbar-h,56px)+12px)]">
-        <PrintersCard />
-      </div>
-
+      <PrintersCard />
       {!desktop && (
         <Card>
           <button
@@ -298,6 +253,129 @@ const SettingsPage: React.FC = () => {
           <p className="mt-3 text-[12px] text-muted">Tavsiya: Windows uchun MilliyGo Hamkor desktop ilovasini o'rnating — u bu sozlamasiz ishlaydi.</p>
         </Card>
       )}
+        </>
+      ),
+    },
+    ...(!isCashier() ? [{ key: 'receipt' as const, label: "Chek ko'rinishi", icon: <ReceiptText className="w-[18px] h-[18px]" />, content: <ReceiptLookCard /> }] : []),
+    ...(!isCashier() ? [{ key: 'tv' as const, label: 'TV ekranlar', icon: <Tv className="w-[18px] h-[18px]" />, content: <TvScreensCard /> }] : []),
+    {
+      key: 'notify',
+      label: 'Bildirishnomalar',
+      icon: <Bell className="w-[18px] h-[18px]" />,
+      content: (
+      <Card>
+        <CardHeader title="Bildirishnomalar va ovoz" icon={<Bell className="w-[18px] h-[18px]" />} />
+        <div className="divide-y divide-edge">
+          <SettingRow
+            title={
+              <span className="inline-flex items-center gap-2">
+                Tizim bildirishnomalari {!desktop && permBadge}
+              </span>
+            }
+            description="Yangi buyurtma kelganda, oyna yopiq bo'lsa ham xabar chiqadi"
+            control={
+              perm === 'granted' ? (
+                <Button variant="secondary" size="sm" onClick={() => notify('MilliyGo Hamkor', 'Sinov bildirishnomasi')}>
+                  Sinash
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" icon={perm === 'denied' ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />} onClick={requestPermission}>
+                  Yoqish
+                </Button>
+              )
+            }
+          />
+          <SettingRow
+            title="Yangi buyurtma ovozi"
+            description="Ovoz eshitilishi uchun sahifada kamida bir marta bosgan bo'lishingiz kerak"
+            control={
+              <Button variant="secondary" size="sm" icon={<Volume2 className="w-4 h-4" />} onClick={testSound}>
+                Eshitish
+              </Button>
+            }
+          />
+        </div>
+        {perm === 'denied' && !desktop && (
+          <InlineAlert tone="warning" className="mt-3">
+            Brauzer bildirishnomalarni bloklagan. Manzil satridagi qulf belgisini bosib, “Bildirishnomalar”ni yoqing.
+          </InlineAlert>
+        )}
+      </Card>
+      ),
+    },
+    ...(!isCashier() || posStage
+      ? [
+          {
+            key: 'pos' as const,
+            label: 'Kassa',
+            icon: <Store className="w-[18px] h-[18px]" />,
+            content: (
+              <>
+                {!isCashier() && <WorkModeCard />}
+                {posStage && <PosLockCard />}
+              </>
+            ),
+          },
+        ]
+      : []),
+    ...(!isManager()
+      ? [
+          { key: 'payments' as const, label: "To'lov usullari", icon: <Wallet className="w-[18px] h-[18px]" />, content: <PaymentMethodsCard /> },
+          {
+            key: 'telegram' as const,
+            label: 'Telegram',
+            icon: <Send className="w-[18px] h-[18px]" />,
+            content: (
+              <>
+                <TelegramOrdersGroupCard />
+                <TelegramReportCard />
+              </>
+            ),
+          },
+        ]
+      : []),
+  ];
+  const current = sections.find((x) => x.key === section) ?? sections[0];
+
+  return (
+    <div className="max-w-6xl">
+      <PageHeader title="Sozlamalar" subtitle={current.label}>
+        {/* Telefon/planshet: bo'limlar tab ko'rinishida */}
+        <div className="lg:hidden -mx-1 flex gap-1.5 overflow-x-auto no-scrollbar px-1">
+          {sections.map((x) => (
+            <button
+              key={x.key}
+              type="button"
+              onClick={() => setSection(x.key)}
+              className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-[14px] font-bold cursor-pointer ${
+                x.key === current.key ? 'bg-brand text-white' : 'bg-surface border border-edge text-ink'
+              }`}
+            >
+              {x.icon}
+              {x.label}
+            </button>
+          ))}
+        </div>
+      </PageHeader>
+      <div className="mt-2 lg:grid lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-6">
+        <nav aria-label="Sozlamalar bo'limlari" className="hidden lg:flex flex-col gap-1 self-start sticky top-[calc(var(--appbar-h,56px)+16px)]">
+          {sections.map((x) => (
+            <button
+              key={x.key}
+              type="button"
+              onClick={() => setSection(x.key)}
+              aria-current={x.key === current.key ? 'page' : undefined}
+              className={`flex min-h-[48px] items-center gap-3 rounded-xl px-3.5 text-left text-[15px] font-bold cursor-pointer transition-colors ${
+                x.key === current.key ? 'bg-brand text-white' : 'text-ink hover:bg-field'
+              }`}
+            >
+              <span className={x.key === current.key ? 'text-white' : 'text-muted'}>{x.icon}</span>
+              {x.label}
+            </button>
+          ))}
+        </nav>
+        <div className="min-w-0 max-w-3xl space-y-4">{current.content}</div>
+      </div>
     </div>
   );
 };

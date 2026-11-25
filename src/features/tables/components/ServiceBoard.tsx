@@ -182,11 +182,21 @@ export const ServiceBoard: React.FC<{
   /** O'z-o'ziga xizmat: kartadagi «Tayyor» / «Berildi» tugmasi */
   onQuick?: (order: Order, a: QuickAction) => void;
   busyUuid?: string | null;
-}> = ({ kind, orders, now, loading, onNew, onOpen, extra, focusKey = '', onFocus = () => {}, title: titleProp, compact, held = [], onResume, onQuick, busyUuid }) => {
+  /** Kassa fon rasmi ustida: sarlavhali shaffof panel (Stollar paneli bilan bir xil) */
+  glass?: boolean;
+}> = ({ kind, orders, now, loading, onNew, onOpen, extra, focusKey = '', onFocus = () => {}, title: titleProp, compact, held = [], onResume, onQuick, busyUuid, glass = false }) => {
   const title = titleProp || (kind === 'PICKUP' ? t('type.pickup') : kind === 'DELIVERY' ? t('type.delivery') : t('board.hall'));
   const newLabel = t('board.newOrder');
   return (
-    <div className="mt-2">
+    <div
+      className={glass ? 'rounded-3xl border border-white/15 bg-slate-900/20 p-3 md:p-4 shadow-[0_10px_40px_rgba(0,0,0,.25)]' : 'mt-2'}
+      style={glass ? { minHeight: 'calc(100vh - var(--appbar-h, 56px) - var(--statusbar-h, 0px) - 20px)' } : undefined}
+    >
+      {glass && (
+        <h2 className="mb-3 text-[18px] font-black tracking-tightest text-white [text-shadow:0_1px_3px_rgba(0,0,0,.6)]">
+          {title} ({orders.length})
+        </h2>
+      )}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
         <button
           type="button"
@@ -208,7 +218,7 @@ export const ServiceBoard: React.FC<{
       </div>
       {!loading && !compact && orders.length === 0 && held.length === 0 && (
         <EmptyState
-          className="py-10"
+          className={glass ? 'mx-auto mt-6 max-w-md rounded-2xl bg-white/90 py-8' : 'py-10'}
           title={kind === 'DINE_IN' ? t('board.emptyHall', { n: title }) : kind === 'PICKUP' ? t('board.emptyPickup') : t('board.emptyDelivery')}
           description={
             kind === 'DINE_IN'

@@ -3,8 +3,9 @@ import { ordersApi } from '../services/ordersApi';
 // public assets against document.baseURI instead.
 import { publicAsset, sendToPrinter } from '../../../core/platform';
 import { EscPos } from '../../../core/platform/escpos';
-import { escposPrinter, getPrinterSettings, type PrinterDevice } from '../../../core/lib/printerConfig';
+import { escposPrinter, getPrinterSettings, layoutOf, type PrinterDevice } from '../../../core/lib/printerConfig';
 import { t } from '../../../core/i18n';
+import { getReceiptLook, logoRasterFor } from '../../../core/lib/receiptLook';
 import { DELIVERY_TYPE_LABEL } from './status';
 
 /** Mijoz chekidagi buyurtma turi — kassa tilida (Q46); server matni faqat noma'lum tur uchun. Oshxona cheki esa doim o'zbekcha (KIND_LABEL). */
@@ -35,8 +36,13 @@ const itemName = (item: { product_name?: string; name?: string; product?: { name
 // Eski (HTML) chek dizayni bilan bir xil tartib va yozuvlar: sarlavha, ma'lumot qatorlari, MAHSULOT/SUMMA jadvali,
 // jami bloki, to'lov turi, rahmat. Logo rasmi matnda yo'q — o'rniga "MilliyGo | NOM" qatori.
 const receiptEscpos = (d: ReceiptData, device: PrinterDevice, drawer: boolean): Uint8Array => {
-  const p = new EscPos(device.width, device.codepage);
+  const p = new EscPos(device.width, device.codepage, layoutOf(device));
   const isDelivery = d.delivery_type === 'DELIVERY';
+  const look = getReceiptLook();
+
+  // Kafe logotipi (Sozlamalar → Chek ko'rinishi) — eng tepada, markazda
+  const logo = logoRasterFor(look, device.width);
+  if (logo) p.align('center').raster(logo.bytesPerRow, logo.height, logo.data).feed(1);
 
   // Sarlavha
   p.align('center').bold().para(`MilliyGo | ${(d.partner_name || '').toUpperCase()}`.replace(/ \| $/, '')).bold(false);
@@ -102,7 +108,7 @@ const receiptEscpos = (d: ReceiptData, device: PrinterDevice, drawer: boolean): 
   }
   if (d.description) p.pair(t('rc.comment'), d.description);
 
-  p.feed(1).align('center').bold().line(t('rc.thanks')).bold(false);
+  p.feed(1).align('center').bold().para(look.footer.trim() || t('rc.thanks')).bold(false);
   if (drawer) p.openDrawer();
   return p.cut().build();
 };
@@ -135,7 +141,7 @@ const KIND_LABEL: Record<string, string> = { DINE_IN: 'ZALDA', PICKUP: 'OLIB KET
 
 /** Oshxona cheki: narxsiz, katta shrift — oshpaz uzoqdan o'qiydi */
 export const kitchenTicketEscpos = (t: KitchenTicketInput, device: PrinterDevice): Uint8Array => {
-  const p = new EscPos(device.width, device.codepage);
+  const p = new EscPos(device.width, device.codepage, layoutOf(device));
   p.align('center').bold().size(2, 2);
   if (t.addition) p.line("QO'SHIMCHA");
   if (t.call_number) p.line(`N ${t.call_number}`).size().line((t.hall_name || 'ZAL').toUpperCase()).size(2, 2);
@@ -164,7 +170,7 @@ export const printKitchenTicket = async (t: KitchenTicketInput): Promise<boolean
 
 /** Printer sozlamasini tekshirish uchun qisqa sinov cheki (Sozlamalar sahifasi) */
 export const printTestTicket = async (device: PrinterDevice, label: string) => {
-  const p = new EscPos(device.width, device.codepage);
+  const p = new EscPos(device.width, device.codepage, layoutOf(device));
   p.align('center').bold().size(2, 2).line('MilliyGo').size().line(label).bold(false).align('left').divider();
   p.pair('Lotin:', "O'zbekiston, g'isht").pair('Kirill:', 'Ўзбекистон, Ёзув').pair('Raqam:', '1 234 567 UZS');
   p.divider().align('center').line(new Date().toLocaleString('uz-UZ'));
@@ -175,7 +181,7 @@ export const printTestTicket = async (device: PrinterDevice, label: string) => {
 export const openCashDrawer = async () => {
   const device = escposPrinter('receipt');
   if (!device) throw new Error('Kassa printeri sozlanmagan');
-  const p = new EscPos(device.width, device.codepage);
+  const p = new EscPos(device.width, device.codepage, layoutOf(device));
   await sendToPrinter(device, p.openDrawer().build());
 };
 
@@ -319,6 +325,8 @@ const withAutoPrintScript = (html: string): string => {
 // backend-fetched (post-order) receipt and the locally-built (pre-order) preview.
 // Soliq (OFD) QR chekda chiqarilmaydi: `_includeOfdQr` faqat eski chaqiruvlar mosligi uchun qoldirilgan.
 const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean): Promise<string> => {
+  const look = getReceiptLook();
+  const partnerLogo = look.logo_position === 'top' && look.logo ? look.logo : null;
 
   const isDelivery = receiptData.delivery_type === 'DELIVERY';
   // Kuryerga: chekning o'zida manzil va telefon (xarita QR yo'q — kuryer ilovasida yo'l ko'rsatiladi).
@@ -461,6 +469,7 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
       </head>
       <body>
         <div class="header text-center" style="display: flex; flex-direction: column; align-items: center; margin-bottom: 6px;">
+          ${partnerLogo ? `<img src="${esc(partnerLogo)}" alt="" style="display: block; width: ${Math.min(100, Math.max(20, look.logo_width))}%; margin: 0 auto 4px; filter: grayscale(1);" />` : ''}
           <div style="display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 8px; margin-bottom: 2px;">
             <div style="display: flex; flex-direction: row; align-items: center; gap: 4px; flex-shrink: 0;">
               <img src="${publicAsset('logo_bw.png')}" alt="MilliyGo Logo" style="width: 45px; height: 45px; border-radius: 50%; object-fit: cover;" />
@@ -595,7 +604,7 @@ const buildReceiptHtml = async (receiptData: ReceiptData, _includeOfdQr: boolean
         </div>
 
         <div class="footer">
-          <p class="bold" style="font-size: 11px; margin-bottom: 2px;">${esc(t('rc.thanks'))}</p>
+          <p class="bold" style="font-size: 11px; margin-bottom: 2px;">${esc(look.footer.trim() || t('rc.thanks'))}</p>
         </div>
       </body>
     </html>
@@ -645,7 +654,7 @@ export const printPreCheck = async (order: PreCheckOrderInput): Promise<void> =>
   if (device) {
     // Eski pre-chek (HTML) bilan bir xil: "Buyurtmalaringiz", vaqt, stol, mahsulotlar, Jami, Jami to'lov
     const total = Number(order.total_price || 0);
-    const p = new EscPos(device.width, device.codepage);
+    const p = new EscPos(device.width, device.codepage, layoutOf(device));
     p.bold().align('center').size(1, 2).line(t('rc.preTitle')).size().align('left');
     p.line(t('rc.printedAt', { time: new Date().toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }));
     if (order.table_number) p.line(t('rc.preTable', { n: order.table_number }));

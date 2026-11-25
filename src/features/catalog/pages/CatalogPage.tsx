@@ -253,6 +253,20 @@ const CatalogPage: React.FC = () => {
     }
   };
 
+  /* ------------------------------------------------ kitchen (ichimliklar) */
+  // Ichimlik kabi turkum — oshxona chekiga chiqmaydi va kassir uni oshxonaga ketgandan keyin ham kamaytira oladi
+  const toggleKitchen = async (cat: CatalogCategory) => {
+    const next = !cat.is_kitchen;
+    setCategories((list) => list.map((c) => (c.uuid === cat.uuid ? { ...c, is_kitchen: next } : c)));
+    try {
+      await catalogApi.setCategoryKitchen(cat.uuid, next);
+      toast.success(next ? `«${cat.name}» — oshxonada tayyorlanadi` : `«${cat.name}» — oshxonaga chiqmaydi (ichimlik kabi)`);
+    } catch (err) {
+      setCategories((list) => list.map((c) => (c.uuid === cat.uuid ? { ...c, is_kitchen: cat.is_kitchen } : c)));
+      toast.error(getErrorMessage(err, "Saqlab bo'lmadi."));
+    }
+  };
+
   /* ------------------------------------------------------- category order */
   // Qo'yib yuborilganda darhol saqlanadi (xato bo'lsa eski tartib qaytadi)
   const reorderCategories = async (uuids: string[]) => {
@@ -623,6 +637,18 @@ const CatalogPage: React.FC = () => {
                       <p className="text-[12px] text-muted truncate">
                         {isLinked ? `Menyuda · ${productCount} ta ${w.product.toLowerCase()}` : baseCat.description || "Menyuga qo'shilmagan"}
                       </p>
+                      {isLinked && linkedCat && (
+                        <button
+                          type="button"
+                          onClick={() => void toggleKitchen(linkedCat)}
+                          title="Oshxonada tayyorlanadigan taomlar oshxona chekiga chiqadi va oshxonaga ketgach kassir kamaytira olmaydi. Ichimliklar uchun o'chiring."
+                          className={`mt-1 inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[12px] font-bold cursor-pointer ${
+                            linkedCat.is_kitchen ? 'bg-brand-soft text-brand' : 'bg-field text-muted'
+                          }`}
+                        >
+                          {linkedCat.is_kitchen ? '🍳 Oshxonada tayyorlanadi' : '🥤 Oshxonaga chiqmaydi'}
+                        </button>
+                      )}
                     </div>
                     <Switch
                       checked={isLinked}

@@ -31,6 +31,8 @@ const PromotionsPage = lazy(() => import('./features/promotions/pages/Promotions
 const PlanPage = lazy(() => import('./features/profile/pages/PlanPage'));
 const ReportsPage = lazy(() => import('./features/reports/pages/ReportsPage'));
 const BranchOverviewPage = lazy(() => import('./features/branches/pages/BranchOverviewPage'));
+// Zal TV ekrani — login'siz, ulash kodi bilan
+const TvScreenPage = lazy(() => import('./features/screens/pages/TvScreenPage'));
 
 // Restoran va do'kon uchun alohida bo'limlar (src/venues)
 const RestaurantHomePage = lazy(() => import('./venues/restaurant/pages/RestaurantHomePage'));
@@ -67,6 +69,7 @@ const App: React.FC = () => {
           <AnalyticsTracker />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/tv" element={page(<TvScreenPage />)} />
 
             <Route
               path="/"

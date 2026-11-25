@@ -11,6 +11,8 @@ import { catalogApi, type CatalogCategory } from '../../catalog/services/catalog
 import { screensApi, tvUrl, type PartnerScreen, type ScreenInput } from '../screensApi';
 
 const INTERVALS = [5, 8, 10, 15, 20, 30, 45, 60];
+/** Brend ranglari: yashil, qizil, to'q sariq, sariq, ko'k, binafsha, jigarrang, qora */
+const ACCENTS = ['#1f7a4d', '#c8102e', '#e8590c', '#e0a100', '#1864ab', '#6741d9', '#8b5a2b', '#212529'];
 
 const copy = async (text: string) => {
   try {
@@ -138,6 +140,36 @@ const ScreenRow: React.FC<{
               size="sm"
             />
           </div>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="mb-1.5 text-[13px] font-bold text-ink">Brend rangi</div>
+        <div className="flex flex-wrap items-center gap-2">
+          {ACCENTS.map((col) => (
+            <button
+              key={col}
+              type="button"
+              disabled={busy}
+              aria-label={col}
+              onClick={() => void save({ accent: col })}
+              className={`h-8 w-8 rounded-full transition ${screen.accent.toLowerCase() === col ? 'ring-2 ring-ink ring-offset-2' : 'hover:scale-110'}`}
+              style={{ background: col }}
+            />
+          ))}
+          <label className="relative flex h-8 cursor-pointer items-center gap-1.5 rounded-full border border-edge px-3 text-[12px] font-bold text-muted hover:bg-field">
+            <span className="h-4 w-4 rounded-full" style={{ background: screen.accent }} />
+            Boshqa
+            <input
+              type="color"
+              defaultValue={screen.accent}
+              key={screen.accent}
+              disabled={busy}
+              // Rang tanlash oynasi yopilganda bir marta saqlanadi (sudrash paytida emas)
+              onBlur={(e) => e.target.value.toLowerCase() !== screen.accent.toLowerCase() && void save({ accent: e.target.value })}
+              className="absolute inset-0 cursor-pointer opacity-0"
+            />
+          </label>
         </div>
       </div>
 

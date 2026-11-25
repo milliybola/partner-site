@@ -13,6 +13,8 @@ export interface PartnerScreen {
   categories: string[];
   show_images: boolean;
   theme: ScreenTheme;
+  /** Brend rangi #RRGGBB */
+  accent: string;
   is_active: boolean;
   last_seen_at: string | null;
   online: boolean;
@@ -20,7 +22,7 @@ export interface PartnerScreen {
   filial_name: string | null;
 }
 
-export type ScreenInput = Partial<Pick<PartnerScreen, 'name' | 'interval' | 'categories' | 'show_images' | 'theme' | 'is_active'>> & {
+export type ScreenInput = Partial<Pick<PartnerScreen, 'name' | 'interval' | 'categories' | 'show_images' | 'theme' | 'accent' | 'is_active'>> & {
   filial_uuid?: string | null;
 };
 
@@ -33,6 +35,8 @@ export interface TvProduct {
   /** «110 000 / 130 000» — o'lchamli taom */
   variant_prices: number[];
   image: string | null;
+  /** «1+1», «Aksiya» — stiker */
+  badge: string | null;
 }
 
 export interface TvCategory {
@@ -47,6 +51,7 @@ export interface TvPayload {
   interval: number;
   show_images: boolean;
   theme: ScreenTheme;
+  accent: string;
   partner: { uuid: string; name: string; logo: string | null };
   menu: TvCategory[];
 }

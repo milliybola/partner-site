@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Copy, ExternalLink, Plus, RefreshCw, Trash2, Tv } from 'lucide-react';
+import { Copy, ExternalLink, Film, Plus, RefreshCw, Trash2, Tv } from 'lucide-react';
 import { Badge, Button, Card, CardHeader, Input, Select, Switch } from '../../../core/ui';
 import { useToast } from '../../../core/components/ToastProvider';
 import { useConfirm } from '../../../core/components/ConfirmProvider';
@@ -8,7 +8,8 @@ import { getPartner } from '../../../core/lib/session';
 import { getWorkingFilial } from '../../../core/lib/workingFilial';
 import { timeAgo } from '../../../core/lib/format';
 import { catalogApi, type CatalogCategory } from '../../catalog/services/catalogApi';
-import { screensApi, tvUrl, type PartnerScreen, type ScreenInput } from '../screensApi';
+import { screensApi, tvUrl, type PartnerScreen, type ScreenInput, type ScreenKind } from '../screensApi';
+import { MediaPlaylist } from './MediaPlaylist';
 
 const INTERVALS = [5, 8, 10, 15, 20, 30, 45, 60];
 /** Brend ranglari: yashil, qizil, to'q sariq, sariq, ko'k, binafsha, jigarrang, qora */
@@ -33,6 +34,9 @@ const ScreenRow: React.FC<{
   const confirm = useConfirm();
   const [name, setName] = useState(screen.name);
   const [busy, setBusy] = useState(false);
+  const isMedia = screen.kind === 'MEDIA';
+  // Video ekranda menyu sozlamalari faqat pleylistda «Menyu taxtasi» bo'lsa kerak
+  const [hasMenuSlide, setHasMenuSlide] = useState(false);
 
   const save = async (data: ScreenInput) => {
     setBusy(true);
@@ -72,7 +76,7 @@ const ScreenRow: React.FC<{
     <div className="rounded-2xl border border-edge p-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-field">
-          <Tv className="h-5 w-5 text-ink" />
+          {isMedia ? <Film className="h-5 w-5 text-ink" /> : <Tv className="h-5 w-5 text-ink" />}
         </div>
         <div className="min-w-0 flex-1">
           <input
@@ -83,6 +87,7 @@ const ScreenRow: React.FC<{
             className="w-full bg-transparent text-[15px] font-extrabold text-ink outline-none"
           />
           <div className="text-[12px] text-muted">
+            {isMedia ? 'Video ekran · ' : 'Menyu ekrani · '}
             {screen.online ? (
               <span className="font-bold text-emerald-600">● Ulangan</span>
             ) : screen.last_seen_at ? (
@@ -117,6 +122,16 @@ const ScreenRow: React.FC<{
         )}
       </div>
 
+      {isMedia && (
+        <div className="mt-4 space-y-4">
+          <Switch checked={screen.sound} disabled={busy} onChange={(v) => void save({ sound: v })} label="Videolar ovozi bilan" size="sm" />
+          <MediaPlaylist screen={screen} onItems={(list) => setHasMenuSlide(list.some((m) => m.kind === 'MENU'))} />
+        </div>
+      )}
+
+      {(!isMedia || hasMenuSlide) && (
+      <>
+      {isMedia && <div className="mt-5 border-t border-edge pt-4 text-[14px] font-extrabold text-ink">Menyu taxtasi ko'rinishi</div>}
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <Select label="Sahifa almashishi" value={screen.interval} disabled={busy} onChange={(e) => void save({ interval: Number(e.target.value) })}>
           {INTERVALS.map((s) => (
@@ -203,6 +218,8 @@ const ScreenRow: React.FC<{
           )}
         </div>
       </div>
+      </>
+      )}
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
         <Button variant="outline" size="sm" icon={<RefreshCw className="h-4 w-4" />} disabled={busy} onClick={() => void regenerate()}>
@@ -226,6 +243,7 @@ export const TvScreensCard: React.FC = () => {
   const [screens, setScreens] = useState<PartnerScreen[] | null>(null);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [newName, setNewName] = useState('');
+  const [newKind, setNewKind] = useState<ScreenKind>('MENU');
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -250,6 +268,7 @@ export const TvScreensCard: React.FC = () => {
     try {
       const s = await screensApi.create({
         name: newName.trim() || `TV ${(screens?.length ?? 0) + 1}`,
+        kind: newKind,
         filial_uuid: getWorkingFilial(),
       });
       setScreens((l) => [...(l ?? []), s]);
@@ -280,8 +299,8 @@ export const TvScreensCard: React.FC = () => {
         action={screens && screens.length > 0 ? <Badge>{screens.length}</Badge> : undefined}
       />
       <p className="text-[13px] text-muted">
-        Zaldagi televizorda menyu aylanib turadi. TV brauzerida havolani oching yoki <b>…/#/tv</b> sahifasida kodni kiriting.
-        Narx, rasm va stop-list o'zgarsa, TV bir daqiqada o'zi yangilanadi.
+        Zaldagi televizorda menyu yoki o'z videolaringiz aylanib turadi. TV brauzerida havolani oching yoki <b>…/#/tv</b> sahifasida kodni kiriting.
+        O'zgarishlar TV ga bir daqiqada o'zi tushadi; videolar TV ning o'zida saqlanadi — internet uzilsa ham o'ynayveradi.
       </p>
 
       <div className="mt-4 space-y-3">
@@ -303,6 +322,12 @@ export const TvScreensCard: React.FC = () => {
       <div className="mt-4 flex flex-wrap items-end gap-2">
         <div className="min-w-[200px] flex-1">
           <Input label="Yangi ekran" placeholder={`TV ${(screens?.length ?? 0) + 1}`} maxLength={60} value={newName} onChange={(e) => setNewName(e.target.value)} />
+        </div>
+        <div className="w-[190px]">
+          <Select label="Turi" value={newKind} onChange={(e) => setNewKind(e.target.value as ScreenKind)}>
+            <option value="MENU">Menyu</option>
+            <option value="MEDIA">Video / reklama</option>
+          </Select>
         </div>
         <Button icon={<Plus className="h-4 w-4" />} loading={creating} onClick={() => void add()}>
           Ekran qo'shish

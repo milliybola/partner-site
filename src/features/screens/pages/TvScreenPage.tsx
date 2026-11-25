@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { screensApi, type TvPayload } from '../screensApi';
 import { MenuBoard } from '../components/MenuBoard';
+import { MediaPlayer } from '../components/MediaPlayer';
 
 /**
  * Zaldagi TV: menyu sahifama-sahifa aylanadi. Login yo'q — ulash kodi bilan (Sozlamalar → TV ekranlar).
@@ -158,7 +159,7 @@ const TvScreenPage: React.FC = () => {
     return () => clearInterval(t);
   }, [code, load]);
 
-  if (demo) return demoData ? <MenuBoard data={demoData} offline={false} /> : null;
+  if (demo) return demoData ? demoData.kind === 'MEDIA' ? <MediaPlayer data={demoData} offline={false} /> : <MenuBoard data={demoData} offline={false} /> : null;
   if (!code)
     return (
       <PairScreen
@@ -178,7 +179,7 @@ const TvScreenPage: React.FC = () => {
     );
   return (
     <div onDoubleClick={() => void document.documentElement.requestFullscreen?.().catch(() => undefined)}>
-      <MenuBoard data={data} offline={offline} />
+      {data.kind === 'MEDIA' ? <MediaPlayer data={data} offline={offline} /> : <MenuBoard data={data} offline={offline} />}
     </div>
   );
 };

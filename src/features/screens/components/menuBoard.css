@@ -185,3 +185,16 @@
     transform: scaleX(1);
   }
 }
+
+/* Video ekran: element almashganda qorong'idan chiqadi */
+.tv-media-in {
+  animation: tv-media-in 0.9s ease forwards;
+}
+@keyframes tv-media-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

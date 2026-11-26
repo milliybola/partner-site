@@ -54,6 +54,9 @@ interface BranchForm {
   hours: WorkingHours;
 }
 
+/** Eski menejer almashtirilsa yoki olib tashlansa — backend uni nofaol qiladi (egasi qarori 2026-11-25) */
+const managerNameOf = (b?: PartnerFilial | null): string => b?.manager_info?.name || (b?.manager as { name?: string } | null | undefined)?.name || '';
+
 const managerUuidOf = (b?: PartnerFilial | null) =>
   b?.manager_info?.uuid || (typeof b?.manager === 'string' ? b.manager : (b?.manager as any)?.uuid) || '';
 
@@ -175,6 +178,8 @@ const BranchesPage: React.FC = () => {
       opening_hours: hoursToPayload(form.hours),
     };
 
+    if (editing && !(await confirmManagerChange(editing, form.managerUuid))) return;
+
     setSubmitting(true);
     try {
       if (editing) {
@@ -233,9 +238,21 @@ const BranchesPage: React.FC = () => {
     setAssignError(null);
   };
 
+  /** Menejer o'zgarsa — eski menejer nofaol bo'lishini oldindan aytamiz */
+  const confirmManagerChange = async (b: PartnerFilial, nextUuid: string) => {
+    const current = managerUuidOf(b);
+    if (!current || current === nextUuid) return true;
+    const name = managerNameOf(b) || 'Eski menejer';
+    return confirm(
+      `«${name}» menejerlikdan olinadi va NOFAOL bo'ladi — tizimga kira olmaydi. Kerak bo'lsa, Xodimlar bo'limida uni qayta yoqib, boshqa filialga biriktirasiz.`,
+      { title: nextUuid ? 'Menejerni almashtirish' : 'Menejerni olib tashlash', confirmText: 'Davom etish', danger: true },
+    );
+  };
+
   const submitAssign = async () => {
     if (!assignFor) return;
     if (!assignUuid) return setAssignError('Menejerni tanlang.');
+    if (!(await confirmManagerChange(assignFor, assignUuid))) return;
     setAssigning(true);
     setAssignError(null);
     try {
@@ -251,7 +268,7 @@ const BranchesPage: React.FC = () => {
   };
 
   const remove = async (b: PartnerFilial) => {
-    const ok = await confirm(`"${b.filial_name}" filiali o'chiriladi. Bu amalni qaytarib bo'lmaydi.`, {
+    const ok = await confirm(`"${b.filial_name}" filiali o'chiriladi. Xodimlari asosiy filialga o'tadi, menejeri nofaol bo'ladi. Buyurtmalar tarixi bor filialni o'chirib bo'lmaydi — uni «Yopiq» qiling.`, {
       title: "Filialni o'chirish",
       danger: true,
       confirmText: "O'chirish",

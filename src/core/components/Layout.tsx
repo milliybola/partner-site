@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, LayoutGrid, Lock, LogOut, User, PlusCircle, Receipt, Settings2, Store, Wifi, WifiOff } from 'lucide-react';
-import { filialApi } from '../../features/orders/services/filialApi';
-import type { PartnerFilial } from '../../features/orders/services/filialApi';
 import apiClient from '../api/client';
 import { useToast } from './ToastProvider';
 import { RealtimeProvider, useRealtime } from '../realtime/RealtimeProvider';
@@ -247,40 +245,6 @@ const ConnectionDot: React.FC = () => {
   );
 };
 
-/* -------------------------------------------------------- Filial switch */
-const useFilialSwitcher = (partner: PartnerSession | null) => {
-  const toast = useToast();
-  const [filials, setFilials] = useState<PartnerFilial[]>([]);
-  useEffect(() => {
-    if (partner?.role !== 'manager' && partner?.role !== 'cashier') return;
-    filialApi
-      .getFilials()
-      .then(setFilials)
-      .catch(() => setFilials([]));
-  }, [partner?.role]);
-
-  const switchTo = async (filialUuid: string) => {
-    const staffUuid = partner?.staff_uuid || partner?.uuid;
-    if (!staffUuid) return toast.error(t('lay.noStaffId'));
-    try {
-      await filialApi.switchFilial(staffUuid, filialUuid);
-      const res = await apiClient.get('partner/staff/me/');
-      const staff = res.data?.data || res.data;
-      savePartner({
-        ...partner,
-        ...staff,
-        role: partner?.role ?? 'manager',
-        staff_uuid: staff?.uuid,
-        uuid: staff?.partner_uuid,
-      });
-      window.location.reload();
-    } catch (err) {
-      toast.error(getErrorMessage(err, t('lay.filialSwitchFail')));
-    }
-  };
-  return { filials, switchTo };
-};
-
 /**
  * Bosqich pasaytirilgan (2 → 1), lekin ochiq smena qolgan (Q56): «Smena» bo'limi menyuda qoladi — uni yopish shart.
  * Faqat 1-bosqichda va restoranda bir marta so'raladi.
@@ -315,7 +279,6 @@ const Shell: React.FC = () => {
     }
   });
   const { unseenNewOrders, markOrdersSeen } = useRealtime();
-  const { filials, switchTo } = useFilialSwitcher(partner);
   const owner = isOwner(partner);
   const [workingFilial, setWorkingFilial] = useWorkingFilial();
   const { filials: ownerFilials } = useOwnerFilials();
@@ -449,7 +412,8 @@ const Shell: React.FC = () => {
   const tabPaths = tabs.map((t) => t.to);
   const moreActive = !tabPaths.includes(location.pathname);
 
-  // Filial tanlagich sarlavhada: rahbar — «Barcha filiallar» + filiallar; menejer — faqat o'z filiallari
+  // Filial tanlagich sarlavhada faqat rahbarda («Barcha filiallar» + filiallar). Menejer faqat o'z filialida
+  // ishlaydi (egasi qarori 2026-11-25) — xodimni boshqa filialga faqat rahbar o'tkazadi.
   const filialSwitch = ownerMulti ? (
     <FilialSwitch
       value={workingFilial || ''}
@@ -459,13 +423,6 @@ const Shell: React.FC = () => {
         { value: '', label: t('lay.allFilials'), hint: t('lay.allFilialsHint') },
         ...ownerFilials.map((f) => ({ value: f.uuid, label: f.filial_name, hint: f.is_main ? t('lay.mainFilial') : undefined })),
       ]}
-    />
-  ) : manager && filials.length > 1 ? (
-    <FilialSwitch
-      value={partner?.current_filial?.uuid || ''}
-      subtitle={getDisplayName(partner)}
-      onChange={(v) => v && switchTo(v)}
-      options={filials.map((f) => ({ value: f.uuid, label: f.filial_name, hint: f.is_main ? t('lay.mainFilial') : undefined }))}
     />
   ) : null;
 

@@ -180,7 +180,7 @@ const StaffPage: React.FC<{ initialTab?: Tab }> = ({ initialTab = 'staff' }) => 
   };
 
   const deleteStaff = async (m: StaffMember) => {
-    const ok = await confirm(`"${m.name}" xodimini o'chirasizmi? Bu amalni bekor qilib bo'lmaydi.`, {
+    const ok = await confirm(`"${m.name}" xodimini o'chirasizmi? U tizimga kira olmaydi va ro'yxatdan yo'qoladi. Buyurtmalar tarixi, ofitsiant ulushi va hisobotlar saqlanadi. Vaqtincha to'xtatish uchun «Faol»ni o'chirish kifoya.`, {
       title: "Xodimni o'chirish",
       danger: true,
       confirmText: "O'chirish",

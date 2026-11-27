@@ -88,10 +88,23 @@ export interface Order {
   description?: string;
   reject_reason?: string | null;
   courier?: { first_name?: string; last_name?: string; full_name?: string; phone?: string } | null;
+  /** MilliyGo kuryeri bilan qo'lma-qo'l hisob-kitob; hamkor kuryerida / kuryersiz — null */
+  settlement?: OrderSettlement | null;
   is_paid?: boolean;
   table_number?: string | null;
   delivery_type?: string;
   items: OrderItem[];
+}
+
+/** Kuryer restoranga to'laydi (naqd) yoki restoran kuryerga beradi (onlayn) — summalar so'mda */
+export interface OrderSettlement {
+  courier_fee: number;
+  cash_from_customer: number | null;
+  pay_to_restaurant: number;
+  take_from_restaurant: number;
+  settled_at: string | null;
+  disputed_at: string | null;
+  dispute_note: string;
 }
 
 export const getStatusSlug = (status: string): string => {
@@ -115,6 +128,9 @@ export interface QrWaiter {
   name: string;
   phone?: string;
 }
+
+/** Ilova (MilliyGo) buyurtmasi — qabul qilishdan oldin mijozga qo'ng'iroq qilib tasdiqlanadi */
+export const needsCallCheck = (o: { order_source?: string }) => o.order_source === 'CUSTOMER';
 
 /** Tasdiq kutayotgan mehmon QR buyurtmasi — to'lanmaydi, oshxonaga chiqmaydi */
 export const isAwaitingQrConfirm = (o: { order_source?: string; status?: string } | null | undefined) =>
@@ -272,6 +288,10 @@ export const ordersApi = {
 
   // Assign one of the partner's own couriers directly — the order is accepted
   // immediately, no confirmation is awaited from the courier.
+  /** «Pul olinmadi»: MilliyGo kuryeri «To'ladim» bosgan, lekin pul kelmagan — operatorga xabar */
+  settlementDispute: async (orderUuid: string, note = ''): Promise<{ message?: string; settlement?: OrderSettlement }> =>
+    (await apiClient.post(`orders/partner-pos/${orderUuid}/settlement-dispute/`, { note })).data,
+
   assignOwnCourier: async (orderUuid: string, courierUuid: string): Promise<any> => {
     const response = await apiClient.post(`orders/partner-pos/${orderUuid}/assign-own-courier/`, {
       courier_uuid: courierUuid,

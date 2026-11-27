@@ -24,9 +24,10 @@ import { escposPrinter } from '../../../../core/lib/printerConfig';
 import { PaymentSheet } from './PaymentSheet';
 import type { PaymentMethod } from './PaymentSheet';
 import { CourierPickerSheet } from './CourierPickerSheet';
+import { CallCustomerSheet } from './CallCustomerSheet';
 import { WaiterPickSheet } from './WaiterPickSheet';
 import type { WaiterPickMode } from './WaiterPickSheet';
-import { opensNewBill } from '../../services/ordersApi';
+import { needsCallCheck, opensNewBill } from '../../services/ordersApi';
 import { usePlatformConfig } from '../../../../core/lib/platformStage';
 import { HANDED_NOTE, orderNo } from './actions';
 import type { ActionContext, QueueAction } from './actions';
@@ -67,6 +68,8 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
     touch(order.uuid);
     setWaiterPick({ order, mode });
   };
+  /** Ilova buyurtmasi: qabul qilishdan oldin mijozga qo'ng'iroq qilib tasdiqlash oynasi */
+  const [callCheckOrder, setCallCheckOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [busyUuid, setBusyUuid] = useState<string | null>(null);
   const [printingUuid, setPrintingUuid] = useState<string | null>(null);
@@ -184,7 +187,18 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
       pickWaiter(order, 'qr');
       return;
     }
+    // Ilova buyurtmasi: avval mijozga qo'ng'iroq qilib tasdiqlash (soxta/adashgan buyurtma tayyorlanmasin)
+    if (needsCallCheck(order)) {
+      touch(order.uuid);
+      setCallCheckOrder(order);
+      return;
+    }
     updateStatus(order, 'ACCEPTED', t('msg.accepted', { n: orderNo(order) }));
+  };
+
+  const rejectOrder = async (order: Order, presets?: readonly string[]) => {
+    const reason = await askRejectReason({ orderLabel: orderNo(order), ...(presets ? { presets } : {}) });
+    if (reason) updateStatus(order, 'REJECTED', t('msg.rejected', { n: orderNo(order) }), reason);
   };
 
   const openCourierPicker = (order: Order, thenReady = false) => {
@@ -324,11 +338,9 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
       case 'accept':
         acceptOrder(order);
         return;
-      case 'reject': {
-        const reason = await askRejectReason({ orderLabel: orderNo(order) });
-        if (reason) updateStatus(order, 'REJECTED', t('msg.rejected', { n: orderNo(order) }), reason);
+      case 'reject':
+        rejectOrder(order);
         return;
-      }
       case 'cancel': {
         const done = t('cancel.done', { n: orderNo(order) });
         if (!order.is_paid) {
@@ -436,6 +448,19 @@ export function useOrderActions({ orders, setOrders, refresh, now, skipPreparing
         onDone={() => {
           setWaiterPick(null);
           refresh();
+        }}
+      />
+
+      <CallCustomerSheet
+        order={callCheckOrder}
+        onClose={() => setCallCheckOrder(null)}
+        onAccept={(o) => {
+          setCallCheckOrder(null);
+          updateStatus(o, 'ACCEPTED', t('msg.accepted', { n: orderNo(o) }));
+        }}
+        onReject={(o) => {
+          setCallCheckOrder(null);
+          rejectOrder(o, [t('callCheck.reasonNoAnswer'), t('callCheck.reasonNotOrdered'), t('callCheck.reasonFake')]);
         }}
       />
 

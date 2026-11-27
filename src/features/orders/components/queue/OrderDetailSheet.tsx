@@ -11,6 +11,7 @@ import type { ActionContext, QueueAction } from './actions';
 import { ElapsedChip } from './OrderCard';
 import { DeliveryAddressSection, LocationBadge } from './DeliveryAddressSection';
 import { FilialTag } from './FilialTag';
+import { SettlementRow } from './SettlementRow';
 import { DiscountSheet, discountableOrder, useCanDiscount } from '../DiscountSheet';
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -332,6 +333,7 @@ export const OrderDetailSheet: React.FC<Props> = ({ order, now, ctx, busy, print
               </a>
             </InfoRow>
           )}
+          <SettlementRow order={order} onPatched={(patch) => onOrderPatched(order.uuid, patch)} />
           <InfoRow icon={<CreditCard className="w-4 h-4" />} label={t('detail.payment')}>
             <span className="inline-flex items-center gap-2 flex-wrap">
               {parts.length > 1

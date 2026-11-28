@@ -19,8 +19,11 @@ export const ProductPicker: React.FC<{
   onQuantityChange?: (uuid: string, qty: number) => void;
   selected?: string[];
   onToggle?: (uuid: string) => void;
+  /** O'lcham bo'yicha aksiya: tanlangan variant uuid'lari (mahsulotniki bo'lmasa — barcha variantlari) */
+  selectedOptions?: string[];
+  onToggleOption?: (productUuid: string, optionUuid: string) => void;
   productWord: string;
-}> = ({ products, loading, error, onRetry, mode, quantities = {}, onQuantityChange, selected = [], onToggle, productWord }) => {
+}> = ({ products, loading, error, onRetry, mode, quantities = {}, onQuantityChange, selected = [], onToggle, selectedOptions = [], onToggleOption, productWord }) => {
   const [q, setQ] = useState('');
 
   const groups = useMemo(() => {
@@ -88,6 +91,10 @@ export const ProductPicker: React.FC<{
                   );
                 }
                 const groups = p.option_groups ?? [];
+                // Majburiy guruh (o'lcham) variantlari belgilanadi; hech biri belgilanmagan = barchasi
+                const sizeUuids = groups.filter((g) => g.required).flatMap((g) => g.options.map((o) => o.uuid));
+                const picked = sizeUuids.filter((u) => selectedOptions.includes(u));
+                const restricted = picked.length > 0;
                 return (
                   <div key={p.uuid} className={active ? 'bg-brand-soft/50' : 'bg-surface'}>
                     <button
@@ -105,29 +112,64 @@ export const ProductPicker: React.FC<{
                         {isSel && <Check className="w-4 h-4" />}
                       </span>
                     </button>
-                    {/* Variantlar daraxti: aksiya mahsulotga — uning BARCHA variantlariga amal qiladi */}
+                    {/* Variantlar daraxti: tanlangan mahsulotda o'lchamni belgilab, aksiyani faqat shu o'lchamga qo'yish mumkin */}
                     {groups.length > 0 && (
                       <div className="pl-[68px] pr-3 pb-2.5 -mt-1">
                         {groups.map((g) => (
                           <div key={g.name} className="mt-1">
                             <div className="text-[11px] font-bold uppercase tracking-wider text-subtle">{g.name}</div>
                             <ul className="mt-0.5 border-l-2 border-edge ml-1">
-                              {g.options.map((o) => (
-                                <li key={o.name} className="relative flex items-center gap-2 pl-3 py-[3px] text-[13px]">
-                                  <span className="absolute left-0 top-1/2 w-2 border-t-2 border-edge" aria-hidden />
-                                  <span className={`flex-1 truncate ${o.is_available ? 'text-ink' : 'text-subtle line-through'}`}>{o.name}</span>
-                                  <span className="text-muted tabular-nums">
-                                    {g.required ? formatMoney(p.price + o.price_delta) : `+${formatMoney(o.price_delta)}`}
-                                  </span>
-                                  {isSel && <Check className="w-3.5 h-3.5 text-brand shrink-0" aria-label="aksiya amal qiladi" />}
-                                </li>
-                              ))}
+                              {g.options.map((o) => {
+                                const pickable = isSel && g.required && !!o.uuid && !!onToggleOption;
+                                const on = isSel && (!g.required || !restricted || picked.includes(o.uuid));
+                                const row = (
+                                  <>
+                                    <span className="absolute left-0 top-1/2 w-2 border-t-2 border-edge" aria-hidden />
+                                    <span className={`flex-1 truncate text-left ${o.is_available ? 'text-ink' : 'text-subtle line-through'}`}>{o.name}</span>
+                                    <span className="text-muted tabular-nums">
+                                      {g.required ? formatMoney(p.price + o.price_delta) : `+${formatMoney(o.price_delta)}`}
+                                    </span>
+                                    {pickable ? (
+                                      <span
+                                        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${
+                                          on ? 'bg-brand border-brand text-white' : 'border-edge-strong bg-surface'
+                                        }`}
+                                      >
+                                        {on && <Check className="w-3 h-3" />}
+                                      </span>
+                                    ) : (
+                                      on && <Check className="w-3.5 h-3.5 text-brand shrink-0" aria-label="aksiya amal qiladi" />
+                                    )}
+                                  </>
+                                );
+                                return (
+                                  <li key={o.uuid || o.name} className="relative">
+                                    {pickable ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => onToggleOption!(p.uuid, o.uuid)}
+                                        aria-pressed={on}
+                                        aria-label={`${p.name} — ${o.name}`}
+                                        className="w-full flex items-center gap-2 pl-3 py-[5px] text-[13px] cursor-pointer bg-transparent rounded-lg hover:bg-surface2"
+                                      >
+                                        {row}
+                                      </button>
+                                    ) : (
+                                      <div className="flex items-center gap-2 pl-3 py-[3px] text-[13px]">{row}</div>
+                                    )}
+                                  </li>
+                                );
+                              })}
                             </ul>
                           </div>
                         ))}
                         {isSel && (
                           <p className="mt-1.5 text-[12px] font-semibold text-brand">
-                            Aksiya barcha variantlarga amal qiladi — bir xil variantdan olinganda (masalan, 2 ta 30 sm)
+                            {restricted
+                              ? `Aksiya faqat belgilangan o'lchamga: ${groups.flatMap((g) => g.options).filter((o) => picked.includes(o.uuid)).map((o) => o.name).join(', ')}`
+                              : sizeUuids.length > 0
+                                ? "Aksiya barcha o'lchamlarga. Faqat bittasiga kerak bo'lsa — keraksizlarini olib tashlang"
+                                : 'Aksiya barcha variantlarga amal qiladi — bir xil variantdan olinganda'}
                           </p>
                         )}
                       </div>

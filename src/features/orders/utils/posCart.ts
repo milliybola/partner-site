@@ -21,7 +21,8 @@ export interface CatalogProduct {
   option_groups?: PosOptionGroup[];
   packagings?: PosPackaging[];
   /** Aksiya (1+1 / 2+1) va set tarkibi — kartada ko'rsatiladi; hisobni server qiladi */
-  promotion?: { label?: string; buy_quantity?: number; get_quantity?: number } | null;
+  /** `options` — o'lcham bo'yicha aksiya: faqat shu variant(lar)da; bo'sh — barcha variantlarda */
+  promotion?: { label?: string; buy_quantity?: number; get_quantity?: number; options?: string[] } | null;
   kind?: 'SINGLE' | 'SET';
   set_items?: { name: string; quantity: number }[];
 }
@@ -73,14 +74,16 @@ export const mapPosProduct = (p: any): CatalogProduct => {
     name: p.name,
     description: p.description || '',
     price,
-    promotion:
-      p.promotion && typeof p.promotion === 'object'
+    // `promotion_v2` — o'lchamli aksiya ham shu yerda (`promotion` da u eski ilovalar uchun yashirilgan)
+    promotion: ((pr: any) =>
+      pr && typeof pr === 'object'
         ? {
-            label: p.promotion.label,
-            buy_quantity: Number(p.promotion.buy_quantity) || 0,
-            get_quantity: Number(p.promotion.get_quantity) || 0,
+            label: pr.label,
+            buy_quantity: Number(pr.buy_quantity) || 0,
+            get_quantity: Number(pr.get_quantity) || 0,
+            options: Array.isArray(pr.options) ? pr.options.map(String) : [],
           }
-        : null,
+        : null)(p.promotion_v2 ?? p.promotion),
     kind: p.kind === 'SET' ? 'SET' : 'SINGLE',
     set_items: (Array.isArray(p.set_items) ? p.set_items : []).map((s: any) => ({ name: s.name, quantity: Number(s.quantity) || 1 })),
     original_price: raw,
@@ -149,10 +152,16 @@ export const countItems = (lines: CartLine[]) => lines.reduce((s, i) => s + (Num
  * `quantity` — kassir tanlagan (to'langan) son P. Faqat dona mahsulot, qadoqsiz, faol aksiya.
  * Serverga P + sovg'a yuboriladi; server bepulni = floor(jami/(buy+get))*get = aynan shu sovg'a deb tasdiqlaydi.
  */
+/** Qatorga aksiya tegadimi: o'lchamli aksiyada qatorning varianti tanlanganlardan bo'lishi kerak (server bilan bir xil) */
+export const promoApplies = (i: CartLine): boolean => {
+  const allowed = i.product.promotion?.options ?? [];
+  return allowed.length === 0 || (i.options ?? []).some((o) => allowed.includes(o.uuid));
+};
+
 export const giftOf = (i: CartLine): number => {
   const p = i.product.promotion;
   if (!p || !p.buy_quantity || !p.get_quantity || p.buy_quantity <= 0 || p.get_quantity <= 0) return 0;
-  if (i.product.unit === 'KG' || i.packaging) return 0;
+  if (i.product.unit === 'KG' || i.packaging || !promoApplies(i)) return 0;
   // Aksiya bir buyurtmada BIR MARTA: `buy` ta to'lansa `get` ta sovg'a (ko'pida ham shuncha)
   return i.quantity >= p.buy_quantity ? p.get_quantity : 0;
 };
@@ -164,7 +173,7 @@ export const sendQtyOf = (i: CartLine): number => Number((i.quantity + giftOf(i)
 export const dealNote = (i: CartLine): string | null => {
   const p = i.product.promotion;
   if (!p || !p.buy_quantity || !p.get_quantity || p.buy_quantity <= 0 || p.get_quantity <= 0) return null;
-  if (i.product.unit === 'KG' || i.packaging) return null;
+  if (i.product.unit === 'KG' || i.packaging || !promoApplies(i)) return null;
   if (i.quantity >= p.buy_quantity) return null; // sovg'a allaqachon qo'shilgan
   const needPaid = Math.max(p.buy_quantity - i.quantity, 1);
   const label = p.label || `${p.buy_quantity}+${p.get_quantity}`;

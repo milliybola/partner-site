@@ -28,7 +28,7 @@ import { formatMoney } from '../../../core/lib/format';
 type View = 'menu' | 'order' | 'categories';
 
 const promoLabel = (p: CatalogProduct) => {
-  const pr = p.promotion;
+  const pr = p.promotion ?? p.promotion_v2;
   if (!pr) return null;
   if (pr.label) return pr.label;
   if (pr.buy_quantity && pr.get_quantity) return `${pr.buy_quantity}+${pr.get_quantity}`;

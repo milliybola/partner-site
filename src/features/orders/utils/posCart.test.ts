@@ -314,6 +314,21 @@ describe('Aksiya auto-gift (1+1 / 2+1) — egasi qarori: bir buyurtmada bir mart
     expect(giftOf({ product: p(null), quantity: 3 })).toBe(0);
     expect(giftOf({ product: p({ buy_quantity: 0, get_quantity: 1 }), quantity: 3 })).toBe(0);
   });
+  it("o'lchamli aksiya: sovg'a faqat belgilangan o'lchamga (server bilan bir xil)", () => {
+    const promo = { buy_quantity: 2, get_quantity: 1, options: ['big'] };
+    const big = [{ uuid: 'big', name: 'Katta', group: 'g', price_delta: 12_000 }];
+    const small = [{ uuid: 'small', name: 'Kichik', group: 'g', price_delta: 0 }];
+    expect(giftOf({ product: p(promo), quantity: 2, options: big })).toBe(1);
+    expect(giftOf({ product: p(promo), quantity: 2, options: small })).toBe(0);
+    expect(sendQtyOf({ product: p(promo), quantity: 2, options: small })).toBe(2);
+    expect(dealNote({ product: p(promo), quantity: 1, options: small })).toBeNull();
+  });
+  it("mahsulot: o'lchamli aksiya `promotion_v2` dan o'qiladi", () => {
+    const prod = mapPosProduct({ uuid: 'x', name: 'Pitsa', price: '58000', is_available: true, is_active: true, promotion: null,
+      promotion_v2: { label: '2+1', buy_quantity: 2, get_quantity: 1, options: ['big'] } });
+    expect(prod.promotion).toEqual({ label: '2+1', buy_quantity: 2, get_quantity: 1, options: ['big'] });
+    expect(mapPosProduct({ uuid: 'y', name: 'Osh', price: '1', promotion: { buy_quantity: 1, get_quantity: 1 } }).promotion?.options).toEqual([]);
+  });
 });
 
 describe('Katalog yordamchilari', () => {

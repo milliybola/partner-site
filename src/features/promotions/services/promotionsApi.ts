@@ -42,6 +42,8 @@ export interface Promotion {
   buy_quantity?: number;
   get_quantity?: number;
   products?: string[];
+  /** O'lcham bo'yicha: aksiya amal qiladigan variant uuid'lari. Mahsulotning varianti yo'q — barcha variantlariga */
+  options?: string[];
   same_product?: boolean;
   is_active?: boolean;
   start_date?: string | null;
@@ -63,6 +65,8 @@ export interface PromotionPayload {
   buy_quantity: number;
   get_quantity: number;
   products: string[];
+  /** Yuborilmasa — serverdagi o'lcham tanlovi o'zgarmaydi */
+  options?: string[];
   same_product: boolean;
   is_active: boolean;
   start_date?: string | null;
@@ -152,7 +156,7 @@ export interface CatalogProduct {
   /** SINGLE — oddiy mahsulot; SET — kombo (setga setni qo'shib bo'lmaydi) */
   kind: 'SINGLE' | 'SET';
   /** Variantlar (pitsa o'lchami va h.k.) — aksiya oynasida daraxt ko'rinishida ko'rsatish uchun */
-  option_groups?: { name: string; required: boolean; options: { name: string; price_delta: number; is_available: boolean }[] }[];
+  option_groups?: { name: string; required: boolean; options: { uuid: string; name: string; price_delta: number; is_available: boolean }[] }[];
 }
 
 /** Server javobidagi variant guruhi (faqat aksiya oynasida ko'rsatish uchun kerakli maydonlar) */
@@ -160,7 +164,7 @@ interface RawOptionGroup {
   name?: string;
   min_select?: number | string;
   is_active?: boolean;
-  options?: { name?: string; price_delta?: string | number; is_available?: boolean }[];
+  options?: { uuid?: string; name?: string; price_delta?: string | number; is_available?: boolean }[];
 }
 
 /** Same call CatalogPage uses: categories come with their products embedded. */
@@ -187,6 +191,7 @@ export const loadCatalogProducts = async (partnerUuid: string): Promise<CatalogP
             name: g.name || '',
             required: Number(g.min_select ?? 0) > 0,
             options: (g.options ?? []).map((o) => ({
+              uuid: o.uuid || '',
               name: o.name || '',
               price_delta: Number(o.price_delta ?? 0) || 0,
               is_available: o.is_available !== false,

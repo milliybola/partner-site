@@ -130,6 +130,17 @@ const PromotionsPage: React.FC = () => {
     return (uuid: string) => m.get(uuid);
   }, [products]);
 
+  /** «Peperoni (Katta)» — o'lchamli aksiyada belgilangan o'lchamlar qavsda */
+  const promoProductName = useMemo(() => {
+    const byUuid = new Map(products.map((p) => [p.uuid, p]));
+    return (uuid: string, options: string[]) => {
+      const p = byUuid.get(uuid);
+      if (!p) return undefined;
+      const sizes = (p.option_groups ?? []).flatMap((g) => g.options).filter((o) => options.includes(o.uuid)).map((o) => o.name);
+      return sizes.length ? `${p.name} (${sizes.join(', ')})` : p.name;
+    };
+  }, [products]);
+
   /* ---------------------------------------------------------- mutations */
   const upsert = <T extends { uuid?: string }>(state: LoadState<T>, item: T): LoadState<T> => {
     if (state.status !== 'ready' || !item?.uuid) return state;
@@ -290,7 +301,7 @@ const PromotionsPage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {promos.items.map((p, i) => {
           const ids = Array.isArray(p.products) ? p.products : [];
-          const names = ids.map((id) => productName(id)).filter(Boolean) as string[];
+          const names = ids.map((id) => promoProductName(id, p.options ?? [])).filter(Boolean) as string[];
           const unknown = ids.length - names.length;
           const ex = calcBuyXGetY(7, p.buy_quantity || 0, p.get_quantity || 0);
           return (

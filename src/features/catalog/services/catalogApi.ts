@@ -64,6 +64,8 @@ export interface CatalogProduct {
   kind?: 'SINGLE' | 'SET';
   /** Sets/promos contract (D:\Milliy\API_CONTRACT_SETS_PROMOS.md) — only shown when the backend sends it. */
   promotion?: { uuid?: string; type?: string; buy_quantity?: number; get_quantity?: number; label?: string } | null;
+  /** O'lcham bo'yicha aksiya ham (`promotion` da yo'q — eski ilovalar uchun yashirilgan) */
+  promotion_v2?: { uuid?: string; type?: string; buy_quantity?: number; get_quantity?: number; label?: string; options?: string[] } | null;
 }
 
 export interface CatalogCategory {
@@ -116,6 +118,7 @@ const mapProduct = (p: any): CatalogProduct => ({
       }))
     : [],
   promotion: p.promotion && typeof p.promotion === 'object' ? p.promotion : null,
+  promotion_v2: p.promotion_v2 && typeof p.promotion_v2 === 'object' ? p.promotion_v2 : null,
   kind: p.kind === 'SET' ? 'SET' : 'SINGLE',
   option_groups: Array.isArray(p.option_groups)
     ? p.option_groups.map((g: any, gi: number) => ({

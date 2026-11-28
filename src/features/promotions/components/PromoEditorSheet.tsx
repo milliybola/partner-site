@@ -29,6 +29,8 @@ export const PromoEditorSheet: React.FC<{
   const [get, setGet] = useState(1);
   const [preset, setPreset] = useState<Preset>('1+1');
   const [selected, setSelected] = useState<string[]>([]);
+  /** O'lcham bo'yicha: belgilangan variantlar. Mahsulotning varianti bu yerda yo'q — barcha o'lchamlariga */
+  const [options, setOptions] = useState<string[]>([]);
   const [sameProduct, setSameProduct] = useState(true);
   const [isActive, setIsActive] = useState(true);
   const [startDate, setStartDate] = useState('');
@@ -44,6 +46,7 @@ export const PromoEditorSheet: React.FC<{
     setGet(g);
     setPreset(presetOf(b, g));
     setSelected(Array.isArray(initial?.products) ? initial!.products! : []);
+    setOptions(Array.isArray(initial?.options) ? initial!.options! : []);
     setSameProduct(initial?.same_product ?? true);
     setIsActive(initial?.is_active ?? true);
     setStartDate(fromBackendDate(initial?.start_date));
@@ -60,8 +63,35 @@ export const PromoEditorSheet: React.FC<{
   const exampleQty = buy + get >= 4 ? (buy + get) * 2 + 1 : 7;
   const preview = useMemo(() => calcBuyXGetY(exampleQty, buy, get), [exampleQty, buy, get]);
 
-  const toggle = (uuid: string) =>
+  /** Mahsulotning o'lcham (majburiy guruh) variantlari */
+  const sizesOf = (productUuid: string) =>
+    (products.find((p) => p.uuid === productUuid)?.option_groups ?? [])
+      .filter((g) => g.required)
+      .flatMap((g) => g.options.map((o) => o.uuid))
+      .filter(Boolean);
+
+  const toggle = (uuid: string) => {
+    if (selected.includes(uuid)) {
+      // Mahsulot olib tashlansa — uning o'lcham tanlovi ham
+      const sizes = sizesOf(uuid);
+      setOptions((prev) => prev.filter((o) => !sizes.includes(o)));
+    }
     setSelected((prev) => (prev.includes(uuid) ? prev.filter((x) => x !== uuid) : [...prev, uuid]));
+  };
+
+  /** O'lchamni yoqish/o'chirish. Hammasi yoqilgan = cheklovsiz (serverga yuborilmaydi); hammasini o'chirib bo'lmaydi */
+  const toggleOption = (productUuid: string, optionUuid: string) => {
+    const sizes = sizesOf(productUuid);
+    const mine = options.filter((o) => sizes.includes(o));
+    const current = mine.length ? mine : sizes;
+    const next = current.includes(optionUuid) ? current.filter((o) => o !== optionUuid) : [...current, optionUuid];
+    if (next.length === 0) {
+      toast.error("Kamida bitta o'lcham qolishi kerak. Aksiya kerak bo'lmasa — taomni olib tashlang");
+      return;
+    }
+    const rest = options.filter((o) => !sizes.includes(o));
+    setOptions(next.length === sizes.length ? rest : [...rest, ...next]);
+  };
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -80,6 +110,9 @@ export const PromoEditorSheet: React.FC<{
       buy_quantity: buy,
       get_quantity: get,
       products: selected,
+      // Faqat tanlangan mahsulotlarning o'lchamlari (eskirgan uuid'lar yuborilmaydi).
+      // Menyu yuklanmagan bo'lsa yuborilmaydi — aks holda saqlangan o'lcham tanlovi o'chib ketardi.
+      ...(products.length > 0 ? { options: options.filter((o) => selected.some((p) => sizesOf(p).includes(o))) } : {}),
       same_product: sameProduct,
       is_active: isActive,
       start_date: startDate ? toBackendDate(startDate) : null,
@@ -172,6 +205,8 @@ export const PromoEditorSheet: React.FC<{
             onRetry={onRetryProducts}
             selected={selected}
             onToggle={toggle}
+            selectedOptions={options}
+            onToggleOption={toggleOption}
             productWord={w.product}
           />
         </Field>
